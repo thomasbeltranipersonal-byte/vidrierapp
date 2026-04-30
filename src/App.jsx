@@ -1159,15 +1159,18 @@ export default function App() {
   // ── FIREBASE SUBSCRIPTIONS (realtime) ──────────────────────────────────────
   useEffect(()=>{
     const unsubs = [];
-    let loaded = 0;
-    const check = () => { loaded++; if(loaded>=6) setLoading(false); };
+    // Set loading false after 3 seconds max regardless
+    const timeout = setTimeout(()=>setLoading(false), 3000);
 
-    unsubs.push(fsSub("ordenes", docs => { setOrdenes(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); check(); }));
-    unsubs.push(fsSub("clientes", docs => { setClientes(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); check(); }));
-    unsubs.push(fsSub("cotizaciones", docs => { setCotizaciones(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); check(); }));
-    unsubs.push(fsSub("stock_items", docs => { setStock(docs); check(); }));
-    unsubs.push(fsCfgSub("plantillas", val => { setPlantillas(val||PLANTILLAS_DEFAULT); check(); }));
-    unsubs.push(fsCfgSub("estados", val => { setEstados(val||ESTADOS_DEFAULT); check(); }));
+    unsubs.push(fsSub("ordenes", docs => { setOrdenes(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); }));
+    unsubs.push(fsSub("clientes", docs => { setClientes(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); }));
+    unsubs.push(fsSub("cotizaciones", docs => { setCotizaciones(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); }));
+    unsubs.push(fsSub("stock_items", docs => { setStock(docs); }));
+    unsubs.push(fsCfgSub("plantillas", val => { if(val) setPlantillas(val); }));
+    unsubs.push(fsCfgSub("estados", val => { if(val) setEstados(val); }));
+
+    // Mark as loaded once we get first response from any collection
+    const firstLoad = onSnapshot(collection(db, "ordenes"), ()=>{ setLoading(false); clearTimeout(timeout); }, ()=>{ setLoading(false); clearTimeout(timeout); });
 
     // Connection indicator
     const handleOnline = () => setOnline(true);
@@ -1177,6 +1180,8 @@ export default function App() {
 
     return () => {
       unsubs.forEach(u=>u());
+      firstLoad();
+      clearTimeout(timeout);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
