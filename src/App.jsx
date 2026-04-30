@@ -2,6 +2,100 @@ import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, onSnapshot, setDoc, deleteDoc } from "firebase/firestore";
 
+// ─── USUARIOS ────────────────────────────────────────────────────────────────
+const USUARIOS = [
+  { usuario: "thomasb",  clave: "beltrani07",  nombre: "Thomas",  rol: "admin",   color: "#64B5F6" },
+  { usuario: "Taller1",  clave: "beltrani07",  nombre: "Taller",  rol: "taller",  color: "#CE93D8" },
+  { usuario: "Local",    clave: "virasoro2431", nombre: "Local",   rol: "local",   color: "#A5D6A7" },
+];
+
+// ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
+const LoginScreen = ({ onLogin }) => {
+  const [usuario, setUsuario] = useState("");
+  const [clave, setClave] = useState("");
+  const [error, setError] = useState("");
+  const [showClave, setShowClave] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = () => {
+    setError("");
+    setLoading(true);
+    setTimeout(() => {
+      const user = USUARIOS.find(u => u.usuario === usuario && u.clave === clave);
+      if (user) {
+        sessionStorage.setItem("vidrierapp_user", JSON.stringify(user));
+        onLogin(user);
+      } else {
+        setError("Usuario o contraseña incorrectos");
+        setLoading(false);
+      }
+    }, 600);
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:"#060f1a",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans','Segoe UI',sans-serif",padding:16}}>
+      <div style={{width:"100%",maxWidth:380}}>
+        {/* Logo */}
+        <div style={{textAlign:"center",marginBottom:36}}>
+          <div style={{width:60,height:60,background:"linear-gradient(135deg,#1565C0,#0d47a1)",borderRadius:16,display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:14,boxShadow:"0 8px 32px rgba(21,101,192,0.4)"}}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3h8l4 9H4L8 3z"/><path d="M4 12v6a2 2 0 002 2h12a2 2 0 002-2v-6"/>
+            </svg>
+          </div>
+          <div style={{fontSize:26,fontWeight:800,color:"#e2f0ff",fontFamily:"Georgia,serif",letterSpacing:"0.5px"}}>VidrierApp</div>
+          <div style={{fontSize:13,color:"#3a6a9a",marginTop:4}}>La Vidriería Rosario</div>
+        </div>
+
+        {/* Card */}
+        <div style={{background:"#0d1b2a",border:"1px solid #1e3a5a",borderRadius:16,padding:28,boxShadow:"0 24px 60px rgba(0,0,0,0.5)"}}>
+          <div style={{fontSize:16,fontWeight:600,color:"#e2f0ff",marginBottom:22,textAlign:"center"}}>Iniciar sesión</div>
+
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block",fontSize:11,fontWeight:600,color:"#5a8ab8",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.5px"}}>Usuario</label>
+            <input value={usuario} onChange={e=>setUsuario(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+              placeholder="Tu usuario..."
+              style={{width:"100%",background:"#071220",border:`1px solid ${error?"#7f2020":"#1e3a5a"}`,borderRadius:8,padding:"11px 14px",color:"#c8e0f8",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}
+            />
+          </div>
+
+          <div style={{marginBottom:20}}>
+            <label style={{display:"block",fontSize:11,fontWeight:600,color:"#5a8ab8",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.5px"}}>Contraseña</label>
+            <div style={{position:"relative"}}>
+              <input value={clave} onChange={e=>setClave(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+                type={showClave?"text":"password"}
+                placeholder="Tu contraseña..."
+                style={{width:"100%",background:"#071220",border:`1px solid ${error?"#7f2020":"#1e3a5a"}`,borderRadius:8,padding:"11px 44px 11px 14px",color:"#c8e0f8",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}
+              />
+              <button onClick={()=>setShowClave(s=>!s)}
+                style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#3a6a9a",cursor:"pointer",padding:2,display:"flex"}}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {showClave
+                    ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>
+                    : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>
+                  }
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {error&&<div style={{background:"#2a0a0a",border:"1px solid #7f2020",borderRadius:8,padding:"9px 14px",color:"#f48fb1",fontSize:13,marginBottom:16,textAlign:"center"}}>{error}</div>}
+
+          <button onClick={handleLogin} disabled={loading||!usuario||!clave}
+            style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#1565C0,#0d47a1)",border:"none",borderRadius:8,color:"#fff",fontSize:15,fontWeight:700,cursor:loading||!usuario||!clave?"not-allowed":"pointer",fontFamily:"inherit",opacity:loading||!usuario||!clave?0.7:1,boxShadow:"0 4px 16px rgba(21,101,192,0.4)"}}>
+            {loading?"Verificando...":"Ingresar"}
+          </button>
+        </div>
+
+        <div style={{textAlign:"center",marginTop:20,fontSize:11,color:"#1e3a5a"}}>
+          VidrierApp v5.0 · Sistema de Gestión
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── FIREBASE CONFIG ──────────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyCRcoFujqFPX91-EYINKMsq3Or3x8H3bX8",
@@ -1143,6 +1237,19 @@ const Optimizer = () => {
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
+  const [currentUser, setCurrentUser] = useState(()=>{
+    try { const s=sessionStorage.getItem("vidrierapp_user"); return s?JSON.parse(s):null; } catch{ return null; }
+  });
+
+  const handleLogin = (user) => setCurrentUser(user);
+  const handleLogout = () => { sessionStorage.removeItem("vidrierapp_user"); setCurrentUser(null); };
+
+  if(!currentUser) return <LoginScreen onLogin={handleLogin}/>;
+
+  return <AppInner currentUser={currentUser} onLogout={handleLogout}/>;
+}
+
+function AppInner({ currentUser, onLogout }) {
   const [nav,setNav]=useState("home");
   const [ordenes,setOrdenes]=useState([]);
   const [clientes,setClientes]=useState([]);
@@ -1271,9 +1378,27 @@ export default function App() {
       <div style={{padding:"14px 18px",borderTop:"1px solid #0f2035",display:"flex",flexDirection:"column",gap:6}}>
         <Btn small style={{width:"100%",justifyContent:"center"}} onClick={()=>setModal({type:"nueva_cotizacion"})}><Icon name="pdf" size={14}/> Nueva Cotización</Btn>
         <Btn small style={{width:"100%",justifyContent:"center"}} onClick={()=>setModal({type:"nueva_orden"})}><Icon name="plus" size={14}/> Nueva Orden</Btn>
-        <div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"center",marginTop:4}}>
-          <div style={{width:7,height:7,borderRadius:"50%",background:online?"#26A69A":"#F48FB1"}}/>
-          <span style={{fontSize:10,color:online?"#26A69A":"#F48FB1"}}>{online?"En línea — sincronizado":"Sin conexión"}</span>
+        <div style={{marginTop:4,padding:"8px 10px",background:"#071220",borderRadius:8,border:"1px solid #0f2035"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{display:"flex",alignItems:"center",gap:7}}>
+              <div style={{width:26,height:26,borderRadius:"50%",background:currentUser.color+"30",border:`1px solid ${currentUser.color}50`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:currentUser.color}}>
+                {currentUser.nombre[0].toUpperCase()}
+              </div>
+              <div>
+                <div style={{fontSize:12,fontWeight:600,color:"#c8e0f8"}}>{currentUser.nombre}</div>
+                <div style={{fontSize:10,color:"#3a6a9a",textTransform:"capitalize"}}>{currentUser.rol}</div>
+              </div>
+            </div>
+            <button onClick={onLogout} title="Cerrar sesión" style={{background:"none",border:"none",color:"#3a6a9a",cursor:"pointer",padding:4,borderRadius:6,display:"flex"}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            </button>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginTop:6}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:online?"#26A69A":"#F48FB1"}}/>
+            <span style={{fontSize:10,color:online?"#26A69A":"#F48FB1"}}>{online?"En línea":"Sin conexión"}</span>
+          </div>
         </div>
       </div>
     </div>
