@@ -1239,7 +1239,6 @@ tbody td{padding:8px 12px;border-bottom:1px solid #e8f0ff}
   <span>Mendoza 1783 · Rosario · 341 425-1007</span>
 </div>
 </body></html>`;
-    openPDF(mkHTML(`Orden ${form.numero||""}`,html.replace('<html>','<html>').replace('openPDF(mkHTML(`Orden ${form.numero||""}`,',''));
     const w=window.open("","_blank","width=940,height=820");
     if(w){w.document.write(html.replace("BIZ_LOGO",BIZ_LOGO));w.document.close();w.onload=()=>{w.focus();w.print();};}
   };
@@ -2930,6 +2929,7 @@ ${bizFooter()}`;
     },0);
 
     // Orders by stage
+    const ETAPAS_REPORTE=[{id:"presupuesto",label:"Presupuesto"},{id:"medicion",label:"Medición"},{id:"produccion",label:"Producción"},{id:"instalacion",label:"Instalación"}];
     const porEtapa = ETAPAS_REPORTE.map(e=>({
       ...e, count: ordenesDelMes.filter(o=>o.etapa===e.id).length
     }));
