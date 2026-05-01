@@ -983,126 +983,275 @@ const OrdenForm = ({orden,plantillas,clientes,onSave,onClose,stockItems,onDescon
 
   const printOrdenPDF=()=>{
     const cn=clientes.find(c=>c.id===form.cliente)?.nombre||"Sin cliente";
-    const etiqueta=ETAPAS.find(e=>e.id===form.etapa)?.label||form.etapa;
-    const items=form.pres_items||[];
-    const sub=items.reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0);
-    const ivaAmt=form.pres_con_iva!==false?sub*0.21:0;
+    const ivaAmt=form.pres_con_iva!==false?(form.pres_items||[]).reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0)*0.21:0;
+    const sub=(form.pres_items||[]).reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0);
     const tot=sub+ivaAmt;
-    const rows=items.filter(i=>i.desc).map((i)=>`<tr><td>${i.desc}</td><td style="text-align:center">${i.cant||1}</td><td style="text-align:right">$${(+i.precio||0).toLocaleString("es-AR")}</td><td style="text-align:right;font-weight:700">$${((+i.precio||0)*(+i.cant||1)).toLocaleString("es-AR")}</td></tr>`).join("");
-    const senia=+form.pago_senia||0,pagoFinal=+form.pago_total||0;
-    const refBadge=form.ref_cotizacion?`<span class="ref-badge">ref. ${form.ref_cotizacion}</span>`:"";
-    const vidriosRows=(form.vidrios||[]).filter(v=>v.tipo||v.ancho||v.alto).map(v=>`<tr><td style="text-align:center;font-weight:700">${v.cant||1}</td><td>${v.tipo||"—"}</td><td style="text-align:center">${v.ancho||"—"} × ${v.alto||"—"} mm</td><td>${v.obs||""}</td></tr>`).join("");
+    const senia=+form.pago_senia||0;
 
-    const buildSVG=(med_plano)=>{
-      if(!(med_plano||[]).length) return "";
-      const shapes=med_plano;
-      const allX=shapes.flatMap(s=>[s.x1,s.x2,s.x].filter(v=>v!=null));
-      const allY=shapes.flatMap(s=>[s.y1,s.y2,s.y].filter(v=>v!=null));
-      if(!allX.length) return "";
-      const minX=Math.min(...allX)-20,minY=Math.min(...allY)-20;
-      const maxX=Math.max(...allX)+20,maxY=Math.max(...allY)+20;
-      const ss=shapes.map(s=>{
-        if(s.type==="segment") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2" stroke-linecap="round"/>${s.medidaLinea?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-8}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaLinea}</text>`:""}`;
-        if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="13" fill="#1a1a2e" font-weight="600">${s.text}</text>`;
-        if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e3f2fd" stroke="#1565C0" stroke-width="1.5"/>`;}
-        const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
-        const c=s.corners||[0,0,0,0];
-        const d=`M ${x+c[0]} ${y} L ${x+w-c[1]} ${y} ${c[1]>0?`Q ${x+w} ${y} ${x+w} ${y+c[1]}`:""} L ${x+w} ${y+h-c[2]} ${c[2]>0?`Q ${x+w} ${y+h} ${x+w-c[2]} ${y+h}`:""} L ${x+c[3]} ${y+h} ${c[3]>0?`Q ${x} ${y+h} ${x} ${y+h-c[3]}`:""} L ${x} ${y+c[0]} ${c[0]>0?`Q ${x} ${y} ${x+c[0]} ${y}`:""} Z`;
-        const dims=s.medidaAncho&&s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2-4}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaAncho}</text><text x="${x+w/2}" y="${y+h/2+10}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaAlto}</text>`:s.medidaAncho||s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaAncho||s.medidaAlto}</text>`:"";
-        const sides=[s.ladoSup?`<text x="${x+w/2}" y="${y-6}" text-anchor="middle" font-size="10" fill="#e65100" font-weight="700">${s.ladoSup}</text>`:"",s.ladoInf?`<text x="${x+w/2}" y="${y+h+14}" text-anchor="middle" font-size="10" fill="#e65100" font-weight="700">${s.ladoInf}</text>`:"",s.ladoIzq?`<text x="${x-5}" y="${y+h/2}" text-anchor="end" font-size="10" fill="#e65100" font-weight="700">${s.ladoIzq}</text>`:"",s.ladoDer?`<text x="${x+w+5}" y="${y+h/2}" text-anchor="start" font-size="10" fill="#e65100" font-weight="700">${s.ladoDer}</text>`:""].join("");
-        return `<path d="${d}" fill="#e8f4ff" stroke="#1565C0" stroke-width="1.5"/>${dims}${sides}`;
-      }).join("");
-      return `<svg viewBox="${minX} ${minY} ${maxX-minX} ${maxY-minY}" width="100%" style="max-height:280px;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block">${ss}</svg>`;
-    };
-    const planoSVG=buildSVG(form.med_plano);
-    const body=`
-${bizHeader("Orden de Trabajo",form.numero||"S/N",form.fecha,etiqueta)}
+    const bSVG=(pl)=>{if(!(pl||[]).length)return"";const sh=pl;const ax=sh.flatMap(s=>[s.x1,s.x2,s.x].filter(v=>v!=null));const ay=sh.flatMap(s=>[s.y1,s.y2,s.y].filter(v=>v!=null));if(!ax.length)return"";const mx=Math.min(...ax)-20,my=Math.min(...ay)-20,Mx=Math.max(...ax)+20,My=Math.max(...ay)+20;const ss=sh.map(s=>{if(s.type==="segment")return`<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2.5" stroke-linecap="round"/>${s.medidaLinea?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-9}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaLinea}</text>`:""}`;if(s.type==="text")return`<text x="${s.x}" y="${s.y}" font-size="13" fill="#1a1a2e" font-weight="600">${s.text}</text>`;if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e3f2fd" stroke="#1565C0" stroke-width="2"/>`;}const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const c=s.corners||[0,0,0,0];const d=`M ${x+c[0]} ${y} L ${x+w-c[1]} ${y} ${c[1]>0?`Q ${x+w} ${y} ${x+w} ${y+c[1]}`:""} L ${x+w} ${y+h-c[2]} ${c[2]>0?`Q ${x+w} ${y+h} ${x+w-c[2]} ${y+h}`:""} L ${x+c[3]} ${y+h} ${c[3]>0?`Q ${x} ${y+h} ${x} ${y+h-c[3]}`:""} L ${x} ${y+c[0]} ${c[0]>0?`Q ${x} ${y} ${x+c[0]} ${y}`:""} Z`;const dims=s.medidaAncho&&s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2-5}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAncho}</text><text x="${x+w/2}" y="${y+h/2+11}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAlto}</text>`:s.medidaAncho||s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2+5}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAncho||s.medidaAlto}</text>`:"";const sides=[s.ladoSup?`<text x="${x+w/2}" y="${y-7}" text-anchor="middle" font-size="11" fill="#e65100" font-weight="700">${s.ladoSup}</text>`:"",s.ladoInf?`<text x="${x+w/2}" y="${y+h+15}" text-anchor="middle" font-size="11" fill="#e65100" font-weight="700">${s.ladoInf}</text>`:"",s.ladoIzq?`<text x="${x-6}" y="${y+h/2}" text-anchor="end" font-size="11" fill="#e65100" font-weight="700">${s.ladoIzq}</text>`:"",s.ladoDer?`<text x="${x+w+6}" y="${y+h/2}" text-anchor="start" font-size="11" fill="#e65100" font-weight="700">${s.ladoDer}</text>`:""].join("");return`<path d="${d}" fill="#e8f4ff" stroke="#1565C0" stroke-width="2"/>${dims}${sides}`;}).join("");return`<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:300px;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block">${ss}</svg>`;}; 
+    const plano=bSVG(form.med_plano);
+    // Vidrios rows
+    const vrows=(form.vidrios||[]).filter(v=>v.tipo||v.ancho||v.alto).map(v=>`
+      <tr>
+        <td style="text-align:center;font-weight:700;font-size:15px;width:50px">${v.cant||1}</td>
+        <td style="font-weight:600">${v.tipo||"—"}</td>
+        <td style="text-align:center">${v.ancho||"—"} × ${v.alto||"—"} mm</td>
+        <td>${v.obs||""}</td>
+      </tr>`).join("");
+    // Items presupuesto
+    const irows=(form.pres_items||[]).filter(i=>i.desc).map((i,idx)=>`
+      <tr style="background:${idx%2===0?"#f8fbff":"#fff"}">
+        <td>${i.desc}</td>
+        <td style="text-align:center">${i.cant||1}</td>
+        <td style="text-align:right">$${(+i.precio||0).toLocaleString("es-AR")}</td>
+        <td style="text-align:right;font-weight:700">$${((+i.precio||0)*(+i.cant||1)).toLocaleString("es-AR")}</td>
+      </tr>`).join("");
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Orden ${form.numero||""}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e;background:#fff;font-size:13px}
+.hdr{background:linear-gradient(135deg,#0a2a5e,#1565C0);padding:18px 28px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+.hdr-left{display:flex;align-items:center;gap:12px}
+.hdr-logo{width:60px;height:60px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3));flex-shrink:0}
+.biz-name{font-size:19px;font-weight:900;color:#fff;letter-spacing:0.5px}
+.biz-sub{font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px}
+.biz-contact{font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px}
+.hdr-right{text-align:right;flex-shrink:0}
+.doc-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,0.7)}
+.doc-num{font-size:28px;font-weight:900;color:#fff;letter-spacing:1px;display:block}
+.doc-date{font-size:10px;color:rgba(255,255,255,0.7);margin-top:3px;display:block}
+.divider{height:3px;background:linear-gradient(90deg,#1565C0,#42A5F5,#1565C0)}
+.body{padding:20px 28px}
+.st{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin:18px 0 10px}
+.st:first-child{margin-top:0}
+.client-box{background:#f0f6ff;border-radius:8px;padding:12px 16px;border:1px solid #e0ecff;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.f label{font-size:9px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:2px}
+.f p{font-size:14px;font-weight:600;color:#1a1a2e}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead tr{background:linear-gradient(135deg,#0a2a5e,#1565C0);color:#fff}
+thead th{padding:8px 12px;font-size:11px;font-weight:600;letter-spacing:0.5px}
+tbody tr:nth-child(even){background:#f8fbff}
+tbody td{padding:8px 12px;border-bottom:1px solid #e8f0ff}
+.precio-box{margin-top:12px;display:flex;justify-content:flex-end}
+.precio-inner{width:260px;background:#f0f6ff;border-radius:8px;padding:12px 16px;border:1px solid #e0ecff}
+.precio-row{display:flex;justify-content:space-between;padding:3px 0;font-size:13px;color:#555}
+.precio-total{display:flex;justify-content:space-between;padding:8px 0 2px;font-size:17px;font-weight:900;color:#0a2a5e;border-top:2px solid #1565C0;margin-top:6px}
+.senia-box{margin-top:12px;background:#fff8e1;border:1px solid #ffc107;border-radius:8px;padding:10px 16px;display:flex;justify-content:space-between;align-items:center}
+.senia-label{font-size:11px;font-weight:700;color:#F57F17;text-transform:uppercase;letter-spacing:0.5px}
+.senia-val{font-size:18px;font-weight:900;color:#E65100}
+.senia-nota{font-size:11px;color:#795548;margin-top:2px}
+.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:32px}
+.sign-line{border-top:1.5px solid #1565C0;padding-top:8px;text-align:center}
+.sign-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px}
+.sign-name{font-size:12px;font-weight:600;color:#1565C0;margin-top:3px}
+.footer{background:#f0f6ff;border-top:2px solid #e3f2fd;padding:8px 28px;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#888}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:8mm}}
+</style></head><body>
+<div class="hdr">
+  <div class="hdr-left">
+    <img class="hdr-logo" src="${BIZ_LOGO}" alt="LV"/>
+    <div>
+      <div class="biz-name">La Vidriería Rosario</div>
+      <div class="biz-sub">Vidrios · Espejos · Cerramientos · Instalaciones</div>
+      <div class="biz-contact">📍 Mendoza 1783, Rosario, Santa Fe · CP 2000</div>
+      <div class="biz-contact">📞 341 425-1007 / 341 508-4921 &nbsp;·&nbsp; ✉️ lavidrieria@gmail.com</div>
+      <div class="biz-contact">📸 @lavidrieriarosariooficial &nbsp;·&nbsp; 🕐 Lun-Vie 8-19hs · Sáb 8-13hs</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="doc-type">Remito de Trabajo</div>
+    <span class="doc-num">${form.numero||"S/N"}</span>
+    <span class="doc-date">Fecha: ${form.fecha||""}</span>
+  </div>
+</div>
+<div class="divider"></div>
 <div class="body">
+
   <div class="st">Datos del Cliente</div>
-  <div class="g3">
-    <div class="f"><label>Nombre</label><p>${form.contacto_nombre||cn||"—"}${refBadge}</p></div>
+  <div class="client-box">
+    <div class="f"><label>Nombre</label><p>${form.contacto_nombre||cn||"—"}</p></div>
     <div class="f"><label>Teléfono</label><p>${form.contacto_telefono||"—"}</p></div>
     <div class="f"><label>Domicilio</label><p>${form.contacto_domicilio||"—"}</p></div>
   </div>
-  <div class="g2" style="margin-top:10px">
-    <div class="f"><label>Tipo de Trabajo</label><p>${form.tipo||"—"}</p></div>
-    <div class="f"><label>Etapa</label><p>${etiqueta}</p></div>
+
+  ${vrows?`<div class="st">Descripción de Materiales y Servicio</div>
+  <table>
+    <thead><tr>
+      <th style="text-align:center;width:50px">Cant.</th>
+      <th style="text-align:left">Tipo de vidrio</th>
+      <th style="text-align:center">Medidas (mm)</th>
+      <th style="text-align:left">Detalle / Borde / Accesorios</th>
+    </tr></thead>
+    <tbody>${vrows}</tbody>
+  </table>`:""}
+
+  ${form.prod_materiales?`<div style="margin-top:10px;padding:10px 14px;background:#f8f9ff;border-left:3px solid #1565C0;border-radius:0 6px 6px 0;font-size:13px;line-height:1.7;color:#333">${form.prod_materiales}</div>`:""}
+
+  ${irows?`<div class="st">Servicio e Instalación</div>
+  <table>
+    <thead><tr>
+      <th style="text-align:left">Descripción</th>
+      <th style="text-align:center;width:60px">Cant.</th>
+      <th style="text-align:right;width:100px">P. Unit.</th>
+      <th style="text-align:right;width:110px">Subtotal</th>
+    </tr></thead>
+    <tbody>${irows}</tbody>
+  </table>
+  <div class="precio-box">
+    <div class="precio-inner">
+      <div class="precio-row"><span>Subtotal</span><span>$${sub.toLocaleString("es-AR")}</span></div>
+      ${form.pres_con_iva!==false?`<div class="precio-row"><span>IVA (21%)</span><span>$${ivaAmt.toLocaleString("es-AR")}</span></div>`:`<div class="precio-row"><span style="font-style:italic;color:#aaa">Sin IVA — Efectivo</span></div>`}
+      <div class="precio-total"><span>TOTAL</span><span>$${tot.toLocaleString("es-AR")}</span></div>
+    </div>
+  </div>`:""}
+
+  ${senia>0?`<div class="senia-box">
+    <div>
+      <div class="senia-label">💰 Seña abonada</div>
+      <div class="senia-nota">Forma de pago: ${form.pago_senia_metodo||"—"} · Fecha: ${form.pago_senia_fecha||"—"}</div>
+    </div>
+    <div>
+      <div class="senia-val">$${senia.toLocaleString("es-AR")}</div>
+      ${tot>0?`<div class="senia-nota" style="text-align:right">Resta: $${Math.max(0,tot-senia).toLocaleString("es-AR")}</div>`:""}
+    </div>
+  </div>`:""}
+
+  ${plano?`<div class="st">Plano / Croquis</div><div style="margin-top:6px">${plano}</div>`:""}
+
+  ${form.pres_condiciones?`<div style="margin-top:14px;padding:10px 14px;background:#f8f9ff;border-left:3px solid #1565C0;border-radius:0 6px 6px 0;font-size:12px;color:#555;line-height:1.6">${form.pres_condiciones}</div>`:""}
+
+  <div class="sign-grid">
+    <div class="sign-line">
+      <div class="sign-label">Firma del colocador</div>
+      <div style="height:36px"></div>
+      <div class="sign-name">La Vidriería Rosario</div>
+    </div>
+    <div class="sign-line">
+      <div class="sign-label">Conformidad del cliente</div>
+      <div style="height:36px"></div>
+      <div style="font-size:12px;color:#555;margin-top:2px">${form.contacto_nombre||form.inst_firmante||form.pres_firmante||"________________________"}</div>
+    </div>
   </div>
-  ${vidriosRows?`<div class="st">Detalle de Vidrios</div><table><thead><tr><th style="text-align:center">Cant.</th><th style="text-align:left">Tipo</th><th style="text-align:center">Medidas (mm)</th><th style="text-align:left">Observaciones</th></tr></thead><tbody>${vidriosRows}</tbody></table>`:""}
-  ${planoSVG?`<div class="st">Plano Técnico</div><div style="margin:8px 0">${planoSVG}</div>`:""}
-  ${rows?`<div class="st">Presupuesto ${form.pres_con_iva===false?"(Sin IVA — Efectivo)":"(con IVA)"}</div>
-  <table><thead><tr><th style="text-align:left">Descripción</th><th style="text-align:center">Cant.</th><th style="text-align:right">P.Unit.</th><th style="text-align:right">Subtotal</th></tr></thead><tbody>${rows}</tbody></table>
-  <div style="display:flex;justify-content:flex-end;margin-top:10px"><div style="width:280px"><div class="total-box">
-    <div class="total-row"><span style="color:#555">Subtotal</span><span>$${sub.toLocaleString("es-AR")}</span></div>
-    ${form.pres_con_iva!==false?`<div class="total-row"><span style="color:#555">IVA (21%)</span><span>$${ivaAmt.toLocaleString("es-AR")}</span></div>`:`<div class="total-row"><span style="color:#888;font-style:italic">Sin IVA — Efectivo</span></div>`}
-    <div class="total-final"><span>TOTAL</span><span>$${tot.toLocaleString("es-AR")}</span></div>
-  </div></div></div>`:""}
-  ${form.med_notas?`<div class="st">Notas de Medición</div><div class="note-box">${form.med_notas}</div>`:""}
-  ${form.prod_materiales||form.prod_procesos?.length?`<div class="st">Producción</div><div class="g2"><div class="f"><label>Materiales</label><p>${form.prod_materiales||"—"}</p></div><div class="f"><label>Procesos</label><p>${(form.prod_procesos||[]).join(", ")||"—"}</p></div></div>`:""}
-  ${senia||pagoFinal?`<div class="st">Pagos</div><div class="g2"><div class="f"><label>Seña</label><p style="color:#1565C0">$${senia.toLocaleString("es-AR")} · ${form.pago_senia_fecha||"—"} · ${form.pago_senia_metodo}</p></div><div class="f"><label>Pago Final</label><p style="color:#2e7d32">$${pagoFinal.toLocaleString("es-AR")} · ${form.pago_total_fecha||"—"} · ${form.pago_total_metodo}</p></div></div>`:""}
-  <div class="sign-area">
-    <div class="sign-line"><div class="sign-label">Firma empresa</div><div class="sign-name">La Vidriería Rosario</div></div>
-    <div class="sign-line"><div class="sign-label">Conformidad cliente</div></div>
-  </div>
+
 </div>
-${bizFooter()}`;
-    openPDF(mkHTML(`Orden ${form.numero||""}`,body));
+<div class="footer">
+  <span>Generado el ${new Date().toLocaleString("es-AR")} · VidrierApp</span>
+  <span>Mendoza 1783 · Rosario · 341 425-1007</span>
+</div>
+</body></html>`;
+    openPDF(mkHTML(`Orden ${form.numero||""}`,html.replace('<html>','<html>').replace('openPDF(mkHTML(`Orden ${form.numero||""}`,',''));
+    const w=window.open("","_blank","width=940,height=820");
+    if(w){w.document.write(html.replace("BIZ_LOGO",BIZ_LOGO));w.document.close();w.onload=()=>{w.focus();w.print();};}
   };
 
-  // PDF taller — sin precios
   const printProduccionPDF=()=>{
     const cn=clientes.find(c=>c.id===form.cliente)?.nombre||"Sin cliente";
-    const vidriosRows=(form.vidrios||[]).filter(v=>v.tipo||v.ancho||v.alto).map(v=>`<tr><td style="text-align:center;font-weight:700;font-size:16px">${v.cant||1}</td><td style="font-weight:600">${v.tipo||"—"}</td><td style="text-align:center;font-size:14px">${v.ancho||"—"} × ${v.alto||"—"} mm</td><td>${v.obs||""}</td></tr>`).join("");
 
-    const buildSVG=(med_plano)=>{
-      if(!(med_plano||[]).length) return "";
-      const shapes=med_plano;
-      const allX=shapes.flatMap(s=>[s.x1,s.x2,s.x].filter(v=>v!=null));
-      const allY=shapes.flatMap(s=>[s.y1,s.y2,s.y].filter(v=>v!=null));
-      if(!allX.length) return "";
-      const minX=Math.min(...allX)-20,minY=Math.min(...allY)-20;
-      const maxX=Math.max(...allX)+20,maxY=Math.max(...allY)+20;
-      const ss=shapes.map(s=>{
-        if(s.type==="segment") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2" stroke-linecap="round"/>${s.medidaLinea?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-8}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaLinea}</text>`:""}`;
-        if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="13" fill="#1a1a2e" font-weight="600">${s.text}</text>`;
-        if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e3f2fd" stroke="#1565C0" stroke-width="1.5"/>`;}
-        const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
-        const c=s.corners||[0,0,0,0];
-        const d=`M ${x+c[0]} ${y} L ${x+w-c[1]} ${y} ${c[1]>0?`Q ${x+w} ${y} ${x+w} ${y+c[1]}`:""} L ${x+w} ${y+h-c[2]} ${c[2]>0?`Q ${x+w} ${y+h} ${x+w-c[2]} ${y+h}`:""} L ${x+c[3]} ${y+h} ${c[3]>0?`Q ${x} ${y+h} ${x} ${y+h-c[3]}`:""} L ${x} ${y+c[0]} ${c[0]>0?`Q ${x} ${y} ${x+c[0]} ${y}`:""} Z`;
-        const dims=s.medidaAncho&&s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2-4}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaAncho}</text><text x="${x+w/2}" y="${y+h/2+10}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaAlto}</text>`:s.medidaAncho||s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaAncho||s.medidaAlto}</text>`:"";
-        const sides=[s.ladoSup?`<text x="${x+w/2}" y="${y-6}" text-anchor="middle" font-size="10" fill="#e65100" font-weight="700">${s.ladoSup}</text>`:"",s.ladoInf?`<text x="${x+w/2}" y="${y+h+14}" text-anchor="middle" font-size="10" fill="#e65100" font-weight="700">${s.ladoInf}</text>`:"",s.ladoIzq?`<text x="${x-5}" y="${y+h/2}" text-anchor="end" font-size="10" fill="#e65100" font-weight="700">${s.ladoIzq}</text>`:"",s.ladoDer?`<text x="${x+w+5}" y="${y+h/2}" text-anchor="start" font-size="10" fill="#e65100" font-weight="700">${s.ladoDer}</text>`:""].join("");
-        return `<path d="${d}" fill="#e8f4ff" stroke="#1565C0" stroke-width="1.5"/>${dims}${sides}`;
-      }).join("");
-      return `<svg viewBox="${minX} ${minY} ${maxX-minX} ${maxY-minY}" width="100%" style="max-height:280px;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block">${ss}</svg>`;
-    };
-    const planoSVG=buildSVG(form.med_plano);
-    const procesosHTML=(form.prod_procesos||[]).map(p=>`<span class="process-chip">${p}</span>`).join("");
-    const body=`
-${bizHeader("Orden Producción · TALLER",form.numero||"S/N",form.fecha||"",form.prod_fecha_est?`Entrega: ${form.prod_fecha_est}`:"")}
-<div class="body">
-  <div class="st">Cliente</div>
-  <div class="g3">
-    <div class="f"><label>Nombre</label><p>${form.contacto_nombre||cn}</p></div>
-    <div class="f"><label>Teléfono</label><p>${form.contacto_telefono||"—"}</p></div>
-    <div class="f"><label>Domicilio</label><p>${form.contacto_domicilio||"—"}</p></div>
+    const bSVG=(pl)=>{if(!(pl||[]).length)return"";const sh=pl;const ax=sh.flatMap(s=>[s.x1,s.x2,s.x].filter(v=>v!=null));const ay=sh.flatMap(s=>[s.y1,s.y2,s.y].filter(v=>v!=null));if(!ax.length)return"";const mx=Math.min(...ax)-20,my=Math.min(...ay)-20,Mx=Math.max(...ax)+20,My=Math.max(...ay)+20;const ss=sh.map(s=>{if(s.type==="segment")return`<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2.5" stroke-linecap="round"/>${s.medidaLinea?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-9}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaLinea}</text>`:""}`;if(s.type==="text")return`<text x="${s.x}" y="${s.y}" font-size="13" fill="#1a1a2e" font-weight="600">${s.text}</text>`;if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e3f2fd" stroke="#1565C0" stroke-width="2"/>`;}const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const c=s.corners||[0,0,0,0];const d=`M ${x+c[0]} ${y} L ${x+w-c[1]} ${y} ${c[1]>0?`Q ${x+w} ${y} ${x+w} ${y+c[1]}`:""} L ${x+w} ${y+h-c[2]} ${c[2]>0?`Q ${x+w} ${y+h} ${x+w-c[2]} ${y+h}`:""} L ${x+c[3]} ${y+h} ${c[3]>0?`Q ${x} ${y+h} ${x} ${y+h-c[3]}`:""} L ${x} ${y+c[0]} ${c[0]>0?`Q ${x} ${y} ${x+c[0]} ${y}`:""} Z`;const dims=s.medidaAncho&&s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2-5}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAncho}</text><text x="${x+w/2}" y="${y+h/2+11}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAlto}</text>`:s.medidaAncho||s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2+5}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAncho||s.medidaAlto}</text>`:"";const sides=[s.ladoSup?`<text x="${x+w/2}" y="${y-7}" text-anchor="middle" font-size="11" fill="#e65100" font-weight="700">${s.ladoSup}</text>`:"",s.ladoInf?`<text x="${x+w/2}" y="${y+h+15}" text-anchor="middle" font-size="11" fill="#e65100" font-weight="700">${s.ladoInf}</text>`:"",s.ladoIzq?`<text x="${x-6}" y="${y+h/2}" text-anchor="end" font-size="11" fill="#e65100" font-weight="700">${s.ladoIzq}</text>`:"",s.ladoDer?`<text x="${x+w+6}" y="${y+h/2}" text-anchor="start" font-size="11" fill="#e65100" font-weight="700">${s.ladoDer}</text>`:""].join("");return`<path d="${d}" fill="#e8f4ff" stroke="#1565C0" stroke-width="2"/>${dims}${sides}`;}).join("");return`<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:300px;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block">${ss}</svg>`;}; 
+    const plano=bSVG(form.med_plano);
+    const vrows=(form.vidrios||[]).filter(v=>v.tipo||v.ancho||v.alto).map((v,i)=>`
+      <tr style="background:${i%2===0?"#f8fbff":"#fff"}">
+        <td style="text-align:center;font-size:18px;font-weight:900;width:50px">${v.cant||1}</td>
+        <td style="font-weight:700;font-size:15px">${v.tipo||"—"}</td>
+        <td style="text-align:center;font-size:15px;font-weight:600">${v.ancho||"—"} × ${v.alto||"—"} mm</td>
+        <td style="font-size:14px">${v.obs||""}</td>
+      </tr>`).join("");
+    // Split prod_materiales by line for line-items style
+    const matLines=(form.prod_materiales||"").split("\n").filter(l=>l.trim()).map((l,i)=>`
+      <tr style="background:${i%2===0?"#f8fbff":"#fff"}">
+        <td style="font-size:14px;padding:10px 14px">${l}</td>
+      </tr>`).join("");
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Taller ${form.numero||""}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e;background:#fff}
+.hdr{background:linear-gradient(135deg,#0a2a5e,#1565C0);padding:16px 28px;display:flex;justify-content:space-between;align-items:center}
+.hdr-logo{width:56px;height:56px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3))}
+.hdr-center{flex:1;padding:0 16px}
+.biz-name{font-size:17px;font-weight:900;color:#fff}
+.biz-sub{font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px}
+.hdr-right{text-align:right}
+.doc-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,0.7)}
+.doc-num{font-size:30px;font-weight:900;color:#fff;letter-spacing:1px;display:block}
+.doc-badge{display:inline-block;margin-top:5px;padding:3px 10px;border-radius:99px;background:rgba(255,255,255,0.2);font-size:11px;font-weight:700;color:#fff}
+.divider{height:4px;background:linear-gradient(90deg,#1565C0,#42A5F5,#1565C0)}
+.body{padding:18px 28px}
+.client-strip{background:#f0f6ff;border-radius:8px;padding:10px 16px;border:1px solid #e0ecff;display:flex;gap:24px;align-items:center;margin-bottom:16px}
+.cf label{font-size:9px;color:#888;font-weight:700;text-transform:uppercase;display:block;margin-bottom:1px}
+.cf p{font-size:14px;font-weight:600;color:#1a1a2e}
+.st{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin:16px 0 8px}
+table{width:100%;border-collapse:collapse}
+thead tr{background:linear-gradient(135deg,#0a2a5e,#1565C0);color:#fff}
+thead th{padding:10px 14px;font-size:12px;font-weight:600;letter-spacing:0.5px}
+tbody td{padding:10px 14px;border-bottom:1px solid #e8f0ff;vertical-align:middle}
+.proc-chip{display:inline-block;padding:5px 14px;background:#e3f2fd;color:#1565C0;border-radius:99px;font-size:12px;font-weight:700;margin:3px;border:1px solid #90CAF9}
+.warn-box{background:#fff8e1;border-left:3px solid #FFA000;border-radius:0 6px 6px 0;padding:10px 14px;font-size:13px;line-height:1.7;color:#333}
+.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:28px}
+.sign-line{border-top:2px solid #1565C0;padding-top:8px;text-align:center}
+.sign-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px}
+.footer{background:#f0f6ff;border-top:2px solid #e3f2fd;padding:7px 28px;display:flex;justify-content:space-between;font-size:10px;color:#888}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:7mm}}
+</style></head><body>
+<div class="hdr">
+  <img class="hdr-logo" src="${BIZ_LOGO}" alt="LV"/>
+  <div class="hdr-center">
+    <div class="biz-name">La Vidriería Rosario — TALLER</div>
+    <div class="biz-sub">Orden de Producción Interna</div>
   </div>
-  ${vidriosRows?`<div class="st">Vidrios a Producir</div>
-  <table style="font-size:14px"><thead><tr><th style="text-align:center">Cant.</th><th style="text-align:left">Tipo de vidrio</th><th style="text-align:center">Medidas (mm)</th><th style="text-align:left">Observaciones / Cortes</th></tr></thead><tbody>${vidriosRows}</tbody></table>`:""}
-  ${planoSVG?`<div class="st">Plano de Medición</div><div style="margin:8px 0">${planoSVG}</div>`:""}
-  ${form.med_notas?`<div class="note-box" style="margin-top:8px">${form.med_notas}</div>`:""}
-  ${form.prod_materiales?`<div class="st">Materiales</div><div class="note-box">${form.prod_materiales}</div>`:""}
-  ${procesosHTML?`<div class="st">Procesos</div><div style="margin-top:6px">${procesosHTML}</div>`:""}
-  ${form.prod_notas?`<div class="st">Instrucciones</div><div class="warn-box">${form.prod_notas}</div>`:""}
-  <div class="sign-area" style="margin-top:28px">
-    <div class="sign-line"><div class="sign-label">Recibido por</div><div style="height:30px"></div></div>
-    <div class="sign-line"><div class="sign-label">Entregado por</div><div style="height:30px"></div></div>
+  <div class="hdr-right">
+    <div class="doc-type">Orden N°</div>
+    <span class="doc-num">${form.numero||"S/N"}</span>
+    ${form.prod_fecha_est?`<span class="doc-badge">📅 Entrega: ${form.prod_fecha_est}</span>`:""}
   </div>
 </div>
-${bizFooter()}`;
-    openPDF(mkHTML(`Taller ${form.numero||""}`,body));
+<div class="divider"></div>
+<div class="body">
+
+  <div class="client-strip">
+    <div class="cf"><label>Cliente</label><p>${form.contacto_nombre||cn}</p></div>
+    <div class="cf"><label>Teléfono</label><p>${form.contacto_telefono||"—"}</p></div>
+    <div class="cf"><label>Domicilio</label><p>${form.contacto_domicilio||"—"}</p></div>
+  </div>
+
+  ${vrows?`<div class="st">Vidrios a Producir</div>
+  <table>
+    <thead><tr>
+      <th style="text-align:center;width:60px">Cant.</th>
+      <th style="text-align:left">Tipo de vidrio</th>
+      <th style="text-align:center;width:160px">Medidas (mm)</th>
+      <th style="text-align:left">Borde / Corte / Accesorios</th>
+    </tr></thead>
+    <tbody>${vrows}</tbody>
+  </table>`:""}
+
+  ${matLines?`<div class="st">Accesorios y Materiales</div>
+  <table>
+    <thead><tr><th style="text-align:left">Descripción</th></tr></thead>
+    <tbody>${matLines}</tbody>
+  </table>`:""}
+
+  ${plano?`<div class="st">Plano / Croquis</div><div style="margin-top:8px">${plano}</div>`:""}
+
+  ${(form.prod_procesos||[]).length?`<div class="st">Procesos Requeridos</div><div style="margin-top:6px">${(form.prod_procesos||[]).map(p=>`<span class="proc-chip">${p}</span>`).join("")}</div>`:""}
+
+  ${form.prod_notas?`<div class="st">Instrucciones Especiales</div><div class="warn-box">${form.prod_notas}</div>`:""}
+
+  <div class="sign-grid">
+    <div class="sign-line"><div class="sign-label">Recibido por taller</div><div style="height:32px"></div></div>
+    <div class="sign-line"><div class="sign-label">Entregado por</div><div style="height:32px"></div></div>
+  </div>
+
+</div>
+<div class="footer">
+  <span>Generado el ${new Date().toLocaleString("es-AR")} · VidrierApp</span>
+  <span>La Vidriería Rosario · Mendoza 1783 · 341 425-1007</span>
+</div>
+</body></html>`;
+    const w=window.open("","_blank","width=860,height=780");
+    if(w){w.document.write(html.replace("BIZ_LOGO",BIZ_LOGO));w.document.close();w.onload=()=>{w.focus();w.print();};}
   };
 
-  return(
+    return(
     <div>
       {/* HEADER */}
       <div style={{display:"grid",gridTemplateColumns:"auto 1fr 1fr auto",gap:10,marginBottom:16,padding:"12px 16px",background:"#071220",borderRadius:10,border:"1px solid #1e3a5a",alignItems:"end"}}>
