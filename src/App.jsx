@@ -929,6 +929,106 @@ const DrawingCanvas = ({value, onChange}) => {
   );
 };
 
+// ─── SCANNER REMITO CON IA ───────────────────────────────────────────────────
+const ScannerRemito = ({onResult}) => {
+  const [loading,setLoading] = useState(false);
+  const [preview,setPreview] = useState(null);
+  const [result,setResult] = useState(null);
+  const [error,setError] = useState("");
+
+  const handleFile = async(e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    setError(""); setResult(null);
+    const reader = new FileReader();
+    reader.onload = async(ev) => {
+      const b64 = ev.target.result.split(",")[1];
+      const mediaType = file.type || "image/jpeg";
+      setPreview(ev.target.result);
+      setLoading(true);
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({
+            model:"claude-sonnet-4-20250514",
+            max_tokens:1000,
+            messages:[{
+              role:"user",
+              content:[
+                {type:"image",source:{type:"base64",media_type:mediaType,data:b64}},
+                {type:"text",text:`Analizá esta imagen de un remito o nota de pedido de vidriería. 
+Extraé SOLO la información técnica de los vidrios y materiales.
+Respondé ÚNICAMENTE con un JSON válido sin ningún texto extra, en este formato exacto:
+{
+  "vidrios": [
+    {"cant": 1, "tipo": "Float 6mm", "ancho": "1200", "alto": "2000", "obs": "borde pulido"},
+    ...
+  ],
+  "materiales": "texto libre con accesorios y materiales adicionales"
+}
+Si no podés leer algo, usá "" en ese campo. Si no hay vidrios, devolvé "vidrios": [].`}
+              ]
+            }]
+          })
+        });
+        const data = await res.json();
+        const text = data.content?.find(c=>c.type==="text")?.text||"";
+        const clean = text.replace(/```json|```/g,"").trim();
+        const parsed = JSON.parse(clean);
+        setResult(parsed);
+        setLoading(false);
+      } catch(err) {
+        setError("No se pudo leer el remito. Asegurate que la imagen sea clara y legible.");
+        setLoading(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const aplicar = () => {
+    if(result) {
+      onResult(result.vidrios||[], result.materiales||"");
+      setResult(null); setPreview(null);
+    }
+  };
+
+  return(
+    <div>
+      <label style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#0a1020",borderRadius:8,border:"2px dashed #CE93D840",cursor:"pointer"}}>
+        <span style={{fontSize:22}}>📷</span>
+        <div>
+          <div style={{fontSize:13,color:"#CE93D8",fontWeight:600}}>Subir foto del remito físico</div>
+          <div style={{fontSize:11,color:"#3a6a9a",marginTop:2}}>Imagen clara del papel — la IA extrae vidrios, medidas y accesorios</div>
+        </div>
+        <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={handleFile}/>
+      </label>
+
+      {loading&&<div style={{marginTop:10,padding:"12px 16px",background:"#0a1020",borderRadius:8,display:"flex",alignItems:"center",gap:10}}>
+        <div style={{width:16,height:16,border:"2px solid #CE93D8",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+        <span style={{fontSize:13,color:"#CE93D8"}}>Analizando el remito con IA...</span>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>}
+
+      {error&&<div style={{marginTop:10,padding:"10px 14px",background:"#2a0a0a",borderRadius:8,border:"1px solid #7f2020",fontSize:12,color:"#f48fb1"}}>{error}</div>}
+
+      {result&&!loading&&<div style={{marginTop:10,background:"#0a2a0f",borderRadius:8,border:"1px solid #26A69A40",padding:14}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#26A69A",marginBottom:10}}>✅ IA detectó {result.vidrios?.length||0} vidrio(s)</div>
+        {(result.vidrios||[]).map((v,i)=>(
+          <div key={i} style={{fontSize:12,color:"#c8e0f8",padding:"4px 0",borderBottom:"1px solid #0f2035"}}>
+            <span style={{fontWeight:700,color:"#A5D6A7"}}>{v.cant}×</span> {v.tipo} — {v.ancho}×{v.alto}mm {v.obs?`· ${v.obs}`:""}
+          </div>
+        ))}
+        {result.materiales&&<div style={{fontSize:12,color:"#7ab2e8",marginTop:8}}>Materiales: {result.materiales}</div>}
+        <div style={{display:"flex",gap:8,marginTop:12}}>
+          <Btn small onClick={aplicar}><Icon name="plus" size={14}/> Cargar en la orden</Btn>
+          <Btn small variant="secondary" onClick={()=>{setResult(null);setPreview(null);}}>Descartar</Btn>
+        </div>
+      </div>}
+    </div>
+  );
+};
+
 // ─── ORDEN FORM (5 TABS) ─────────────────────────────────────────────────────
 const OrdenForm = ({orden,plantillas,clientes,onSave,onClose,stockItems,onDescontarStock}) => {
   const [tab,setTab]=useState("presupuesto");
@@ -969,7 +1069,7 @@ const OrdenForm = ({orden,plantillas,clientes,onSave,onClose,stockItems,onDescon
   const PROCESOS=["Templado","Arenado","Pulido","Biselado","Perforado","Pintado","Vinilado"];
   const ETAPAS=[{id:"presupuesto",label:"Presupuesto"},{id:"medicion",label:"Medición"},{id:"produccion",label:"Producción"},{id:"instalacion",label:"Instalación/Entrega"}];
   const METODOS=["Efectivo","Transferencia","Débito","Crédito","Cheque","Otro"];
-  const TABS=[{id:"presupuesto",label:"💰 Presupuesto"},{id:"medicion",label:"📐 Medición"},{id:"produccion",label:"🔧 Producción"},{id:"instalacion",label:"🚚 Instalación"},{id:"pagos",label:"💳 Pagos"},{id:"actividad",label:"🕐 Actividad"}];
+  const TABS=[{id:"presupuesto",label:"💰 Presupuesto"},{id:"produccion",label:"🔧 Producción"},{id:"instalacion",label:"🚚 Instalación"},{id:"pagos",label:"💳 Pagos"},{id:"actividad",label:"🕐 Actividad"}];
 
   const validate=()=>{
     const e={};
@@ -1139,7 +1239,6 @@ tbody td{padding:8px 12px;border-bottom:1px solid #e8f0ff}
   <span>Mendoza 1783 · Rosario · 341 425-1007</span>
 </div>
 </body></html>`;
-    openPDF(mkHTML(`Orden ${form.numero||""}`,html.replace('<html>','<html>').replace('openPDF(mkHTML(`Orden ${form.numero||""}`,',''));
     const w=window.open("","_blank","width=940,height=820");
     if(w){w.document.write(html.replace("BIZ_LOGO",BIZ_LOGO));w.document.close();w.onload=()=>{w.focus();w.print();};}
   };
@@ -1325,13 +1424,21 @@ tbody td{padding:10px 14px;border-bottom:1px solid #e8f0ff;vertical-align:middle
           {(form.vidrios||[{cant:1,tipo:"",ancho:"",alto:"",obs:""}]).map((v,i)=>(
             <div key={i} style={{display:"grid",gridTemplateColumns:"55px 1fr 90px 90px 1fr 28px",gap:8,marginBottom:8,alignItems:"center"}}>
               <Input type="number" min="1" value={v.cant} onChange={e=>setVidrio(i,"cant",e.target.value)} style={{textAlign:"center"}}/>
-              <Sel value={v.tipo} onChange={e=>setVidrio(i,"tipo",e.target.value)}>
-                <option value="">Tipo...</option>
-                {TIPOS_VIDRIO.map(t=><option key={t} value={t}>{t}</option>)}
-              </Sel>
+              <div>
+                <Sel value={v.tipo==="__custom__"||(!TIPOS_VIDRIO.includes(v.tipo)&&v.tipo)?"__custom__":v.tipo}
+                  onChange={e=>{if(e.target.value==="__custom__")setVidrio(i,"tipo","__custom__");else setVidrio(i,"tipo",e.target.value);}}>
+                  <option value="">Tipo...</option>
+                  {TIPOS_VIDRIO.filter(t=>t!=="Otro").map(t=><option key={t} value={t}>{t}</option>)}
+                  <option value="__custom__">✏️ Escribir manualmente...</option>
+                </Sel>
+                {(v.tipo==="__custom__"||(!TIPOS_VIDRIO.includes(v.tipo)&&v.tipo&&v.tipo!==""))&&(
+                  <Input value={v.tipo==="__custom__"?"":v.tipo} onChange={e=>setVidrio(i,"tipo",e.target.value)}
+                    placeholder="Escribí el tipo de vidrio..." style={{marginTop:5}}/>
+                )}
+              </div>
               <Input type="number" value={v.ancho} onChange={e=>setVidrio(i,"ancho",e.target.value)} placeholder="mm"/>
               <Input type="number" value={v.alto} onChange={e=>setVidrio(i,"alto",e.target.value)} placeholder="mm"/>
-              <Input value={v.obs} onChange={e=>setVidrio(i,"obs",e.target.value)} placeholder="Corte especial, bisel..."/>
+              <Input value={v.obs} onChange={e=>setVidrio(i,"obs",e.target.value)} placeholder="Borde, corte..."/>
               <button onClick={()=>removeVidrio(i)} disabled={(form.vidrios||[]).length<=1} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,opacity:(form.vidrios||[]).length<=1?0.3:1,display:"flex"}}><Icon name="trash" size={13}/></button>
             </div>
           ))}
@@ -1377,21 +1484,39 @@ tbody td{padding:10px 14px;border-bottom:1px solid #e8f0ff;vertical-align:middle
         <Field label="Firmante (cliente)"><Input value={form.pres_firmante||""} onChange={e=>set("pres_firmante",e.target.value)} placeholder="Nombre del cliente..."/></Field>
       </div>}
 
-      {/* TAB: MEDICIÓN */}
-      {tab==="medicion"&&<div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-          <Field label="Fecha de medición en obra"><Input type="date" value={form.med_fecha||""} onChange={e=>set("med_fecha",e.target.value)}/></Field>
-          <Field label="Notas del relevamiento"><Input value={form.med_notas||""} onChange={e=>set("med_notas",e.target.value)} placeholder="Obs. de la medición en obra..."/></Field>
-        </div>
-        <DrawingCanvas value={form.med_plano||[]} onChange={v=>set("med_plano",v)}/>
-      </div>}
+      {/* TAB: MEDICIÓN — REMOVED, merged into produccion */}
 
       {/* TAB: PRODUCCIÓN */}
       {tab==="produccion"&&<div>
+
+        {/* ── PLANO ── */}
+        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1565C040",marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#64B5F6",textTransform:"uppercase",letterSpacing:"0.5px"}}>✏️ Plano / Croquis</div>
+            <div style={{fontSize:11,color:"#3a6a9a"}}>Dibujá el vidrio con medidas finales</div>
+          </div>
+          <DrawingCanvas value={form.med_plano||[]} onChange={v=>set("med_plano",v)}/>
+        </div>
+
+        {/* ── SCANNER IA ── */}
+        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #CE93D830",marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#CE93D8",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>
+            🤖 Escanear remito físico con IA
+          </div>
+          <div style={{fontSize:12,color:"#5a8ab8",marginBottom:12,lineHeight:1.6}}>
+            Sacá una foto al remito o papel con las medidas. La IA lee los vidrios, medidas y accesorios y los carga automáticamente en la tabla de arriba.
+          </div>
+          <ScannerRemito onResult={(vidrios,materiales)=>{
+            if(vidrios&&vidrios.length) setForm(f=>({...f,vidrios:[...vidrios]}));
+            if(materiales) setForm(f=>({...f,prod_materiales:materiales}));
+          }}/>
+        </div>
+
+        {/* ── PRODUCCIÓN ── */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-          <Field label="Materiales necesarios"><Textarea value={form.prod_materiales||""} onChange={e=>set("prod_materiales",e.target.value)} placeholder="Ej: Vidrio templado 8mm, burlete D gris..."/></Field>
+          <Field label="Materiales / Accesorios adicionales"><Textarea value={form.prod_materiales||""} onChange={e=>set("prod_materiales",e.target.value)} placeholder="Burlete D gris, bisagras inox, perfiles..."/></Field>
           <div>
-            <Field label="Fecha estimada producción"><Input type="date" value={form.prod_fecha_est||""} onChange={e=>set("prod_fecha_est",e.target.value)}/></Field>
+            <Field label="Fecha estimada de producción"><Input type="date" value={form.prod_fecha_est||""} onChange={e=>set("prod_fecha_est",e.target.value)}/></Field>
             <Field label="Notas para el taller"><Textarea value={form.prod_notas||""} onChange={e=>set("prod_notas",e.target.value)} style={{minHeight:60}}/></Field>
           </div>
         </div>
@@ -2804,6 +2929,7 @@ ${bizFooter()}`;
     },0);
 
     // Orders by stage
+    const ETAPAS_REPORTE=[{id:"presupuesto",label:"Presupuesto"},{id:"medicion",label:"Medición"},{id:"produccion",label:"Producción"},{id:"instalacion",label:"Instalación"}];
     const porEtapa = ETAPAS_REPORTE.map(e=>({
       ...e, count: ordenesDelMes.filter(o=>o.etapa===e.id).length
     }));
