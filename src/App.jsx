@@ -932,27 +932,40 @@ const DrawingCanvas = ({value, onChange}) => {
 // ─── ORDEN FORM (5 TABS) ─────────────────────────────────────────────────────
 const OrdenForm = ({orden,plantillas,clientes,onSave,onClose,stockItems,onDescontarStock}) => {
   const [tab,setTab]=useState("presupuesto");
-  const EMPTY={titulo:"",cliente:"",tipo:"",fecha:new Date().toISOString().split("T")[0],
+  const EMPTY={cliente:"",tipo:"",fecha:new Date().toISOString().split("T")[0],
     // Campos obligatorios
     contacto_nombre:"",contacto_telefono:"",contacto_domicilio:"",
+    // Presupuesto
     pres_items:[{desc:"",cant:1,precio:""},{desc:"",cant:1,precio:""}],
     pres_condiciones:"50% al confirmar, saldo contra entrega.",pres_validez:"",pres_firmante:"",
+    pres_con_iva:true,
+    // Vidrios (tabla técnica)
+    vidrios:[{cant:1,tipo:"",ancho:"",alto:"",obs:""}],
+    // Medición
     med_plano:[],med_notas:"",med_fecha:"",
+    // Producción
     prod_materiales:"",prod_procesos:[],prod_fecha_est:"",prod_notas:"",prod_plantilla_id:"",prod_campos:{},
     prod_materiales_usados:[],
+    // Instalación
     inst_fecha:"",inst_direccion:"",inst_responsable:"",inst_notas:"",inst_firmante:"",
+    // Pagos
     pago_senia:"",pago_senia_fecha:"",pago_senia_metodo:"efectivo",
     pago_total:"",pago_total_fecha:"",pago_total_metodo:"efectivo",pago_notas:"",etapa:"presupuesto"};
-  const [form,setForm]=useState(orden?{...EMPTY,...orden}:EMPTY);
+  const [form,setForm]=useState(orden?{...EMPTY,...orden,pres_con_iva:orden.pres_con_iva!==false}:EMPTY);
   const [errors,setErrors]=useState({});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const setItem=(i,k,v)=>setForm(f=>{const it=[...f.pres_items];it[i]={...it[i],[k]:v};return{...f,pres_items:it};});
   const addItem=()=>setForm(f=>({...f,pres_items:[...f.pres_items,{desc:"",cant:1,precio:""}]}));
   const removeItem=(i)=>setForm(f=>({...f,pres_items:f.pres_items.filter((_,idx)=>idx!==i)}));
+  const setVidrio=(i,k,v)=>setForm(f=>{const vv=[...(f.vidrios||[])];vv[i]={...vv[i],[k]:v};return{...f,vidrios:vv};});
+  const addVidrio=()=>setForm(f=>({...f,vidrios:[...(f.vidrios||[]),{cant:1,tipo:"",ancho:"",alto:"",obs:""}]}));
+  const removeVidrio=(i)=>setForm(f=>({...f,vidrios:(f.vidrios||[]).filter((_,idx)=>idx!==i)}));
   const tpl=plantillas.find(p=>p.id===form.prod_plantilla_id);
   const setCampo=(k,v)=>setForm(f=>({...f,prod_campos:{...f.prod_campos,[k]:v}}));
   const subTotal=(form.pres_items||[]).reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0);
-  const totalConIva=subTotal*1.21;
+  const iva = form.pres_con_iva!==false ? subTotal*0.21 : 0;
+  const totalConIva=subTotal+iva;
+  const tituloOrden = form.numero || "Nueva Orden";
   const PROCESOS=["Templado","Arenado","Pulido","Biselado","Perforado","Pintado","Vinilado"];
   const ETAPAS=[{id:"presupuesto",label:"Presupuesto"},{id:"medicion",label:"Medición"},{id:"produccion",label:"Producción"},{id:"instalacion",label:"Instalación/Entrega"}];
   const METODOS=["Efectivo","Transferencia","Débito","Crédito","Cheque","Otro"];
@@ -973,75 +986,113 @@ const OrdenForm = ({orden,plantillas,clientes,onSave,onClose,stockItems,onDescon
     const etiqueta=ETAPAS.find(e=>e.id===form.etapa)?.label||form.etapa;
     const items=form.pres_items||[];
     const sub=items.reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0);
-    const iva=sub*0.21,tot=sub+iva;
+    const ivaAmt=form.pres_con_iva!==false?sub*0.21:0;
+    const tot=sub+ivaAmt;
     const rows=items.filter(i=>i.desc).map((i)=>`<tr><td>${i.desc}</td><td style="text-align:center">${i.cant||1}</td><td style="text-align:right">$${(+i.precio||0).toLocaleString("es-AR")}</td><td style="text-align:right;font-weight:700">$${((+i.precio||0)*(+i.cant||1)).toLocaleString("es-AR")}</td></tr>`).join("");
     const senia=+form.pago_senia||0,pagoFinal=+form.pago_total||0;
     const refBadge=form.ref_cotizacion?`<span class="ref-badge">ref. ${form.ref_cotizacion}</span>`:"";
+    const vidriosRows=(form.vidrios||[]).filter(v=>v.tipo||v.ancho||v.alto).map(v=>`<tr><td style="text-align:center;font-weight:700">${v.cant||1}</td><td>${v.tipo||"—"}</td><td style="text-align:center">${v.ancho||"—"} × ${v.alto||"—"} mm</td><td>${v.obs||""}</td></tr>`).join("");
+
+    const buildSVG=(med_plano)=>{
+      if(!(med_plano||[]).length) return "";
+      const shapes=med_plano;
+      const allX=shapes.flatMap(s=>[s.x1,s.x2,s.x].filter(v=>v!=null));
+      const allY=shapes.flatMap(s=>[s.y1,s.y2,s.y].filter(v=>v!=null));
+      if(!allX.length) return "";
+      const minX=Math.min(...allX)-20,minY=Math.min(...allY)-20;
+      const maxX=Math.max(...allX)+20,maxY=Math.max(...allY)+20;
+      const ss=shapes.map(s=>{
+        if(s.type==="segment") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2" stroke-linecap="round"/>${s.medidaLinea?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-8}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaLinea}</text>`:""}`;
+        if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="13" fill="#1a1a2e" font-weight="600">${s.text}</text>`;
+        if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e3f2fd" stroke="#1565C0" stroke-width="1.5"/>`;}
+        const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
+        const c=s.corners||[0,0,0,0];
+        const d=`M ${x+c[0]} ${y} L ${x+w-c[1]} ${y} ${c[1]>0?`Q ${x+w} ${y} ${x+w} ${y+c[1]}`:""} L ${x+w} ${y+h-c[2]} ${c[2]>0?`Q ${x+w} ${y+h} ${x+w-c[2]} ${y+h}`:""} L ${x+c[3]} ${y+h} ${c[3]>0?`Q ${x} ${y+h} ${x} ${y+h-c[3]}`:""} L ${x} ${y+c[0]} ${c[0]>0?`Q ${x} ${y} ${x+c[0]} ${y}`:""} Z`;
+        const dims=s.medidaAncho&&s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2-4}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaAncho}</text><text x="${x+w/2}" y="${y+h/2+10}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaAlto}</text>`:s.medidaAncho||s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaAncho||s.medidaAlto}</text>`:"";
+        const sides=[s.ladoSup?`<text x="${x+w/2}" y="${y-6}" text-anchor="middle" font-size="10" fill="#e65100" font-weight="700">${s.ladoSup}</text>`:"",s.ladoInf?`<text x="${x+w/2}" y="${y+h+14}" text-anchor="middle" font-size="10" fill="#e65100" font-weight="700">${s.ladoInf}</text>`:"",s.ladoIzq?`<text x="${x-5}" y="${y+h/2}" text-anchor="end" font-size="10" fill="#e65100" font-weight="700">${s.ladoIzq}</text>`:"",s.ladoDer?`<text x="${x+w+5}" y="${y+h/2}" text-anchor="start" font-size="10" fill="#e65100" font-weight="700">${s.ladoDer}</text>`:""].join("");
+        return `<path d="${d}" fill="#e8f4ff" stroke="#1565C0" stroke-width="1.5"/>${dims}${sides}`;
+      }).join("");
+      return `<svg viewBox="${minX} ${minY} ${maxX-minX} ${maxY-minY}" width="100%" style="max-height:280px;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block">${ss}</svg>`;
+    };
+    const planoSVG=buildSVG(form.med_plano);
     const body=`
 ${bizHeader("Orden de Trabajo",form.numero||"S/N",form.fecha,etiqueta)}
 <div class="body">
-  <div class="st">Datos Generales</div>
-  <div class="g2">
-    <div class="f"><label>Título</label><p>${form.titulo||"—"}${refBadge}</p></div>
-    <div class="f"><label>Cliente</label><p>${cn}</p></div>
-    <div class="f"><label>Tipo de Trabajo</label><p>${form.tipo||"—"}</p></div>
-    <div class="f"><label>Etapa actual</label><p>${etiqueta}</p></div>
+  <div class="st">Datos del Cliente</div>
+  <div class="g3">
+    <div class="f"><label>Nombre</label><p>${form.contacto_nombre||cn||"—"}${refBadge}</p></div>
+    <div class="f"><label>Teléfono</label><p>${form.contacto_telefono||"—"}</p></div>
+    <div class="f"><label>Domicilio</label><p>${form.contacto_domicilio||"—"}</p></div>
   </div>
-  ${rows?`<div class="st">Presupuesto</div>
+  <div class="g2" style="margin-top:10px">
+    <div class="f"><label>Tipo de Trabajo</label><p>${form.tipo||"—"}</p></div>
+    <div class="f"><label>Etapa</label><p>${etiqueta}</p></div>
+  </div>
+  ${vidriosRows?`<div class="st">Detalle de Vidrios</div><table><thead><tr><th style="text-align:center">Cant.</th><th style="text-align:left">Tipo</th><th style="text-align:center">Medidas (mm)</th><th style="text-align:left">Observaciones</th></tr></thead><tbody>${vidriosRows}</tbody></table>`:""}
+  ${planoSVG?`<div class="st">Plano Técnico</div><div style="margin:8px 0">${planoSVG}</div>`:""}
+  ${rows?`<div class="st">Presupuesto ${form.pres_con_iva===false?"(Sin IVA — Efectivo)":"(con IVA)"}</div>
   <table><thead><tr><th style="text-align:left">Descripción</th><th style="text-align:center">Cant.</th><th style="text-align:right">P.Unit.</th><th style="text-align:right">Subtotal</th></tr></thead><tbody>${rows}</tbody></table>
-  <div style="display:flex;justify-content:flex-end;margin-top:10px"><div style="width:280px"><div class="total-box"><div class="total-row"><span style="color:#555">Subtotal</span><span>$${sub.toLocaleString("es-AR")}</span></div><div class="total-row"><span style="color:#555">IVA (21%)</span><span>$${iva.toLocaleString("es-AR")}</span></div><div class="total-final"><span>TOTAL</span><span>$${tot.toLocaleString("es-AR")}</span></div></div></div></div>`:""}
-  ${form.med_notas?`<div class="st">Medición</div><div class="note-box">${form.med_notas}</div>`:""}
-  ${form.prod_materiales||form.prod_procesos?.length?`<div class="st">Producción</div><div class="g2"><div class="f"><label>Materiales</label><p style="font-size:13px">${form.prod_materiales||"—"}</p></div><div class="f"><label>Procesos</label><p style="font-size:13px">${(form.prod_procesos||[]).join(", ")||"—"}</p></div>${form.prod_fecha_est?`<div class="f"><label>Fecha estimada</label><p>${form.prod_fecha_est}</p></div>`:""}</div>`:""}
-  ${form.inst_fecha||form.inst_direccion?`<div class="st">Instalación / Entrega</div><div class="g2"><div class="f"><label>Fecha</label><p>${form.inst_fecha||"—"}</p></div><div class="f"><label>Dirección</label><p>${form.inst_direccion||"—"}</p></div><div class="f"><label>Responsable</label><p>${form.inst_responsable||"—"}</p></div><div class="f"><label>Recibe</label><p>${form.inst_firmante||"—"}</p></div></div>`:""}
-  ${senia||pagoFinal?`<div class="st">Estado de Pagos</div><div class="g2"><div class="f"><label>Seña / Anticipo</label><p style="color:#1565C0">$${senia.toLocaleString("es-AR")} · ${form.pago_senia_fecha||"—"} · ${form.pago_senia_metodo}</p></div><div class="f"><label>Pago Final</label><p style="color:#2e7d32">$${pagoFinal.toLocaleString("es-AR")} · ${form.pago_total_fecha||"—"} · ${form.pago_total_metodo}</p></div></div>`:""}
+  <div style="display:flex;justify-content:flex-end;margin-top:10px"><div style="width:280px"><div class="total-box">
+    <div class="total-row"><span style="color:#555">Subtotal</span><span>$${sub.toLocaleString("es-AR")}</span></div>
+    ${form.pres_con_iva!==false?`<div class="total-row"><span style="color:#555">IVA (21%)</span><span>$${ivaAmt.toLocaleString("es-AR")}</span></div>`:`<div class="total-row"><span style="color:#888;font-style:italic">Sin IVA — Efectivo</span></div>`}
+    <div class="total-final"><span>TOTAL</span><span>$${tot.toLocaleString("es-AR")}</span></div>
+  </div></div></div>`:""}
+  ${form.med_notas?`<div class="st">Notas de Medición</div><div class="note-box">${form.med_notas}</div>`:""}
+  ${form.prod_materiales||form.prod_procesos?.length?`<div class="st">Producción</div><div class="g2"><div class="f"><label>Materiales</label><p>${form.prod_materiales||"—"}</p></div><div class="f"><label>Procesos</label><p>${(form.prod_procesos||[]).join(", ")||"—"}</p></div></div>`:""}
+  ${senia||pagoFinal?`<div class="st">Pagos</div><div class="g2"><div class="f"><label>Seña</label><p style="color:#1565C0">$${senia.toLocaleString("es-AR")} · ${form.pago_senia_fecha||"—"} · ${form.pago_senia_metodo}</p></div><div class="f"><label>Pago Final</label><p style="color:#2e7d32">$${pagoFinal.toLocaleString("es-AR")} · ${form.pago_total_fecha||"—"} · ${form.pago_total_metodo}</p></div></div>`:""}
   <div class="sign-area">
-    <div class="sign-line"><div class="sign-label">Firma y sello empresa</div><div class="sign-name">La Vidriería Rosario</div></div>
-    <div class="sign-line"><div class="sign-label">Conformidad del cliente</div><div style="font-size:12px;color:#555;margin-top:3px">${form.inst_firmante||form.pres_firmante||""}</div></div>
+    <div class="sign-line"><div class="sign-label">Firma empresa</div><div class="sign-name">La Vidriería Rosario</div></div>
+    <div class="sign-line"><div class="sign-label">Conformidad cliente</div></div>
   </div>
 </div>
 ${bizFooter()}`;
     openPDF(mkHTML(`Orden ${form.numero||""}`,body));
   };
 
-  // PDF solo para taller — sin precios
+  // PDF taller — sin precios
   const printProduccionPDF=()=>{
     const cn=clientes.find(c=>c.id===form.cliente)?.nombre||"Sin cliente";
-    const planoSVG=(form.med_plano||[]).length>0?(()=>{
-      const shapes=form.med_plano;
+    const vidriosRows=(form.vidrios||[]).filter(v=>v.tipo||v.ancho||v.alto).map(v=>`<tr><td style="text-align:center;font-weight:700;font-size:16px">${v.cant||1}</td><td style="font-weight:600">${v.tipo||"—"}</td><td style="text-align:center;font-size:14px">${v.ancho||"—"} × ${v.alto||"—"} mm</td><td>${v.obs||""}</td></tr>`).join("");
+
+    const buildSVG=(med_plano)=>{
+      if(!(med_plano||[]).length) return "";
+      const shapes=med_plano;
       const allX=shapes.flatMap(s=>[s.x1,s.x2,s.x].filter(v=>v!=null));
       const allY=shapes.flatMap(s=>[s.y1,s.y2,s.y].filter(v=>v!=null));
-      const minX=Math.min(...allX,0)-20, minY=Math.min(...allY,0)-20;
-      const maxX=Math.max(...allX,100)+20, maxY=Math.max(...allY,100)+20;
-      const W=maxX-minX, H=maxY-minY;
-      const shapesSVG=shapes.map(s=>{
-        if(s.type==="segment") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2" stroke-linecap="round"/>${s.medidaLinea?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-8}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700" font-family="Arial">${s.medidaLinea}</text>`:""}`;
-        if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="13" fill="#1a1a2e" font-family="Arial" font-weight="600">${s.text}</text>`;
-        if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e3f2fd" stroke="#1565C0" stroke-width="1.5"/>${s.medidaAncho?`<text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="10" fill="#1565C0" font-family="Arial">${s.medidaAncho}${s.medidaAlto?" × "+s.medidaAlto:""}</text>`:""}`;}
+      if(!allX.length) return "";
+      const minX=Math.min(...allX)-20,minY=Math.min(...allY)-20;
+      const maxX=Math.max(...allX)+20,maxY=Math.max(...allY)+20;
+      const ss=shapes.map(s=>{
+        if(s.type==="segment") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2" stroke-linecap="round"/>${s.medidaLinea?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-8}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaLinea}</text>`:""}`;
+        if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="13" fill="#1a1a2e" font-weight="600">${s.text}</text>`;
+        if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e3f2fd" stroke="#1565C0" stroke-width="1.5"/>`;}
         const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
-        const c=s.corners||[0,0,0,0];const tl=c[0],tr2=c[1],br=c[2],bl=c[3];
-        const d=`M ${x+tl} ${y} L ${x+w-tr2} ${y} ${tr2>0?`Q ${x+w} ${y} ${x+w} ${y+tr2}`:""} L ${x+w} ${y+h-br} ${br>0?`Q ${x+w} ${y+h} ${x+w-br} ${y+h}`:""} L ${x+bl} ${y+h} ${bl>0?`Q ${x} ${y+h} ${x} ${y+h-bl}`:""} L ${x} ${y+tl} ${tl>0?`Q ${x} ${y} ${x+tl} ${y}`:""} Z`;
-        const dims=s.medidaAncho&&s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2-4}" text-anchor="middle" font-size="11" fill="#1565C0" font-family="Arial" font-weight="700">${s.medidaAncho}</text><text x="${x+w/2}" y="${y+h/2+10}" text-anchor="middle" font-size="11" fill="#1565C0" font-family="Arial" font-weight="700">${s.medidaAlto}</text>`:s.medidaAncho||s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="11" fill="#1565C0" font-family="Arial" font-weight="700">${s.medidaAncho||s.medidaAlto}</text>`:"";
-        const sides=[s.ladoSup?`<text x="${x+w/2}" y="${y-6}" text-anchor="middle" font-size="10" fill="#e65100" font-family="Arial" font-weight="700">${s.ladoSup}</text>`:"",s.ladoInf?`<text x="${x+w/2}" y="${y+h+14}" text-anchor="middle" font-size="10" fill="#e65100" font-family="Arial" font-weight="700">${s.ladoInf}</text>`:"",s.ladoIzq?`<text x="${x-5}" y="${y+h/2}" text-anchor="end" font-size="10" fill="#e65100" font-family="Arial" font-weight="700">${s.ladoIzq}</text>`:"",s.ladoDer?`<text x="${x+w+5}" y="${y+h/2}" text-anchor="start" font-size="10" fill="#e65100" font-family="Arial" font-weight="700">${s.ladoDer}</text>`:""].join("");
+        const c=s.corners||[0,0,0,0];
+        const d=`M ${x+c[0]} ${y} L ${x+w-c[1]} ${y} ${c[1]>0?`Q ${x+w} ${y} ${x+w} ${y+c[1]}`:""} L ${x+w} ${y+h-c[2]} ${c[2]>0?`Q ${x+w} ${y+h} ${x+w-c[2]} ${y+h}`:""} L ${x+c[3]} ${y+h} ${c[3]>0?`Q ${x} ${y+h} ${x} ${y+h-c[3]}`:""} L ${x} ${y+c[0]} ${c[0]>0?`Q ${x} ${y} ${x+c[0]} ${y}`:""} Z`;
+        const dims=s.medidaAncho&&s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2-4}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaAncho}</text><text x="${x+w/2}" y="${y+h/2+10}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaAlto}</text>`:s.medidaAncho||s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700">${s.medidaAncho||s.medidaAlto}</text>`:"";
+        const sides=[s.ladoSup?`<text x="${x+w/2}" y="${y-6}" text-anchor="middle" font-size="10" fill="#e65100" font-weight="700">${s.ladoSup}</text>`:"",s.ladoInf?`<text x="${x+w/2}" y="${y+h+14}" text-anchor="middle" font-size="10" fill="#e65100" font-weight="700">${s.ladoInf}</text>`:"",s.ladoIzq?`<text x="${x-5}" y="${y+h/2}" text-anchor="end" font-size="10" fill="#e65100" font-weight="700">${s.ladoIzq}</text>`:"",s.ladoDer?`<text x="${x+w+5}" y="${y+h/2}" text-anchor="start" font-size="10" fill="#e65100" font-weight="700">${s.ladoDer}</text>`:""].join("");
         return `<path d="${d}" fill="#e8f4ff" stroke="#1565C0" stroke-width="1.5"/>${dims}${sides}`;
       }).join("");
-      return `<svg viewBox="${minX} ${minY} ${W} ${H}" width="100%" style="max-height:320px;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block">${shapesSVG}</svg>`;
-    })():"";
+      return `<svg viewBox="${minX} ${minY} ${maxX-minX} ${maxY-minY}" width="100%" style="max-height:280px;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block">${ss}</svg>`;
+    };
+    const planoSVG=buildSVG(form.med_plano);
     const procesosHTML=(form.prod_procesos||[]).map(p=>`<span class="process-chip">${p}</span>`).join("");
     const body=`
-${bizHeader("Orden de Producción · TALLER",form.numero||"S/N",form.fecha||"",form.prod_fecha_est?`Entrega estimada: ${form.prod_fecha_est}`:"")}
+${bizHeader("Orden Producción · TALLER",form.numero||"S/N",form.fecha||"",form.prod_fecha_est?`Entrega: ${form.prod_fecha_est}`:"")}
 <div class="body">
-  <div class="st">Trabajo</div>
-  <div class="g2">
-    <div class="f"><label>Descripción</label><p>${form.titulo||"—"}</p></div>
-    <div class="f"><label>Cliente</label><p>${cn}</p></div>
-    ${form.med_fecha?`<div class="f"><label>Fecha medición en obra</label><p>${form.med_fecha}</p></div>`:""}
-    ${form.prod_fecha_est?`<div class="f"><label>⏰ Fecha estimada entrega</label><p style="color:#0a2a5e;font-size:16px;font-weight:900">${form.prod_fecha_est}</p></div>`:""}
+  <div class="st">Cliente</div>
+  <div class="g3">
+    <div class="f"><label>Nombre</label><p>${form.contacto_nombre||cn}</p></div>
+    <div class="f"><label>Teléfono</label><p>${form.contacto_telefono||"—"}</p></div>
+    <div class="f"><label>Domicilio</label><p>${form.contacto_domicilio||"—"}</p></div>
   </div>
+  ${vidriosRows?`<div class="st">Vidrios a Producir</div>
+  <table style="font-size:14px"><thead><tr><th style="text-align:center">Cant.</th><th style="text-align:left">Tipo de vidrio</th><th style="text-align:center">Medidas (mm)</th><th style="text-align:left">Observaciones / Cortes</th></tr></thead><tbody>${vidriosRows}</tbody></table>`:""}
   ${planoSVG?`<div class="st">Plano de Medición</div><div style="margin:8px 0">${planoSVG}</div>`:""}
   ${form.med_notas?`<div class="note-box" style="margin-top:8px">${form.med_notas}</div>`:""}
-  ${form.prod_materiales?`<div class="st">Materiales Necesarios</div><div class="note-box">${form.prod_materiales}</div>`:""}
-  ${procesosHTML?`<div class="st">Procesos Requeridos</div><div style="margin-top:6px">${procesosHTML}</div>`:""}
-  ${form.prod_notas?`<div class="st">Instrucciones Especiales</div><div class="warn-box">${form.prod_notas}</div>`:""}
+  ${form.prod_materiales?`<div class="st">Materiales</div><div class="note-box">${form.prod_materiales}</div>`:""}
+  ${procesosHTML?`<div class="st">Procesos</div><div style="margin-top:6px">${procesosHTML}</div>`:""}
+  ${form.prod_notas?`<div class="st">Instrucciones</div><div class="warn-box">${form.prod_notas}</div>`:""}
   <div class="sign-area" style="margin-top:28px">
     <div class="sign-line"><div class="sign-label">Recibido por</div><div style="height:30px"></div></div>
     <div class="sign-line"><div class="sign-label">Entregado por</div><div style="height:30px"></div></div>
@@ -1054,8 +1105,11 @@ ${bizFooter()}`;
   return(
     <div>
       {/* HEADER */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:10,marginBottom:16,padding:"12px 16px",background:"#071220",borderRadius:10,border:"1px solid #1e3a5a",alignItems:"end"}}>
-        <Field label="Título de la Orden"><Input value={form.titulo} onChange={e=>set("titulo",e.target.value)} placeholder="Ej: Mampara Baño Principal"/></Field>
+      <div style={{display:"grid",gridTemplateColumns:"auto 1fr 1fr auto",gap:10,marginBottom:16,padding:"12px 16px",background:"#071220",borderRadius:10,border:"1px solid #1e3a5a",alignItems:"end"}}>
+        <div style={{paddingBottom:16}}>
+          <div style={{fontSize:10,fontWeight:600,color:"#5a8ab8",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Número</div>
+          <div style={{fontSize:18,fontWeight:800,color:"#1565C0",fontFamily:"monospace",padding:"8px 14px",background:"#0a1828",borderRadius:8,border:"1px solid #1565C030",letterSpacing:"1px"}}>{form.numero||"—"}</div>
+        </div>
         <Field label="Cliente"><Sel value={form.cliente} onChange={e=>set("cliente",e.target.value)}><option value="">Sin asignar</option>{clientes.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</Sel></Field>
         <Field label="Etapa actual"><Sel value={form.etapa} onChange={e=>set("etapa",e.target.value)}>{ETAPAS.map(e=><option key={e.id} value={e.id}>{e.label}</option>)}</Sel></Field>
         <div style={{paddingBottom:16,display:"flex",gap:6,flexDirection:"column"}}>
@@ -1103,14 +1157,41 @@ ${bizFooter()}`;
             </Field>
           </div>
         </div>
+
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
           <Field label="Tipo de Trabajo"><Sel value={form.tipo} onChange={e=>set("tipo",e.target.value)}><option value="">Seleccionar...</option>{TIPOS_TRABAJO.map(t=><option key={t} value={t}>{t}</option>)}</Sel></Field>
           <Field label="Fecha"><Input type="date" value={form.fecha} onChange={e=>set("fecha",e.target.value)}/></Field>
           <Field label="Válido hasta"><Input type="date" value={form.pres_validez} onChange={e=>set("pres_validez",e.target.value)}/></Field>
         </div>
+
+        {/* TABLA DE VIDRIOS */}
+        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1565C030",marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#64B5F6",textTransform:"uppercase",letterSpacing:"0.5px"}}>🔷 Detalle de Vidrios</div>
+            <Btn small onClick={addVidrio}><Icon name="plus" size={13}/> Agregar</Btn>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"55px 1fr 90px 90px 1fr 28px",gap:8,marginBottom:6}}>
+            {["Cant.","Tipo de vidrio","Ancho (mm)","Alto (mm)","Observaciones",""].map(h=><span key={h} style={{fontSize:10,color:"#3a6a9a",fontWeight:600}}>{h}</span>)}
+          </div>
+          {(form.vidrios||[{cant:1,tipo:"",ancho:"",alto:"",obs:""}]).map((v,i)=>(
+            <div key={i} style={{display:"grid",gridTemplateColumns:"55px 1fr 90px 90px 1fr 28px",gap:8,marginBottom:8,alignItems:"center"}}>
+              <Input type="number" min="1" value={v.cant} onChange={e=>setVidrio(i,"cant",e.target.value)} style={{textAlign:"center"}}/>
+              <Sel value={v.tipo} onChange={e=>setVidrio(i,"tipo",e.target.value)}>
+                <option value="">Tipo...</option>
+                {TIPOS_VIDRIO.map(t=><option key={t} value={t}>{t}</option>)}
+              </Sel>
+              <Input type="number" value={v.ancho} onChange={e=>setVidrio(i,"ancho",e.target.value)} placeholder="mm"/>
+              <Input type="number" value={v.alto} onChange={e=>setVidrio(i,"alto",e.target.value)} placeholder="mm"/>
+              <Input value={v.obs} onChange={e=>setVidrio(i,"obs",e.target.value)} placeholder="Corte especial, bisel..."/>
+              <button onClick={()=>removeVidrio(i)} disabled={(form.vidrios||[]).length<=1} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,opacity:(form.vidrios||[]).length<=1?0.3:1,display:"flex"}}><Icon name="trash" size={13}/></button>
+            </div>
+          ))}
+        </div>
+
+        {/* ÍTEMS PRESUPUESTO */}
         <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:14}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase"}}>Ítems</div>
+            <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase"}}>Ítems del Presupuesto</div>
             <Btn small onClick={addItem}><Icon name="plus" size={13}/> Ítem</Btn>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 60px 120px 28px",gap:8,marginBottom:5}}>
@@ -1118,15 +1199,28 @@ ${bizFooter()}`;
           </div>
           {(form.pres_items||[]).map((item,i)=>(
             <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 60px 120px 28px",gap:8,marginBottom:7,alignItems:"center"}}>
-              <Input value={item.desc} onChange={e=>setItem(i,"desc",e.target.value)} placeholder="Ej: Vidrio Float 6mm 1200×2000"/>
+              <Input value={item.desc} onChange={e=>setItem(i,"desc",e.target.value)} placeholder="Ej: Mano de obra, instalación..."/>
               <Input type="number" value={item.cant} min="1" onChange={e=>setItem(i,"cant",e.target.value)} style={{textAlign:"center"}}/>
               <Input type="number" value={item.precio} onChange={e=>setItem(i,"precio",e.target.value)} placeholder="$0"/>
               <button onClick={()=>removeItem(i)} disabled={(form.pres_items||[]).length<=1} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,opacity:(form.pres_items||[]).length<=1?0.3:1,display:"flex"}}><Icon name="trash" size={13}/></button>
             </div>
           ))}
+
+          {/* IVA TOGGLE */}
+          <div style={{display:"flex",alignItems:"center",gap:10,marginTop:10,padding:"8px 12px",background:"#0a1828",borderRadius:8}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+              <input type="checkbox" checked={form.pres_con_iva!==false} onChange={e=>set("pres_con_iva",e.target.checked)}
+                style={{width:16,height:16,accentColor:"#1565C0",cursor:"pointer"}}/>
+              <span style={{fontSize:13,color:"#7ab2e8",fontWeight:600}}>Aplicar IVA (21%)</span>
+            </label>
+            <span style={{fontSize:11,color:"#3a6a9a",marginLeft:4}}>
+              {form.pres_con_iva!==false?"Factura con IVA incluido":"Efectivo / sin IVA"}
+            </span>
+          </div>
+
           {subTotal>0&&<div style={{marginTop:10,padding:"10px 12px",background:"#0a1828",borderRadius:8,border:"1px solid #1565C025"}}>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#5a8ab8",marginBottom:2}}><span>Subtotal</span><span>${subTotal.toLocaleString("es-AR")}</span></div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#5a8ab8",marginBottom:2}}><span>IVA 21%</span><span>${(subTotal*0.21).toLocaleString("es-AR")}</span></div>
+            {form.pres_con_iva!==false&&<div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#5a8ab8",marginBottom:2}}><span>IVA 21%</span><span>${iva.toLocaleString("es-AR")}</span></div>}
             <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700,color:"#64B5F6"}}><span>TOTAL</span><span>${totalConIva.toLocaleString("es-AR")}</span></div>
           </div>}
         </div>
@@ -1712,7 +1806,7 @@ function AppInner({ currentUser, onLogout }) {
   const deleteCliente = (id) => fsDel("clientes", id);
 
   const filtered=ordenes.filter(o=>{
-    const ms=!search||(o.titulo||"").toLowerCase().includes(search.toLowerCase())||getNombre(o.cliente).toLowerCase().includes(search.toLowerCase())||(o.numero||"").toLowerCase().includes(search.toLowerCase());
+    const ms=!search||(o.numero||"").toLowerCase().includes(search.toLowerCase())||getNombre(o.cliente).toLowerCase().includes(search.toLowerCase())||(o.numero||"").toLowerCase().includes(search.toLowerCase());
     return ms&&(filterEstado==="all"||o.estado===filterEstado);
   });
 
@@ -1750,7 +1844,7 @@ function AppInner({ currentUser, onLogout }) {
       const q=globalSearch.toLowerCase();
       const ords=ordenes.filter(o=>
         (o.numero||"").toLowerCase().includes(q)||
-        (o.titulo||"").toLowerCase().includes(q)||
+        (o.numero||"").toLowerCase().includes(q)||
         getNombre(o.cliente).toLowerCase().includes(q)||
         (o.contacto_nombre||"").toLowerCase().includes(q)||
         (o.contacto_telefono||"").toLowerCase().includes(q)
@@ -1794,7 +1888,7 @@ function AppInner({ currentUser, onLogout }) {
                   style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 12px",background:"none",border:"none",cursor:"pointer",textAlign:"left",borderBottom:"1px solid #0f2035"}}>
                   <span style={{fontSize:10,color:"#1565C0",fontFamily:"monospace",fontWeight:700,flexShrink:0}}>{o.numero}</span>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,color:"#c8e0f8",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.titulo||"Sin título"}</div>
+                    <div style={{fontSize:12,color:"#c8e0f8",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.numero||"Sin número"}</div>
                     <div style={{fontSize:10,color:"#3a6a9a"}}>{getNombre(o.cliente)}</div>
                   </div>
                   <Badge estado={o.estado} estados={estados}/>
@@ -1918,7 +2012,7 @@ function AppInner({ currentUser, onLogout }) {
             {ordenes.slice(0,5).map(o=>(
               <div key={o.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 0",borderBottom:"1px solid #0f2035"}}>
                 <div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:10,color:"#1565C0",fontWeight:700,fontFamily:"monospace"}}>{o.numero}</span><span style={{fontSize:13,fontWeight:600,color:"#c8e0f8"}}>{o.titulo||"Sin título"}</span></div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:10,color:"#1565C0",fontWeight:700,fontFamily:"monospace"}}>{o.numero}</span><span style={{fontSize:13,fontWeight:600,color:"#c8e0f8"}}>{o.numero||"Sin número"}</span></div>
                   <div style={{fontSize:11,color:"#3a6a9a"}}>{getNombre(o.cliente)}</div>
                 </div>
                 <Badge estado={o.estado} estados={estados}/>
@@ -1982,7 +2076,7 @@ function AppInner({ currentUser, onLogout }) {
             </div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2,flexWrap:"wrap"}}>
-                <span style={{fontSize:14,fontWeight:600,color:"#e2f0ff"}}>{o.titulo||"Sin título"}</span>
+                <span style={{fontSize:14,fontWeight:600,color:"#e2f0ff"}}>{o.numero||"Sin número"}</span>
                 {o.tipo&&<span style={{fontSize:11,color:"#3a6a9a",background:"#0f2035",padding:"1px 7px",borderRadius:99}}>{o.tipo}</span>}
                 {o.ref_cotizacion&&<span style={{fontSize:10,color:"#FFB74D",background:"#2a1a00",border:"1px solid #FFB74D30",padding:"1px 8px",borderRadius:99}}>ref. {o.ref_cotizacion}</span>}
               </div>
@@ -2045,7 +2139,7 @@ function AppInner({ currentUser, onLogout }) {
                     <div key={o.id} draggable onDragStart={()=>setDragId(o.id)}
                       style={{background:"#0a1828",borderRadius:8,padding:"8px 10px",border:"1px solid #0f2035",cursor:"grab",borderLeft:`3px solid ${estado.color}`}}>
                       <div style={{fontSize:9,color:estado.color,fontWeight:700,fontFamily:"monospace",marginBottom:2}}>{o.numero}</div>
-                      <div style={{fontSize:12,fontWeight:600,color:"#c8e0f8",marginBottom:2,lineHeight:1.3}}>{o.titulo||"Sin título"}</div>
+                      <div style={{fontSize:12,fontWeight:600,color:"#c8e0f8",marginBottom:2,lineHeight:1.3}}>{o.numero||"Sin número"}</div>
                       <div style={{fontSize:10,color:"#3a6a9a"}}>{getNombre(o.cliente)}</div>
                       {+o.monto>0&&(()=>{
                         const pct=Math.min(100,Math.round(((+o.monto_abonado||0)/(+o.monto))*100));
@@ -2160,7 +2254,7 @@ function AppInner({ currentUser, onLogout }) {
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
                         <div style={{display:"flex",alignItems:"center",gap:6}}>
                           <span style={{fontSize:10,color:"#1565C0",fontWeight:700,fontFamily:"monospace"}}>{o.numero}</span>
-                          <span style={{fontSize:13,color:"#c8e0f8",fontWeight:600}}>{o.titulo||"Sin título"}</span>
+                          <span style={{fontSize:13,color:"#c8e0f8",fontWeight:600}}>{o.numero||"Sin número"}</span>
                         </div>
                         <Badge estado={o.estado} estados={estados}/>
                       </div>
@@ -2590,12 +2684,12 @@ ${bizFooter()}`;
         const sub=(o.pres_items||[]).reduce((a,i)=>a+(+i.precio*(+i.cant||1)),0)*1.21;
         const cobrado=(+o.pago_senia||0)+(+o.pago_total||0);
         const resta=Math.max(0,sub-cobrado);
-        return `<tr><td style="font-family:monospace;font-size:11px">${o.numero||"—"}</td><td>${o.titulo||"—"}</td><td>${getNombre(o.cliente)}</td><td style="text-align:right">$${sub.toLocaleString("es-AR")}</td><td style="text-align:right;color:#1565C0">$${cobrado.toLocaleString("es-AR")}</td><td style="text-align:right;color:${resta>0?"#e65100":"#2e7d32"}">${resta>0?"$"+resta.toLocaleString("es-AR"):"✓ Cobrado"}</td></tr>`;
+        return `<tr><td style="font-family:monospace;font-size:11px">${o.numero||"—"}</td><td>${o.numero||"—"}</td><td>${getNombre(o.cliente)}</td><td style="text-align:right">$${sub.toLocaleString("es-AR")}</td><td style="text-align:right;color:#1565C0">$${cobrado.toLocaleString("es-AR")}</td><td style="text-align:right;color:${resta>0?"#e65100":"#2e7d32"}">${resta>0?"$"+resta.toLocaleString("es-AR"):"✓ Cobrado"}</td></tr>`;
       }).join("");
       const rowsImp=impagas.map(o=>{
         const sub=(o.pres_items||[]).reduce((a,i)=>a+(+i.precio*(+i.cant||1)),0)*1.21;
         const cobrado=(+o.pago_senia||0)+(+o.pago_total||0);
-        return `<tr><td style="font-family:monospace;font-size:11px">${o.numero||"—"}</td><td>${o.titulo||"—"}</td><td>${getNombre(o.cliente)}</td><td style="text-align:right">$${sub.toLocaleString("es-AR")}</td><td style="text-align:right">$${cobrado.toLocaleString("es-AR")}</td><td style="text-align:right;color:#e65100;font-weight:700">$${Math.max(0,sub-cobrado).toLocaleString("es-AR")}</td></tr>`;
+        return `<tr><td style="font-family:monospace;font-size:11px">${o.numero||"—"}</td><td>${o.numero||"—"}</td><td>${getNombre(o.cliente)}</td><td style="text-align:right">$${sub.toLocaleString("es-AR")}</td><td style="text-align:right">$${cobrado.toLocaleString("es-AR")}</td><td style="text-align:right;color:#e65100;font-weight:700">$${Math.max(0,sub-cobrado).toLocaleString("es-AR")}</td></tr>`;
       }).join("");
       const body=`
 ${bizHeader(`Reporte Mensual — ${MESES[mesIdx]} ${anio}`,"",new Date().toLocaleDateString("es-AR"),`${ordenesDelMes.length} órdenes · ${cotDelMes.length} cotizaciones`)}
@@ -2663,7 +2757,7 @@ ${bizFooter()}`;
                 <div key={o.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #0f2035"}}>
                   <span style={{fontSize:10,color:"#1565C0",fontWeight:700,fontFamily:"monospace",minWidth:90}}>{o.numero}</span>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,fontWeight:600,color:"#c8e0f8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.titulo||"Sin título"}</div>
+                    <div style={{fontSize:12,fontWeight:600,color:"#c8e0f8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.numero||"Sin número"}</div>
                     <div style={{fontSize:10,color:"#3a6a9a"}}>{getNombre(o.cliente)}</div>
                   </div>
                   <div style={{textAlign:"right"}}>
