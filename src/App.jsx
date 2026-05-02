@@ -612,8 +612,12 @@ const DrawingCanvas = ({value, onChange}) => {
 
   const snap = (v,grid=10) => Math.round(v/grid)*grid;
   const getSVGPos = (e) => {
-    const r=svgRef.current.getBoundingClientRect();
-    const raw={x:e.clientX-r.left, y:e.clientY-r.top};
+    if(!svgRef.current) return {x:0,y:0};
+    const r = svgRef.current.getBoundingClientRect();
+    const vbW = 900, vbH = 450;
+    const scaleX = vbW / r.width;
+    const scaleY = vbH / r.height;
+    const raw = {x:(e.clientX-r.left)*scaleX, y:(e.clientY-r.top)*scaleY};
     return e.ctrlKey ? raw : {x:snap(raw.x),y:snap(raw.y)};
   };
 
@@ -808,9 +812,10 @@ const DrawingCanvas = ({value, onChange}) => {
 
         {/* svg canvas */}
         <div style={{position:"relative",borderRadius:10,overflow:"hidden",border:"1px solid #1e3a5a"}}>
-          <svg ref={svgRef} width="100%" height="400" style={{background:"#050d18",cursor:"crosshair",display:"block",userSelect:"none"}}
+          <svg ref={svgRef} width="100%" viewBox="0 0 900 450"
+            style={{background:"#050d18",cursor:tool==="select"?"default":"crosshair",display:"block",userSelect:"none",minHeight:300}}
             onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
-            onClick={e=>{if(e.target===svgRef.current||e.target.tagName==="rect"&&e.target.getAttribute("fill")==="url(#grid)")setSelId(null);}}>
+            onClick={e=>{if(e.target===svgRef.current)setSelId(null);}}>
             <defs>
               <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
                 <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#0b1e35" strokeWidth="0.5"/>
@@ -820,7 +825,7 @@ const DrawingCanvas = ({value, onChange}) => {
                 <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#0d2540" strokeWidth="1"/>
               </pattern>
             </defs>
-            <rect width="100%" height="100%" fill="url(#grid5)"/>
+            <rect width="900" height="450" fill="url(#grid5)"/>
             {shapes.map(s=>renderShape(s))}
             {drawing&&renderShape(drawing,true)}
           </svg>
