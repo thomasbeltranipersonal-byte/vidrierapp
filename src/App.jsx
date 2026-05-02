@@ -234,7 +234,81 @@ const ESTADOS_DEFAULT = [
 const ESTADOS_OCULTOS_TABLERO = ["cancelada"];
 
 const TIPOS_TRABAJO = ["Mampara de Baño","Espejo","Vidrio Ventana/Puerta","Trabajo de Obra","Frente de Cocina","Vidrio Templado","Baranda","Cerramiento","Otro"];
-const TIPOS_VIDRIO = ["Float 3mm","Float 4mm","Float 5mm","Float 6mm","Templado 6mm","Templado 8mm","Templado 10mm","Laminado","Espejo 3mm","Espejo 4mm","Satinado","Arenado","Reflectivo","Otro"];
+const TIPOS_VIDRIO_DEFAULT = ["Float 3mm","Float 4mm","Float 5mm","Float 6mm","Float 8mm","Float 10mm","Templado 6mm","Templado 8mm","Templado 10mm","Templado 12mm","Laminado 4+4","Laminado 6+6","Espejo 3mm","Espejo 4mm","Espejo 5mm","Satinado","Arenado","Reflectivo","DVH","Curvo"];
+const TIPOS_VIDRIO = TIPOS_VIDRIO_DEFAULT; // fallback — se sobreescribe con Firebase
+
+// ─── CORTES PREDEFINIDOS ─────────────────────────────────────────────────────
+const CORTES_PREDEFINIDOS = [
+  {
+    id:"corte_l", label:"Corte en L", emoji:"⌐",
+    desc:"Esquina cortada en ángulo recto",
+    buildShapes:(w,h,cx,cy)=>[
+      // Vidrio con corte en L en esquina sup-der
+      {type:"rect",x1:50,y1:50,x2:50+w-cx,y2:50+h,id:"v1",corners:[0,0,0,0],medidaAncho:`${w}mm`,medidaAlto:`${h}mm`},
+      {type:"rect",x1:50+w-cx,y1:50+cy,x2:50+w,y2:50+h,id:"v2",corners:[0,0,0,0]},
+      // Cota del corte
+      {type:"segment",x1:50+w-cx,y1:30,x2:50+w,y2:30,id:"c1",medidaLinea:`${cx}mm`},
+      {type:"segment",x1:50+w+10,y1:50,x2:50+w+10,y2:50+cy,id:"c2",medidaLinea:`${cy}mm`},
+      {type:"text",x:50+w/2-20,y:50+h/2+5,text:"CORTE L",id:"lbl"},
+    ]
+  },
+  {
+    id:"corte_diagonal", label:"Corte diagonal", emoji:"◺",
+    desc:"Esquina en 45°",
+    buildShapes:(w,h,cx,cy)=>[
+      {type:"rect",x1:50,y1:50,x2:50+w,y2:50+h,id:"v1",corners:[0,0,0,0],medidaAncho:`${w}mm`,medidaAlto:`${h}mm`},
+      {type:"segment",x1:50+w-cx,y1:50,x2:50+w,y2:50+cy,id:"diag",medidaLinea:"corte"},
+      {type:"segment",x1:50+w-cx,y1:30,x2:50+w,y2:30,id:"c1",medidaLinea:`${cx}mm`},
+      {type:"text",x:50+w/2-30,y:50+h/2+5,text:"CORTE DIAGONAL",id:"lbl"},
+    ]
+  },
+  {
+    id:"entrante_rect", label:"Entrante rectangular", emoji:"⊓",
+    desc:"Mordida rectangular en un lado",
+    buildShapes:(w,h,cx,cy)=>[
+      {type:"rect",x1:50,y1:50,x2:50+w,y2:50+h,id:"v1",corners:[0,0,0,0],medidaAncho:`${w}mm`,medidaAlto:`${h}mm`},
+      {type:"rect",x1:50+Math.round((w-cx)/2),y1:50,x2:50+Math.round((w+cx)/2),y2:50+cy,id:"entrante",corners:[0,0,0,0]},
+      {type:"segment",x1:50+Math.round((w-cx)/2),y1:30,x2:50+Math.round((w+cx)/2),y2:30,id:"c1",medidaLinea:`${cx}mm`},
+      {type:"segment",x1:50+w+10,y1:50,x2:50+w+10,y2:50+cy,id:"c2",medidaLinea:`${cy}mm`},
+      {type:"text",x:50+w/2-30,y:50+h/2+10,text:"ENTRANTE",id:"lbl"},
+    ]
+  },
+  {
+    id:"perforacion", label:"Perforación", emoji:"◎",
+    desc:"Agujero circular en posición configurable",
+    buildShapes:(w,h,cx,cy)=>[
+      {type:"rect",x1:50,y1:50,x2:50+w,y2:50+h,id:"v1",corners:[0,0,0,0],medidaAncho:`${w}mm`,medidaAlto:`${h}mm`},
+      {type:"circle",x1:50+cx-15,y1:50+cy-15,x2:50+cx+15,y2:50+cy+15,id:"perf",medidaAncho:"∅30"},
+      {type:"segment",x1:50,y1:50+cy,x2:50+cx,y2:50+cy,id:"c1",medidaLinea:`${cx}mm`},
+      {type:"segment",x1:50+cx,y1:50,x2:50+cx,y2:50+cy,id:"c2",medidaLinea:`${cy}mm`},
+      {type:"text",x:50+cx-10,y:50+cy+30,text:"PERF",id:"lbl"},
+    ]
+  },
+  {
+    id:"bisagra", label:"Entrada bisagra", emoji:"⊣",
+    desc:"Corte de bisagra en lateral",
+    buildShapes:(w,h,cx,cy)=>[
+      {type:"rect",x1:50,y1:50,x2:50+w,y2:50+h,id:"v1",corners:[0,0,0,0],medidaAncho:`${w}mm`,medidaAlto:`${h}mm`},
+      // bisagra sup
+      {type:"rect",x1:50,y1:50+cy-10,x2:50+cx,y2:50+cy+10,id:"bis1",corners:[0,0,0,0]},
+      // bisagra inf
+      {type:"rect",x1:50,y1:50+h-cy-10,x2:50+cx,y2:50+h-cy+10,id:"bis2",corners:[0,0,0,0]},
+      {type:"segment",x1:30,y1:50+cy,x2:30,y2:50+h-cy,id:"c1",medidaLinea:`dist: ${h-2*cy}mm`},
+      {type:"text",x:53,y:50+cy+5,text:"BIS",id:"lbl1"},
+      {type:"text",x:53,y:50+h-cy+5,text:"BIS",id:"lbl2"},
+    ]
+  },
+  {
+    id:"arco", label:"Arco superior", emoji:"⌢",
+    desc:"Vidrio con arco en la parte superior",
+    buildShapes:(w,h,cx,cy)=>[
+      {type:"rect",x1:50,y1:50+cy,x2:50+w,y2:50+h,id:"v1",corners:[0,0,0,0],medidaAncho:`${w}mm`,medidaAlto:`${h}mm`},
+      {type:"circle",x1:50,y1:50,x2:50+w,y2:50+cy*2,id:"arco"},
+      {type:"segment",x1:50,y1:50+h+15,x2:50+w,y2:50+h+15,id:"c1",medidaLinea:`${w}mm`},
+      {type:"text",x:50+w/2-20,y:50+cy/2+5,text:"ARCO",id:"lbl"},
+    ]
+  },
+];
 
 const PLANTILLAS_DEFAULT = [
   { id:"t1", nombre:"Mampara Estándar", tipo:"Mampara de Baño", esCustom:false, campos:[
@@ -784,6 +858,21 @@ const DrawingCanvas = ({value, onChange}) => {
     {id:"text",   emoji:"T", label:"Texto"},
   ];
 
+  const [showCortes,setShowCortes]=useState(false);
+  const [corteSelId,setCorteSelId]=useState(null);
+  const [corteW,setCorteW]=useState(600);
+  const [corteH,setCorteH]=useState(400);
+  const [corteCX,setCorteCX]=useState(150);
+  const [corteCY,setCorteCY]=useState(100);
+
+  const aplicarCorte=()=>{
+    const c=CORTES_PREDEFINIDOS.find(x=>x.id===corteSelId);
+    if(!c) return;
+    const newShapes=c.buildShapes(corteW,corteH,corteCX,corteCY).map(s=>({...s,id:newId()}));
+    commit(newShapes);
+    setShowCortes(false);
+  };
+
   const selIsRect = selShape&&(selShape.type==="rect");
 
   return(
@@ -808,9 +897,75 @@ const DrawingCanvas = ({value, onChange}) => {
             <button onClick={redo} disabled={hIdx>=history.length-1} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #1e3a5a",background:"#071220",color:hIdx>=history.length-1?"#1e3a5a":"#7ab2e8",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>↪</button>
             {selId&&<button onClick={deleteSelected} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #7f2020",background:"#1a0a0a",color:"#f48fb1",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>🗑</button>}
             <button onClick={()=>{commit([]);setSelId(null);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #1e3a5a",background:"#071220",color:"#5a8ab8",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Limpiar</button>
+            <button onClick={()=>setShowCortes(s=>!s)}
+              style={{padding:"5px 12px",borderRadius:7,border:`1px solid ${showCortes?"#FFB74D":"#1e3a5a"}`,
+                background:showCortes?"#1a1000":"#071220",color:showCortes?"#FFB74D":"#5a8ab8",
+                cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:showCortes?700:400}}>
+              ✂️ Cortes
+            </button>
           </div>
           <span style={{fontSize:10,color:"#1e3a5a",marginLeft:"auto"}}>Ctrl = sin snap · Shift = proporcional</span>
         </div>
+
+        {/* PANEL CORTES PREDEFINIDOS */}
+        {showCortes&&<div style={{background:"#0a1000",borderRadius:10,padding:14,border:"1px solid #FFB74D30",marginBottom:8}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#FFB74D",marginBottom:10}}>✂️ Cortes y entrantes predefinidos</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}}>
+            {CORTES_PREDEFINIDOS.map(c=>(
+              <button key={c.id} onClick={()=>setCorteSelId(c.id)}
+                style={{padding:"8px 10px",borderRadius:8,border:`1px solid ${corteSelId===c.id?"#FFB74D":"#2a1a00"}`,
+                  background:corteSelId===c.id?"#2a1500":"#0d1000",color:corteSelId===c.id?"#FFB74D":"#7a6a4a",
+                  cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                <div style={{fontSize:18,marginBottom:3}}>{c.emoji}</div>
+                <div style={{fontSize:11,fontWeight:700}}>{c.label}</div>
+                <div style={{fontSize:10,opacity:0.7,marginTop:2}}>{c.desc}</div>
+              </button>
+            ))}
+          </div>
+          {corteSelId&&<div style={{background:"#071220",borderRadius:8,padding:12,border:"1px solid #2a1a00"}}>
+            <div style={{fontSize:11,fontWeight:600,color:"#FFB74D",marginBottom:10}}>
+              Configurar: {CORTES_PREDEFINIDOS.find(c=>c.id===corteSelId)?.label}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:10}}>
+              <div>
+                <div style={{fontSize:10,color:"#5a8ab8",marginBottom:3}}>Ancho vidrio (mm)</div>
+                <input type="number" value={corteW} onChange={e=>setCorteW(+e.target.value)}
+                  style={{...iS,padding:"5px 8px",fontSize:12,width:"100%"}}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:"#5a8ab8",marginBottom:3}}>Alto vidrio (mm)</div>
+                <input type="number" value={corteH} onChange={e=>setCorteH(+e.target.value)}
+                  style={{...iS,padding:"5px 8px",fontSize:12,width:"100%"}}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:"#FFB74D",marginBottom:3}}>
+                  {corteSelId==="perforacion"||corteSelId==="bisagra"?"Pos X (mm)":"Corte ancho (mm)"}
+                </div>
+                <input type="number" value={corteCX} onChange={e=>setCorteCX(+e.target.value)}
+                  style={{...iS,padding:"5px 8px",fontSize:12,width:"100%"}}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:"#FFB74D",marginBottom:3}}>
+                  {corteSelId==="perforacion"||corteSelId==="bisagra"?"Pos Y (mm)":"Corte alto (mm)"}
+                </div>
+                <input type="number" value={corteCY} onChange={e=>setCorteCY(+e.target.value)}
+                  style={{...iS,padding:"5px 8px",fontSize:12,width:"100%"}}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={aplicarCorte}
+                style={{padding:"7px 18px",borderRadius:7,border:"none",background:"#FFB74D",color:"#000",
+                  cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700}}>
+                ✓ Insertar en plano
+              </button>
+              <button onClick={()=>setCorteSelId(null)}
+                style={{padding:"7px 12px",borderRadius:7,border:"1px solid #2a1a00",background:"transparent",
+                  color:"#7a6a4a",cursor:"pointer",fontFamily:"inherit",fontSize:12}}>
+                Cancelar
+              </button>
+            </div>
+          </div>}
+        </div>}
 
         {/* svg canvas */}
         <div style={{position:"relative",borderRadius:10,overflow:"hidden",border:"1px solid #1e3a5a"}}>
@@ -1519,8 +1674,34 @@ tbody td{padding:10px 14px;border-bottom:1px solid #e8f0ff;vertical-align:middle
           }}/>
         </div>
 
-        {/* ── PRODUCCIÓN ── */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+        {/* ── FOTO REMITO FÍSICO ── */}
+        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:10}}>📷 Fotos del remito / trabajo</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+            {(form.fotos_remito||[]).map((foto,i)=>(
+              <div key={i} style={{position:"relative"}}>
+                <img src={foto.data} alt={foto.nombre}
+                  style={{width:80,height:80,objectFit:"cover",borderRadius:7,border:"1px solid #1e3a5a",cursor:"pointer"}}
+                  onClick={()=>window.open(foto.data,"_blank")}/>
+                <button onClick={()=>setForm(f=>({...f,fotos_remito:(f.fotos_remito||[]).filter((_,idx)=>idx!==i)}))}
+                  style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:"#7f2020",border:"none",color:"#fff",cursor:"pointer",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>✕</button>
+              </div>
+            ))}
+            <label style={{width:80,height:80,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,background:"#0a1020",borderRadius:7,border:"2px dashed #1e3a5a",cursor:"pointer"}}>
+              <span style={{fontSize:22}}>📷</span>
+              <span style={{fontSize:9,color:"#3a6a9a"}}>Agregar foto</span>
+              <input type="file" accept="image/*" capture="environment" multiple style={{display:"none"}} onChange={e=>{
+                Array.from(e.target.files).forEach(file=>{
+                  if(file.size>3*1024*1024){alert(`${file.name} es muy grande (máx 3MB)`);return;}
+                  const reader=new FileReader();
+                  reader.onload=ev=>setForm(f=>({...f,fotos_remito:[...(f.fotos_remito||[]),{data:ev.target.result,nombre:file.name}]}));
+                  reader.readAsDataURL(file);
+                });
+              }}/>
+            </label>
+          </div>
+          <div style={{fontSize:11,color:"#2a4a6a"}}>Tocá una foto para verla en grande · máx 3MB por foto</div>
+        </div>
           <Field label="Materiales / Accesorios adicionales"><Textarea value={form.prod_materiales||""} onChange={e=>set("prod_materiales",e.target.value)} placeholder="Burlete D gris, bisagras inox, perfiles..."/></Field>
           <div>
             <Field label="Fecha estimada de producción"><Input type="date" value={form.prod_fecha_est||""} onChange={e=>set("prod_fecha_est",e.target.value)}/></Field>
@@ -1988,6 +2169,7 @@ function AppInner({ currentUser, onLogout }) {
   const [clientes,setClientes]=useState([]);
   const [plantillas,setPlantillas]=useState(PLANTILLAS_DEFAULT);
   const [estados,setEstados]=useState(ESTADOS_DEFAULT);
+  const [tiposVidrio,setTiposVidrio]=useState(TIPOS_VIDRIO_DEFAULT);
   const [cotizaciones,setCotizaciones]=useState([]);
   const [stock,setStock]=useState([]);
   const [modal,setModal]=useState(null);
@@ -1999,7 +2181,6 @@ function AppInner({ currentUser, onLogout }) {
   // ── FIREBASE SUBSCRIPTIONS (realtime) ──────────────────────────────────────
   useEffect(()=>{
     const unsubs = [];
-    // Set loading false after 3 seconds max regardless
     const timeout = setTimeout(()=>setLoading(false), 3000);
 
     unsubs.push(fsSub("ordenes", docs => { setOrdenes(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); }));
@@ -2008,6 +2189,7 @@ function AppInner({ currentUser, onLogout }) {
     unsubs.push(fsSub("stock_items", docs => { setStock(docs); }));
     unsubs.push(fsCfgSub("plantillas", val => { if(val) setPlantillas(val); }));
     unsubs.push(fsCfgSub("estados", val => { if(val) setEstados(val); }));
+    unsubs.push(fsCfgSub("tipos_vidrio", val => { if(val&&val.length) setTiposVidrio(val); }));
 
     // Mark as loaded once we get first response from any collection
     const firstLoad = onSnapshot(collection(db, "ordenes"), ()=>{ setLoading(false); clearTimeout(timeout); }, ()=>{ setLoading(false); clearTimeout(timeout); });
@@ -2827,7 +3009,8 @@ thead th{padding:8px 12px;font-size:11px;font-weight:600}
   };
 
   // ── COTIZACIÓN FORM ──────────────────────────────────────────────────────────
-  const CotizacionForm=({cot,clientes,onSave,onClose})=>{
+  const CotizacionForm=({cot,clientes,tiposVidrio:tvProp,onSave,onClose})=>{
+    const TV=tvProp||TIPOS_VIDRIO_DEFAULT;
     const EMPTY={
       titulo:"", cliente:"",
       contacto_nombre:"", contacto_tel:"", contacto_dom:"",
@@ -2908,14 +3091,14 @@ thead th{padding:8px 12px;font-size:11px;font-weight:600}
                 <div>
                   <div style={{fontSize:9,color:"#3a6a9a",fontWeight:600,marginBottom:3}}>TIPO DE VIDRIO</div>
                   <div>
-                    <Sel value={TIPOS_VIDRIO.includes(item.tipo_vidrio)||item.tipo_vidrio===""?item.tipo_vidrio:"__otro__"}
+                    <Sel value={TV.includes(item.tipo_vidrio)||item.tipo_vidrio===""?item.tipo_vidrio:"__otro__"}
                       onChange={e=>{if(e.target.value==="__otro__")setIt(i,"tipo_vidrio","");else setIt(i,"tipo_vidrio",e.target.value);}}>
                       <option value="">Seleccionar...</option>
-                      {TIPOS_VIDRIO.filter(t=>t!=="Otro").map(t=><option key={t} value={t}>{t}</option>)}
+                      {TV.filter(t=>t!=="Otro").map(t=><option key={t} value={t}>{t}</option>)}
                       <option value="__otro__">✏️ Escribir...</option>
                     </Sel>
-                    {(!TIPOS_VIDRIO.includes(item.tipo_vidrio)&&item.tipo_vidrio!=="")||item.tipo_vidrio===""&&(form.items[i].tipo_vidrio===""&&expandedItems[i])?null:null}
-                    {!TIPOS_VIDRIO.filter(t=>t!=="Otro").includes(item.tipo_vidrio)&&item.tipo_vidrio!==""&&(
+                    {(!TV.includes(item.tipo_vidrio)&&item.tipo_vidrio!=="")||item.tipo_vidrio===""&&(form.items[i].tipo_vidrio===""&&expandedItems[i])?null:null}
+                    {!TV.filter(t=>t!=="Otro").includes(item.tipo_vidrio)&&item.tipo_vidrio!==""&&(
                       <Input value={item.tipo_vidrio} onChange={e=>setIt(i,"tipo_vidrio",e.target.value)} placeholder="Tipo personalizado..." style={{marginTop:4}}/>
                     )}
                   </div>
@@ -3034,7 +3217,10 @@ thead th{padding:8px 12px;font-size:11px;font-weight:600}
             <h1 style={{margin:"0 0 4px",fontFamily:"Georgia,serif",fontSize:24,color:"#e2f0ff"}}>Cotizaciones</h1>
             <p style={{margin:0,color:"#3a6a9a",fontSize:13}}>{cotizaciones.length} cotizaciones · Numeración PR-AÑO-XXXX</p>
           </div>
-          <Btn small onClick={()=>setModal({type:"nueva_cotizacion"})}><Icon name="plus" size={14}/> Nueva Cotización</Btn>
+          <div style={{display:"flex",gap:8}}>
+            <Btn small variant="secondary" onClick={()=>setModal({type:"tipos_vidrio"})}><Icon name="settings" size={14}/> Tipos de vidrio</Btn>
+            <Btn small onClick={()=>setModal({type:"nueva_cotizacion"})}><Icon name="plus" size={14}/> Nueva Cotización</Btn>
+          </div>
         </div>
         <div style={{display:"grid",gap:8}}>
           {cotizaciones.map(c=>{
@@ -3642,6 +3828,68 @@ ${bizFooter()}`;
     );
   };
 
+  // ── TIPOS DE VIDRIO CRUD ────────────────────────────────────────────────────
+  const TiposVidrioManager=()=>{
+    const [lista,setLista]=useState([...tiposVidrio]);
+    const [nuevo,setNuevo]=useState("");
+    const [editIdx,setEditIdx]=useState(null);
+    const [editVal,setEditVal]=useState("");
+    const guardar=async()=>{ await fsCfgSet("tipos_vidrio",lista); setModal(null); };
+    const agregar=()=>{
+      if(!nuevo.trim()) return;
+      setLista(l=>[...l,nuevo.trim()]);
+      setNuevo("");
+    };
+    const eliminar=(i)=>setLista(l=>l.filter((_,idx)=>idx!==i));
+    const startEdit=(i)=>{setEditIdx(i);setEditVal(lista[i]);};
+    const saveEdit=()=>{
+      if(!editVal.trim()) return;
+      setLista(l=>l.map((x,i)=>i===editIdx?editVal.trim():x));
+      setEditIdx(null);setEditVal("");
+    };
+    return(
+      <div>
+        <p style={{color:"#5a8ab8",fontSize:13,margin:"0 0 14px"}}>
+          Estos tipos aparecen en el selector de todas las cotizaciones y órdenes. Los cambios afectan a toda la empresa.
+        </p>
+        <div style={{display:"flex",gap:8,marginBottom:14}}>
+          <Input value={nuevo} onChange={e=>setNuevo(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&agregar()}
+            placeholder="Ej: Doble vidriado hermético 4-12-4..." style={{flex:1}}/>
+          <Btn small onClick={agregar}><Icon name="plus" size={14}/> Agregar</Btn>
+        </div>
+        <div style={{maxHeight:360,overflowY:"auto",display:"flex",flexDirection:"column",gap:5}}>
+          {lista.map((tipo,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#0a1020",borderRadius:8,border:"1px solid #0f2035"}}>
+              {editIdx===i?(
+                <>
+                  <Input value={editVal} onChange={e=>setEditVal(e.target.value)}
+                    onKeyDown={e=>{if(e.key==="Enter")saveEdit();if(e.key==="Escape")setEditIdx(null);}}
+                    style={{flex:1}} autoFocus/>
+                  <button onClick={saveEdit} style={{background:"#1565C0",border:"none",color:"#fff",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:12}}>✓</button>
+                  <button onClick={()=>setEditIdx(null)} style={{background:"none",border:"1px solid #1e3a5a",color:"#5a8ab8",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:12}}>✕</button>
+                </>
+              ):(
+                <>
+                  <div style={{flex:1,fontSize:13,color:"#c8e0f8",fontWeight:500}}>
+                    <span style={{width:8,height:8,borderRadius:"50%",background:"#1565C0",display:"inline-block",marginRight:8}}/>
+                    {tipo}
+                  </div>
+                  <button onClick={()=>startEdit(i)} style={{background:"none",border:"none",color:"#3a6a9a",cursor:"pointer",padding:4,display:"flex"}}><Icon name="edit" size={13}/></button>
+                  <button onClick={()=>eliminar(i)} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,display:"flex"}}><Icon name="trash" size={13}/></button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:14,paddingTop:12,borderTop:"1px solid #1e3a5a"}}>
+          <Btn variant="secondary" onClick={()=>setModal(null)}>Cancelar</Btn>
+          <Btn onClick={guardar}>✓ Guardar lista ({lista.length} tipos)</Btn>
+        </div>
+      </div>
+    );
+  };
+
   const pages={home:<Home/>,ordenes:<OrdenesList/>,tablero:<Tablero/>,clientes:<Clientes/>,cotizaciones:<Cotizaciones/>,stock:<Stock/>,reportes:<Reportes/>,optimize:<Optimizer/>,ayuda:<Ayuda/>};
 
   return(
@@ -3662,11 +3910,13 @@ ${bizFooter()}`;
       <Modal open={modal?.type==="nueva_plantilla"||modal?.type==="editar_plantilla"} onClose={()=>setModal(null)} title={modal?.type==="editar_plantilla"?"Editar Plantilla":"Nueva Plantilla Personalizada"} wide>
         <PlantillaBuilder plantilla={modal?.data} onSave={savePlantilla} onClose={()=>setModal(null)}/>
       </Modal>
-      <Modal open={modal?.type==="gestionar_estados"} onClose={()=>setModal(null)} title="Gestionar Procesos del Tablero" wide>
+      <Modal open={modal?.type==="tipos_vidrio"} onClose={()=>setModal(null)} title="Gestionar Tipos de Vidrio" wide>
+        <TiposVidrioManager/>
+      </Modal>
         <ProcessManager estados={estados} onSave={async(list)=>{await fsCfgSet("estados",list);setModal(null);}} onClose={()=>setModal(null)}/>
       </Modal>
       <Modal open={modal?.type==="nueva_cotizacion"||modal?.type==="editar_cotizacion"} onClose={()=>setModal(null)} title={modal?.type==="editar_cotizacion"?"Editar Cotización":"Nueva Cotización"} wide>
-        <CotizacionForm cot={modal?.data} clientes={clientes} onSave={async(form)=>{
+        <CotizacionForm cot={modal?.data} clientes={clientes} tiposVidrio={tiposVidrio} onSave={async(form)=>{
           const id=form.id||newId();
           const numero=form.numero||newCotNum(cotizaciones);
           await fsSet("cotizaciones",id,{...form,id,numero,createdAt:form.createdAt||new Date().toISOString()});
@@ -3676,4 +3926,3 @@ ${bizFooter()}`;
     </div>
   );
 }
-              
