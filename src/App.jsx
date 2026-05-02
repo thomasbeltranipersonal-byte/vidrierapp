@@ -1210,6 +1210,9 @@ const OrdenForm = ({orden,plantillas,clientes,onSave,onClose,stockItems,onDescon
     prod_materiales_usados:[],
     // Instalación
     inst_fecha:"",inst_direccion:"",inst_responsable:"",inst_notas:"",inst_firmante:"",
+    inst_entregado:false,inst_fecha_entrega:"",inst_recibio:"",inst_obs_entrega:"",
+    // Fotos
+    fotos_remito:[],fotos_lugar:[],
     // Pagos
     pago_senia:"",pago_senia_fecha:"",pago_senia_metodo:"efectivo",
     pago_total:"",pago_total_fecha:"",pago_total_metodo:"efectivo",pago_notas:"",etapa:"presupuesto"};
@@ -1328,6 +1331,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
 
     const bSVG=(pl)=>{if(!(pl||[]).length)return"";const sh=pl;const ax=sh.flatMap(s=>[s.x1,s.x2,s.x].filter(v=>v!=null));const ay=sh.flatMap(s=>[s.y1,s.y2,s.y].filter(v=>v!=null));if(!ax.length)return"";const mx=Math.min(...ax)-20,my=Math.min(...ay)-20,Mx=Math.max(...ax)+20,My=Math.max(...ay)+20;const ss=sh.map(s=>{if(s.type==="segment")return`<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2.5" stroke-linecap="round"/>${s.medidaLinea?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-9}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaLinea}</text>`:""}`;if(s.type==="text")return`<text x="${s.x}" y="${s.y}" font-size="13" fill="#1a1a2e" font-weight="600">${s.text}</text>`;if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e3f2fd" stroke="#1565C0" stroke-width="2"/>`;}const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const c=s.corners||[0,0,0,0];const d=`M ${x+c[0]} ${y} L ${x+w-c[1]} ${y} ${c[1]>0?`Q ${x+w} ${y} ${x+w} ${y+c[1]}`:""} L ${x+w} ${y+h-c[2]} ${c[2]>0?`Q ${x+w} ${y+h} ${x+w-c[2]} ${y+h}`:""} L ${x+c[3]} ${y+h} ${c[3]>0?`Q ${x} ${y+h} ${x} ${y+h-c[3]}`:""} L ${x} ${y+c[0]} ${c[0]>0?`Q ${x} ${y} ${x+c[0]} ${y}`:""} Z`;const dims=s.medidaAncho&&s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2-5}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAncho}</text><text x="${x+w/2}" y="${y+h/2+11}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAlto}</text>`:s.medidaAncho||s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2+5}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAncho||s.medidaAlto}</text>`:"";const sides=[s.ladoSup?`<text x="${x+w/2}" y="${y-7}" text-anchor="middle" font-size="11" fill="#e65100" font-weight="700">${s.ladoSup}</text>`:"",s.ladoInf?`<text x="${x+w/2}" y="${y+h+15}" text-anchor="middle" font-size="11" fill="#e65100" font-weight="700">${s.ladoInf}</text>`:"",s.ladoIzq?`<text x="${x-6}" y="${y+h/2}" text-anchor="end" font-size="11" fill="#e65100" font-weight="700">${s.ladoIzq}</text>`:"",s.ladoDer?`<text x="${x+w+6}" y="${y+h/2}" text-anchor="start" font-size="11" fill="#e65100" font-weight="700">${s.ladoDer}</text>`:""].join("");return`<path d="${d}" fill="#e8f4ff" stroke="#1565C0" stroke-width="2"/>${dims}${sides}`;}).join("");return`<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:300px;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block">${ss}</svg>`;}; 
     const plano=bSVG(form.med_plano);
+    const fotosRemito=(form.fotos_remito||[]).map(f=>`<img src="${f.data}" style="width:140px;height:105px;object-fit:cover;border-radius:6px;border:1px solid #e0ecff;"/>`).join("");
     const vrows=(form.vidrios||[]).filter(v=>v.tipo||v.ancho||v.alto).map((v,i)=>`
       <tr style="background:${i%2===0?"#f8fbff":"#fff"}">
         <td style="text-align:center;font-size:18px;font-weight:900;width:50px">${v.cant||1}</td>
@@ -1414,6 +1418,7 @@ tbody td{padding:10px 14px;border-bottom:1px solid #e8f0ff;vertical-align:middle
   ${(form.prod_procesos||[]).length?`<div class="st">Procesos Requeridos</div><div style="margin-top:6px">${(form.prod_procesos||[]).map(p=>`<span class="proc-chip">${p}</span>`).join("")}</div>`:""}
 
   ${form.prod_notas?`<div class="st">Instrucciones Especiales</div><div class="warn-box">${form.prod_notas}</div>`:""}
+  ${fotosRemito?`<div class="st">Fotos del Remito Físico</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${fotosRemito}</div>`:""}
 
   <div class="sign-grid">
     <div class="sign-line"><div class="sign-label">Recibido por taller</div><div style="height:32px"></div></div>
@@ -3872,6 +3877,7 @@ ${bizFooter()}`;
       <Modal open={modal?.type==="tipos_vidrio"} onClose={()=>setModal(null)} title="Gestionar Tipos de Vidrio" wide>
         <TiposVidrioManager/>
       </Modal>
+      <Modal open={modal?.type==="gestionar_estados"} onClose={()=>setModal(null)} title="Gestionar Procesos del Tablero" wide>
         <ProcessManager estados={estados} onSave={async(list)=>{await fsCfgSet("estados",list);setModal(null);}} onClose={()=>setModal(null)}/>
       </Modal>
       <Modal open={modal?.type==="nueva_cotizacion"||modal?.type==="editar_cotizacion"} onClose={()=>setModal(null)} title={modal?.type==="editar_cotizacion"?"Editar Cotización":"Nueva Cotización"} wide>
