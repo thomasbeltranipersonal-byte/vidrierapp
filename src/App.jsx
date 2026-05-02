@@ -474,24 +474,26 @@ const PlantillaBuilder = ({plantilla,onSave,onClose}) => {
 
 // ─── DRAWING TEMPLATES ───────────────────────────────────────────────────────
 const DrawingTemplates = ({shapes, onLoad}) => {
-  const [templates, setTemplates] = useState(()=>load("drawing_templates",[
+  const DEFAULT_TEMPLATES = [
     { id:"tpl_mampara", name:"Mampara estándar", shapes:[
-      {type:"rect",x1:40,y1:40,x2:200,y2:340,id:"r1",corners:[0,0,0,0],label:"Alto"},
-      {type:"segment",x1:40,y1:380,x2:200,y2:380,id:"s1",label:"1200mm"},
-      {type:"segment",x1:220,y1:40,x2:220,y2:340,id:"s2",label:"2000mm"},
-      {type:"text",x:60,y:200,text:"Mampara",id:"t1"},
+      {type:"rect",x1:100,y1:50,x2:300,y2:350,id:"r1",corners:[0,0,0,0]},
+      {type:"text",x:150,y:210,text:"Mampara",id:"t1"},
     ]},
     { id:"tpl_espejo", name:"Espejo rectangular", shapes:[
-      {type:"rect",x1:40,y1:40,x2:260,y2:200,id:"r1",corners:[0,0,0,0],label:""},
-      {type:"segment",x1:40,y1:220,x2:260,y2:220,id:"s1",label:"Ancho"},
-      {type:"segment",x1:280,y1:40,x2:280,y2:200,id:"s2",label:"Alto"},
-      {type:"text",x:100,y:125,text:"Espejo",id:"t1"},
+      {type:"rect",x1:100,y1:80,x2:400,y2:280,id:"r1",corners:[0,0,0,0]},
+      {type:"text",x:200,y:190,text:"Espejo",id:"t1"},
     ]},
-  ]));
+  ];
+  const [templates, setTemplates] = useState(()=>{
+    try{ const v=localStorage.getItem("drawing_templates"); return v?JSON.parse(v):DEFAULT_TEMPLATES; }
+    catch{ return DEFAULT_TEMPLATES; }
+  });
   const [showSave, setShowSave] = useState(false);
   const [saveName, setSaveName] = useState("");
 
-  useEffect(()=>save("drawing_templates",templates),[templates]);
+  useEffect(()=>{
+    try{ localStorage.setItem("drawing_templates",JSON.stringify(templates)); }catch{}
+  },[templates]);
 
   const saveTemplate = () => {
     if(!saveName.trim()||!shapes.length) return;
@@ -3674,3 +3676,4 @@ ${bizFooter()}`;
     </div>
   );
 }
+              
