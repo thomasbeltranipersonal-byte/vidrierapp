@@ -131,7 +131,7 @@ const fsSub = (col, cb) => {
 const fsCfgSet = async (key, value) => fsSet("config", key, { value });
 const fsCfgSub = (key, cb) => {
   return onSnapshot(doc(db, "config", key), snap => {
-    if (snap.exists()) cb(snap.data().value);
+    cb(snap.exists() ? snap.data().value : null);
   });
 };
 
@@ -2189,7 +2189,15 @@ function AppInner({ currentUser, onLogout }) {
     unsubs.push(fsSub("stock_items", docs => { setStock(docs); }));
     unsubs.push(fsCfgSub("plantillas", val => { if(val) setPlantillas(val); }));
     unsubs.push(fsCfgSub("estados", val => { if(val) setEstados(val); }));
-    unsubs.push(fsCfgSub("tipos_vidrio", val => { if(val&&val.length) setTiposVidrio(val); }));
+    unsubs.push(fsCfgSub("tipos_vidrio", val => {
+      if(val&&val.length) {
+        setTiposVidrio(val);
+      } else {
+        // Primera vez — guardar los defaults en Firebase para que queden permanentes
+        fsCfgSet("tipos_vidrio", TIPOS_VIDRIO_DEFAULT);
+        setTiposVidrio(TIPOS_VIDRIO_DEFAULT);
+      }
+    }));
 
     // Mark as loaded once we get first response from any collection
     const firstLoad = onSnapshot(collection(db, "ordenes"), ()=>{ setLoading(false); clearTimeout(timeout); }, ()=>{ setLoading(false); clearTimeout(timeout); });
