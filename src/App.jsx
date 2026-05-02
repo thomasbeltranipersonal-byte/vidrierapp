@@ -2584,84 +2584,398 @@ function AppInner({ currentUser, onLogout }) {
     return `PR-${yr}-${String(max+1).padStart(4,"0")}`;
   };
 
+  // ── MINI CANVAS (por ítem de cotización/orden) ───────────────────────────────
+  const MiniCanvas=({value,onChange,itemIdx})=>{
+    const canvasRef=useRef(null);
+    const [tool,setTool]=useState("rect");
+    const [drawing,setDrawing]=useState(null);
+    const [shapes,setShapes]=useState(value||[]);
+    const [selId,setSelId]=useState(null);
+    const commit=(sh)=>{setShapes(sh);onChange(sh);};
+    const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,4);
+
+    const TOOLS=[
+      {id:"rect",label:"□ Rect"},
+      {id:"circle",label:"○ Perf"},
+      {id:"line",label:"╱ Línea"},
+      {id:"text",label:"T Nota"},
+    ];
+
+    const getPos=(e)=>{
+      const c=canvasRef.current;
+      if(!c) return {x:0,y:0};
+      const r=c.getBoundingClientRect();
+      const scaleX=c.width/r.width;
+      const scaleY=c.height/r.height;
+      const clientX=e.touches?e.touches[0].clientX:e.clientX;
+      const clientY=e.touches?e.touches[0].clientY:e.clientY;
+      return {x:(clientX-r.left)*scaleX,y:(clientY-r.top)*scaleY};
+    };
+
+    const onDown=(e)=>{
+      e.preventDefault();
+      const p=getPos(e);
+      if(tool==="text"){
+        const txt=prompt("Anotación:");
+        if(txt) commit([...shapes,{id:newId(),type:"text",x:p.x,y:p.y,text:txt}]);
+        return;
+      }
+      setDrawing({id:newId(),type:tool,x1:p.x,y1:p.y,x2:p.x,y2:p.y});
+    };
+    const onMove=(e)=>{
+      if(!drawing) return;
+      e.preventDefault();
+      const p=getPos(e);
+      setDrawing(d=>({...d,x2:p.x,y2:p.y}));
+    };
+    const onUp=(e)=>{
+      if(!drawing) return;
+      const dx=Math.abs(drawing.x2-drawing.x1),dy=Math.abs(drawing.y2-drawing.y1);
+      if(dx>3||dy>3) commit([...shapes,drawing]);
+      setDrawing(null);
+    };
+
+    const renderShape=(s,isDrawing)=>{
+      const sel=selId===s.id;
+      const stroke=isDrawing?"#42A5F5":sel?"#FF8A65":"#1565C0";
+      const fill=isDrawing?"rgba(66,165,245,0.1)":sel?"rgba(255,138,101,0.1)":"rgba(21,101,192,0.08)";
+      if(s.type==="text") return(
+        <text key={s.id} x={s.x} y={s.y} fontSize="12" fill="#FFB74D" fontWeight="700" fontFamily="Arial"
+          style={{cursor:"pointer"}} onClick={()=>setSelId(sel?null:s.id)}>{s.text}</text>
+      );
+      if(s.type==="circle"){
+        const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2;
+        const rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;
+        return <ellipse key={s.id} cx={cx} cy={cy} rx={Math.max(rx,2)} ry={Math.max(ry,2)}
+          fill={fill} stroke={stroke} strokeWidth="1.5" style={{cursor:"pointer"}}
+          onClick={()=>setSelId(sel?null:s.id)}/>;
+      }
+      if(s.type==="line") return(
+        <line key={s.id} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2}
+          stroke={stroke} strokeWidth="1.5" strokeLinecap="round" style={{cursor:"pointer"}}
+          onClick={()=>setSelId(sel?null:s.id)}/>
+      );
+      // rect
+      const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2);
+      const w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
+      return <rect key={s.id} x={x} y={y} width={w} height={h}
+        fill={fill} stroke={stroke} strokeWidth="1.5" style={{cursor:"pointer"}}
+        onClick={()=>setSelId(sel?null:s.id)}/>;
+    };
+
+    const allShapes=[...shapes,...(drawing?[drawing]:[])];
+
+    return(
+      <div style={{marginTop:8,background:"#050e1a",borderRadius:8,padding:8,border:"1px solid #1565C030"}}>
+        <div style={{display:"flex",gap:4,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
+          <span style={{fontSize:10,color:"#3a6a9a",fontWeight:600,marginRight:4}}>Plano:</span>
+          {TOOLS.map(t=>(
+            <button key={t.id} onClick={()=>setTool(t.id)}
+              style={{padding:"3px 8px",borderRadius:6,border:`1px solid ${tool===t.id?"#1565C0":"#1e3a5a"}`,
+                background:tool===t.id?"#1565C020":"transparent",color:tool===t.id?"#64B5F6":"#3a6a9a",
+                cursor:"pointer",fontSize:10,fontFamily:"inherit",fontWeight:tool===t.id?700:400}}>
+              {t.label}
+            </button>
+          ))}
+          {selId&&<button onClick={()=>{commit(shapes.filter(s=>s.id!==selId));setSelId(null);}}
+            style={{padding:"3px 8px",borderRadius:6,border:"1px solid #7f2020",background:"#2a0a0a",
+              color:"#f48fb1",cursor:"pointer",fontSize:10,fontFamily:"inherit",marginLeft:"auto"}}>
+            ✕ Borrar
+          </button>}
+          {shapes.length>0&&!selId&&<button onClick={()=>{if(confirm("¿Borrar plano?"))commit([]);}}
+            style={{padding:"3px 8px",borderRadius:6,border:"1px solid #1e3a5a",background:"transparent",
+              color:"#3a6a9a",cursor:"pointer",fontSize:10,fontFamily:"inherit",marginLeft:"auto"}}>
+            Limpiar
+          </button>}
+        </div>
+        <svg ref={canvasRef} width="100%" viewBox="0 0 500 220"
+          style={{display:"block",background:"#071220",borderRadius:6,border:"1px solid #0f2035",
+            cursor:tool==="text"?"text":"crosshair",touchAction:"none"}}
+          onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
+          onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}>
+          {/* Grid */}
+          <defs>
+            <pattern id={`grid-${itemIdx}`} width="25" height="25" patternUnits="userSpaceOnUse">
+              <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#0f2035" strokeWidth="0.5"/>
+            </pattern>
+          </defs>
+          <rect width="500" height="220" fill={`url(#grid-${itemIdx})`}/>
+          {allShapes.map(s=>renderShape(s,s===drawing))}
+        </svg>
+        {shapes.length>0&&<div style={{fontSize:10,color:"#1e3a5a",marginTop:3,textAlign:"right"}}>{shapes.length} elemento{shapes.length>1?"s":""}</div>}
+      </div>
+    );
+  };
+
+  // ── NUEVA COTIZACIÓN FORM ────────────────────────────────────────────────────
   const printCotizacion=(cot,clienteNombre)=>{
     const items=cot.items||[];
     const sub=items.reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0);
-    const iva=sub*0.21; const total=sub+iva;
-    const rows=items.filter(i=>i.desc).map((i,idx)=>`<tr><td>${i.desc}</td><td style="text-align:center">${i.cant||1}</td><td style="text-align:right">$${(+i.precio||0).toLocaleString("es-AR")}</td><td style="text-align:right;font-weight:700">$${((+i.precio||0)*(+i.cant||1)).toLocaleString("es-AR")}</td></tr>`).join("");
-    const body=`
-${bizHeader("Cotización",cot.numero,cot.fecha||"",cot.validez?`Válida hasta ${cot.validez}`:"")}
+    const conIva=cot.con_iva!==false;
+    const ivaAmt=conIva?sub*0.21:0;
+    const total=sub+ivaAmt;
+    const vidriosRows=items.filter(i=>i.tipo_vidrio||i.ancho||i.alto||i.desc).map((it,idx)=>`
+      <tr style="background:${idx%2===0?"#f8fbff":"#fff"}">
+        <td style="text-align:center;font-weight:700;font-size:14px;padding:9px 12px">${it.cant||1}</td>
+        <td style="padding:9px 12px;font-weight:600">${it.tipo_vidrio||"—"}</td>
+        <td style="padding:9px 12px">${it.desc||""}</td>
+        <td style="text-align:center;padding:9px 12px">${it.ancho&&it.alto?`${it.ancho} × ${it.alto}`:"—"}</td>
+        <td style="padding:9px 12px;color:#555">${it.obs||""}</td>
+        <td style="text-align:right;padding:9px 12px;font-weight:700">$${((+it.precio||0)*(+it.cant||1)).toLocaleString("es-AR")}</td>
+      </tr>`).join("");
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Presupuesto ${cot.numero||""}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e;background:#fff}
+.hdr{background:linear-gradient(135deg,#0a2a5e,#1565C0);padding:18px 28px;display:flex;justify-content:space-between;align-items:center}
+.hdr-left{display:flex;align-items:center;gap:12px}
+.hdr-logo{width:58px;height:58px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3))}
+.biz-name{font-size:19px;font-weight:900;color:#fff}
+.biz-sub{font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px}
+.biz-c{font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px}
+.hdr-right{text-align:right}
+.doc-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,0.7)}
+.doc-num{font-size:28px;font-weight:900;color:#fff;letter-spacing:1px;display:block}
+.doc-date{font-size:10px;color:rgba(255,255,255,0.7);margin-top:3px;display:block}
+.divider{height:3px;background:linear-gradient(90deg,#1565C0,#42A5F5,#1565C0)}
+.body{padding:20px 28px}
+.st{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin:16px 0 10px}
+.client-box{background:#f0f6ff;border-radius:8px;padding:12px 16px;border:1px solid #e0ecff;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.f label{font-size:9px;color:#888;font-weight:700;text-transform:uppercase;display:block;margin-bottom:2px}
+.f p{font-size:14px;font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead tr{background:linear-gradient(135deg,#0a2a5e,#1565C0);color:#fff}
+thead th{padding:8px 12px;font-size:11px;font-weight:600}
+.tot-box{margin-top:10px;display:flex;justify-content:flex-end}
+.tot-inner{width:260px;background:#f0f6ff;border-radius:8px;padding:12px 16px;border:1px solid #e0ecff}
+.tot-row{display:flex;justify-content:space-between;padding:3px 0;font-size:13px;color:#555}
+.tot-final{display:flex;justify-content:space-between;padding:8px 0 2px;font-size:17px;font-weight:900;color:#0a2a5e;border-top:2px solid #1565C0;margin-top:4px}
+.note-box{background:#f8f9ff;border-left:3px solid #1565C0;padding:10px 14px;font-size:13px;line-height:1.7;color:#333}
+.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:32px}
+.sign-line{border-top:1.5px solid #1565C0;padding-top:8px;text-align:center}
+.sign-label{font-size:10px;color:#888;text-transform:uppercase}
+.sign-name{font-size:12px;font-weight:600;color:#1565C0;margin-top:3px}
+.footer{background:#f0f6ff;border-top:2px solid #e3f2fd;padding:8px 28px;display:flex;justify-content:space-between;font-size:10px;color:#888}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:8mm}}
+</style></head><body>
+<div class="hdr">
+  <div class="hdr-left">
+    <img class="hdr-logo" src="BIZ_LOGO" alt="LV"/>
+    <div>
+      <div class="biz-name">La Vidriería Rosario</div>
+      <div class="biz-sub">Vidrios · Espejos · Cerramientos · Instalaciones</div>
+      <div class="biz-c">📍 Mendoza 1783, Rosario, Santa Fe · CP 2000</div>
+      <div class="biz-c">📞 341 425-1007 / 341 508-4921 &nbsp;·&nbsp; ✉️ lavidrieria@gmail.com</div>
+      <div class="biz-c">📸 @lavidrieriarosariooficial &nbsp;·&nbsp; 🕐 Lun-Vie 8-19hs · Sáb 8-13hs</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="doc-type">Presupuesto</div>
+    <span class="doc-num">${cot.numero||"S/N"}</span>
+    <span class="doc-date">Fecha: ${cot.fecha||""}</span>
+    ${cot.validez?`<span class="doc-date">Válido hasta: ${cot.validez}</span>`:""}
+  </div>
+</div>
+<div class="divider"></div>
 <div class="body">
   <div class="st">Datos del Cliente</div>
-  <div class="g2">
-    <div class="f"><label>Cliente / Obra</label><p>${clienteNombre||"—"}</p></div>
-    <div class="f"><label>Descripción del trabajo</label><p>${cot.titulo||"—"}</p></div>
+  <div class="client-box">
+    <div class="f"><label>Nombre</label><p>${clienteNombre||cot.contacto_nombre||"—"}</p></div>
+    <div class="f"><label>Teléfono</label><p>${cot.contacto_tel||"—"}</p></div>
+    <div class="f"><label>Domicilio</label><p>${cot.contacto_dom||"—"}</p></div>
   </div>
-  <div class="st">Detalle del Presupuesto</div>
+  ${cot.titulo?`<div style="margin-top:10px;padding:8px 12px;background:#f0f6ff;border-radius:6px;font-size:14px;font-weight:600;color:#0a2a5e">Trabajo: ${cot.titulo}</div>`:""}
+  <div class="st">Detalle de Materiales y Servicio</div>
   <table>
-    <thead><tr><th style="text-align:left">Descripción</th><th style="text-align:center">Cant.</th><th style="text-align:right">P. Unit.</th><th style="text-align:right">Subtotal</th></tr></thead>
-    <tbody>${rows}</tbody>
+    <thead><tr>
+      <th style="text-align:center;width:55px">Cant.</th>
+      <th style="text-align:left">Tipo de vidrio</th>
+      <th style="text-align:left">Descripción</th>
+      <th style="text-align:center;width:120px">Medidas (mm)</th>
+      <th style="text-align:left">Observaciones</th>
+      <th style="text-align:right;width:100px">Subtotal</th>
+    </tr></thead>
+    <tbody>${vidriosRows||"<tr><td colspan='6' style='padding:12px;text-align:center;color:#888'>Sin ítems</td></tr>"}</tbody>
   </table>
-  <div style="display:flex;justify-content:flex-end;margin-top:12px">
-    <div style="width:280px">
-      <div class="total-box">
-        <div class="total-row"><span style="color:#555">Subtotal</span><span>$${sub.toLocaleString("es-AR")}</span></div>
-        <div class="total-row"><span style="color:#555">IVA (21%)</span><span>$${iva.toLocaleString("es-AR")}</span></div>
-        <div class="total-final"><span>TOTAL</span><span>$${total.toLocaleString("es-AR")}</span></div>
-      </div>
+  <div class="tot-box">
+    <div class="tot-inner">
+      <div class="tot-row"><span>Subtotal</span><span>$${sub.toLocaleString("es-AR")}</span></div>
+      ${conIva?`<div class="tot-row"><span>IVA (21%)</span><span>$${ivaAmt.toLocaleString("es-AR")}</span></div>`:`<div class="tot-row"><span style="font-style:italic;color:#aaa">Sin IVA — Efectivo</span></div>`}
+      <div class="tot-final"><span>TOTAL</span><span>$${total.toLocaleString("es-AR")}</span></div>
     </div>
   </div>
   ${cot.condiciones?`<div class="st">Condiciones de Pago</div><div class="note-box">${cot.condiciones}</div>`:""}
-  ${cot.notas?`<div class="st">Observaciones</div><p style="font-size:13px;color:#555;line-height:1.6">${cot.notas}</p>`:""}
-  <div class="sign-area" style="margin-top:32px">
-    <div class="sign-line"><div class="sign-label">Firma y sello empresa</div><div class="sign-name">La Vidriería Rosario</div></div>
-    <div class="sign-line"><div class="sign-label">Conformidad del cliente</div><div style="height:28px"></div></div>
+  <div class="sign-grid">
+    <div class="sign-line"><div class="sign-label">Firma del colocador</div><div style="height:34px"></div><div class="sign-name">La Vidriería Rosario</div></div>
+    <div class="sign-line"><div class="sign-label">Conformidad del cliente</div><div style="height:34px"></div><div style="font-size:12px;color:#555">${clienteNombre||cot.contacto_nombre||"________________________"}</div></div>
   </div>
 </div>
-${bizFooter()}`;
-    openPDF(mkHTML(`Cotización ${cot.numero}`,body));
+<div class="footer">
+  <span>Generado el ${new Date().toLocaleString("es-AR")} · VidrierApp</span>
+  <span>Mendoza 1783 · Rosario · 341 425-1007</span>
+</div>
+</body></html>`;
+    const w=window.open("","_blank","width=940,height=820");
+    if(w){w.document.write(html.replace("BIZ_LOGO",BIZ_LOGO));w.document.close();w.onload=()=>{w.focus();w.print();};}
   };
 
+  // ── COTIZACIÓN FORM ──────────────────────────────────────────────────────────
   const CotizacionForm=({cot,clientes,onSave,onClose})=>{
-    const [form,setForm]=useState(cot||{titulo:"",cliente:"",fecha:new Date().toISOString().split("T")[0],validez:"",condiciones:"50% al confirmar, saldo contra entrega.",notas:"",items:[{desc:"",cant:1,precio:""},{desc:"",cant:1,precio:""}],estado:"pendiente"});
+    const EMPTY={
+      titulo:"", cliente:"",
+      contacto_nombre:"", contacto_tel:"", contacto_dom:"",
+      fecha:new Date().toISOString().split("T")[0], validez:"",
+      condiciones:"50% al confirmar, saldo contra entrega.",
+      con_iva:true,
+      items:[{cant:1,tipo_vidrio:"",desc:"",ancho:"",alto:"",obs:"",precio:"",plano:[]}],
+      estado:"pendiente"
+    };
+    const [form,setForm]=useState(cot?{...EMPTY,...cot}:EMPTY);
     const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-    const setItem=(i,k,v)=>setForm(f=>{const it=[...f.items];it[i]={...it[i],[k]:v};return{...f,items:it};});
-    const addItem=()=>setForm(f=>({...f,items:[...f.items,{desc:"",cant:1,precio:""}]}));
+    const setIt=(i,k,v)=>setForm(f=>{const arr=[...f.items];arr[i]={...arr[i],[k]:v};return{...f,items:arr};});
+    const addItem=()=>setForm(f=>({...f,items:[...f.items,{cant:1,tipo_vidrio:"",desc:"",ancho:"",alto:"",obs:"",precio:"",plano:[]}]}));
     const removeItem=(i)=>setForm(f=>({...f,items:f.items.filter((_,idx)=>idx!==i)}));
     const sub=(form.items||[]).reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0);
+    const ivaAmt=form.con_iva!==false?sub*0.21:0;
+    const total=sub+ivaAmt;
+    const clienteData=clientes.find(c=>c.id===form.cliente);
+
+    // Sync datos cliente from list
+    const onClienteChange=(id)=>{
+      const c=clientes.find(x=>x.id===id);
+      setForm(f=>({...f,cliente:id,
+        contacto_nombre:c?.nombre||f.contacto_nombre,
+        contacto_tel:c?.telefono||f.contacto_tel,
+        contacto_dom:c?.direccion||f.contacto_dom,
+      }));
+    };
+
+    const [expandedItems,setExpandedItems]=useState({});
+    const toggleExpand=(i)=>setExpandedItems(e=>({...e,[i]:!e[i]}));
+
     return(
       <div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-          <Field label="Descripción / Título"><Input value={form.titulo} onChange={e=>set("titulo",e.target.value)} placeholder="Ej: Mampara baño planta baja"/></Field>
-          <Field label="Cliente"><Sel value={form.cliente} onChange={e=>set("cliente",e.target.value)}><option value="">Sin asignar</option>{clientes.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</Sel></Field>
+        {/* DATOS NEGOCIO + NÚMERO */}
+        <div style={{background:"linear-gradient(135deg,#0a1828,#071220)",borderRadius:10,padding:"12px 16px",border:"1px solid #1565C030",marginBottom:14,display:"flex",alignItems:"center",gap:12}}>
+          <div style={{fontSize:14,fontWeight:800,color:"#64B5F6",fontFamily:"Georgia,serif"}}>La Vidriería Rosario</div>
+          <div style={{flex:1}}/>
+          {cot?.numero&&<div style={{fontFamily:"monospace",fontSize:16,fontWeight:700,color:"#FFB74D",background:"#1a1000",padding:"4px 12px",borderRadius:7,border:"1px solid #FFB74D30"}}>{cot.numero}</div>}
+        </div>
+
+        {/* DATOS CLIENTE */}
+        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1565C040",marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#64B5F6",textTransform:"uppercase",marginBottom:10}}>Datos del Cliente</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <Field label="Seleccionar cliente">
+              <Sel value={form.cliente} onChange={e=>onClienteChange(e.target.value)}>
+                <option value="">Sin asignar</option>
+                {clientes.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </Sel>
+            </Field>
+            <Field label="Descripción del trabajo">
+              <Input value={form.titulo} onChange={e=>set("titulo",e.target.value)} placeholder="Ej: Mampara baño planta alta"/>
+            </Field>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+            <Field label="Nombre *"><Input value={form.contacto_nombre} onChange={e=>set("contacto_nombre",e.target.value)} placeholder="Nombre completo..."/></Field>
+            <Field label="Teléfono *"><Input value={form.contacto_tel} onChange={e=>set("contacto_tel",e.target.value)} placeholder="341 000-0000"/></Field>
+            <Field label="Domicilio *"><Input value={form.contacto_dom} onChange={e=>set("contacto_dom",e.target.value)} placeholder="Calle y número..."/></Field>
+          </div>
+        </div>
+
+        {/* DETALLE DE ÍTEMS */}
+        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase"}}>🔷 Detalle de Materiales y Servicio</div>
+            <Btn small onClick={addItem}><Icon name="plus" size={13}/> Agregar ítem</Btn>
+          </div>
+
+          {(form.items||[]).map((item,i)=>(
+            <div key={i} style={{background:"#0a1828",borderRadius:9,padding:12,marginBottom:10,border:`1px solid ${expandedItems[i]?"#1565C040":"#0f2035"}`}}>
+              {/* Fila principal */}
+              <div style={{display:"grid",gridTemplateColumns:"50px 1fr 1fr 90px 90px 110px 28px",gap:8,alignItems:"center",marginBottom:expandedItems[i]?10:0}}>
+                <div>
+                  <div style={{fontSize:9,color:"#3a6a9a",fontWeight:600,marginBottom:3}}>CANT.</div>
+                  <Input type="number" min="1" value={item.cant} onChange={e=>setIt(i,"cant",e.target.value)} style={{textAlign:"center",padding:"6px 4px"}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:"#3a6a9a",fontWeight:600,marginBottom:3}}>TIPO DE VIDRIO</div>
+                  <div>
+                    <Sel value={TIPOS_VIDRIO.includes(item.tipo_vidrio)||item.tipo_vidrio===""?item.tipo_vidrio:"__otro__"}
+                      onChange={e=>{if(e.target.value==="__otro__")setIt(i,"tipo_vidrio","");else setIt(i,"tipo_vidrio",e.target.value);}}>
+                      <option value="">Seleccionar...</option>
+                      {TIPOS_VIDRIO.filter(t=>t!=="Otro").map(t=><option key={t} value={t}>{t}</option>)}
+                      <option value="__otro__">✏️ Escribir...</option>
+                    </Sel>
+                    {(!TIPOS_VIDRIO.includes(item.tipo_vidrio)&&item.tipo_vidrio!=="")||item.tipo_vidrio===""&&(form.items[i].tipo_vidrio===""&&expandedItems[i])?null:null}
+                    {!TIPOS_VIDRIO.filter(t=>t!=="Otro").includes(item.tipo_vidrio)&&item.tipo_vidrio!==""&&(
+                      <Input value={item.tipo_vidrio} onChange={e=>setIt(i,"tipo_vidrio",e.target.value)} placeholder="Tipo personalizado..." style={{marginTop:4}}/>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:"#3a6a9a",fontWeight:600,marginBottom:3}}>DESCRIPCIÓN</div>
+                  <Input value={item.desc} onChange={e=>setIt(i,"desc",e.target.value)} placeholder="Detalle del trabajo..."/>
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:"#3a6a9a",fontWeight:600,marginBottom:3}}>ANCHO mm</div>
+                  <Input type="number" value={item.ancho} onChange={e=>setIt(i,"ancho",e.target.value)} placeholder="0"/>
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:"#3a6a9a",fontWeight:600,marginBottom:3}}>ALTO mm</div>
+                  <Input type="number" value={item.alto} onChange={e=>setIt(i,"alto",e.target.value)} placeholder="0"/>
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:"#3a6a9a",fontWeight:600,marginBottom:3}}>PRECIO UNIT. $</div>
+                  <Input type="number" value={item.precio} onChange={e=>setIt(i,"precio",e.target.value)} placeholder="0"/>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:4,paddingTop:16}}>
+                  <button onClick={()=>toggleExpand(i)} title={expandedItems[i]?"Ocultar plano":"Agregar plano"}
+                    style={{background:expandedItems[i]?"#1565C020":"transparent",border:`1px solid ${expandedItems[i]?"#1565C0":"#1e3a5a"}`,
+                      color:expandedItems[i]?"#64B5F6":"#3a6a9a",cursor:"pointer",padding:"4px 5px",borderRadius:5,fontSize:11,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    ✏️
+                  </button>
+                  <button onClick={()=>removeItem(i)} disabled={(form.items||[]).length<=1}
+                    style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,opacity:(form.items||[]).length<=1?0.3:1,display:"flex"}}>
+                    <Icon name="trash" size={13}/>
+                  </button>
+                </div>
+              </div>
+              {/* Observaciones */}
+              <div style={{marginBottom:expandedItems[i]?8:0}}>
+                <Input value={item.obs} onChange={e=>setIt(i,"obs",e.target.value)}
+                  placeholder="Observaciones: borde pulido, corte especial, bisagra, perforación..."
+                  style={{fontSize:12}}/>
+              </div>
+              {/* Mini Canvas */}
+              {expandedItems[i]&&(
+                <MiniCanvas value={item.plano||[]} onChange={v=>setIt(i,"plano",v)} itemIdx={i}/>
+              )}
+            </div>
+          ))}
+
+          {/* Totales + IVA */}
+          {sub>0&&<div style={{marginTop:8,padding:"12px 14px",background:"#0a1828",borderRadius:8,border:"1px solid #1565C025"}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:8}}>
+              <input type="checkbox" checked={form.con_iva!==false} onChange={e=>set("con_iva",e.target.checked)}
+                style={{width:15,height:15,accentColor:"#1565C0",cursor:"pointer"}}/>
+              <span style={{fontSize:12,color:"#7ab2e8",fontWeight:600}}>Aplicar IVA (21%)</span>
+              <span style={{fontSize:11,color:"#3a6a9a"}}>{form.con_iva!==false?"Factura":"Efectivo / sin IVA"}</span>
+            </label>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#5a8ab8",marginBottom:2}}><span>Subtotal</span><span>${sub.toLocaleString("es-AR")}</span></div>
+            {form.con_iva!==false&&<div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#5a8ab8",marginBottom:2}}><span>IVA 21%</span><span>${ivaAmt.toLocaleString("es-AR")}</span></div>}
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700,color:"#64B5F6",borderTop:"1px solid #1565C030",paddingTop:6,marginTop:4}}><span>TOTAL</span><span>${total.toLocaleString("es-AR")}</span></div>
+          </div>}
+        </div>
+
+        {/* CONDICIONES + FECHAS */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
           <Field label="Fecha"><Input type="date" value={form.fecha} onChange={e=>set("fecha",e.target.value)}/></Field>
           <Field label="Válida hasta"><Input type="date" value={form.validez} onChange={e=>set("validez",e.target.value)}/></Field>
         </div>
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:14}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase"}}>Ítems</div>
-            <Btn small onClick={addItem}><Icon name="plus" size={13}/> Agregar</Btn>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 65px 120px 28px",gap:8,marginBottom:5}}>
-            {["Descripción","Cant.","Precio unit.",""].map(h=><span key={h} style={{fontSize:11,color:"#3a6a9a",fontWeight:600,textAlign:h==="Precio unit."?"right":"left"}}>{h}</span>)}
-          </div>
-          {(form.items||[]).map((item,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 65px 120px 28px",gap:8,marginBottom:7,alignItems:"center"}}>
-              <Input value={item.desc} onChange={e=>setItem(i,"desc",e.target.value)} placeholder="Ej: Vidrio Float 6mm"/>
-              <Input type="number" value={item.cant} min="1" onChange={e=>setItem(i,"cant",e.target.value)} style={{textAlign:"center"}}/>
-              <Input type="number" value={item.precio} onChange={e=>setItem(i,"precio",e.target.value)} placeholder="$0"/>
-              <button onClick={()=>removeItem(i)} disabled={(form.items||[]).length<=1} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,opacity:(form.items||[]).length<=1?0.3:1,display:"flex"}}><Icon name="trash" size={13}/></button>
-            </div>
-          ))}
-          {sub>0&&<div style={{marginTop:10,padding:"10px 12px",background:"#0a1828",borderRadius:8,border:"1px solid #1565C025"}}>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#5a8ab8",marginBottom:2}}><span>Subtotal</span><span>${sub.toLocaleString("es-AR")}</span></div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#5a8ab8",marginBottom:2}}><span>IVA 21%</span><span>${(sub*0.21).toLocaleString("es-AR")}</span></div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700,color:"#64B5F6"}}><span>TOTAL</span><span>${(sub*1.21).toLocaleString("es-AR")}</span></div>
-          </div>}
-        </div>
         <Field label="Condiciones de pago"><Textarea value={form.condiciones} onChange={e=>set("condiciones",e.target.value)}/></Field>
-        <Field label="Notas internas"><Textarea value={form.notas} onChange={e=>set("notas",e.target.value)} placeholder="Notas que no aparecen en el PDF..."/></Field>
-        <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:8}}>
+
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:14,paddingTop:12,borderTop:"1px solid #1e3a5a"}}>
           <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
           <Btn onClick={()=>onSave(form)}><Icon name="plus" size={16}/> {cot?"Guardar":"Crear Cotización"}</Btn>
         </div>
@@ -2669,11 +2983,12 @@ ${bizFooter()}`;
     );
   };
 
+  // ── COTIZACIONES PAGE ────────────────────────────────────────────────────────
   const Cotizaciones=()=>{
     const ESTADO_COT=[
       {id:"pendiente",label:"Pendiente",color:"#FFB74D",bg:"#2a1f0a"},
       {id:"enviada",label:"Enviada",color:"#64B5F6",bg:"#1a2a3a"},
-      {id:"aprobada",label:"Aprobada",color:"#A5D6A7",bg:"#0a2a0f"},
+      {id:"aceptada",label:"Aceptada",color:"#A5D6A7",bg:"#0a2a0f"},
       {id:"rechazada",label:"Rechazada",color:"#F48FB1",bg:"#2a0a0a"},
       {id:"convertida",label:"→ Orden",color:"#26A69A",bg:"#0a2a26"},
     ];
@@ -2681,28 +2996,27 @@ ${bizFooter()}`;
 
     const convertirAOrden=async(cot)=>{
       const nuevaOrden={
-        titulo: cot.titulo||"Sin título",
         cliente: cot.cliente||"",
-        tipo: cot.tipo||"",
-        etapa: "produccion",
+        contacto_nombre: cot.contacto_nombre||"",
+        contacto_telefono: cot.contacto_tel||"",
+        contacto_domicilio: cot.contacto_dom||"",
+        tipo: "",
+        etapa: "presupuesto",
+        estado: "pendiente",
         fecha: new Date().toISOString().split("T")[0],
-        // Presupuesto — copiado exacto de la cotización
+        ref_cotizacion: cot.numero,
+        vidrios: (cot.items||[]).map(it=>({cant:it.cant||1,tipo:it.tipo_vidrio||"",ancho:it.ancho||"",alto:it.alto||"",obs:it.obs||"",plano:it.plano||[]})),
         pres_items: cot.items||[],
         pres_condiciones: cot.condiciones||"",
-        pres_validez: cot.validez||"",
-        pres_firmante: cot.firmante||"",
-        // Referencia a la cotización original
-        notas: `Generada desde cotización ${cot.numero}`,
-        ref_cotizacion: cot.numero,
-        // Campos vacíos listos para completar
-        med_plano:[], med_notas:"", med_fecha:"",
-        prod_materiales:"", prod_procesos:[], prod_notas:"", prod_fecha_est:"", prod_campos:{},
+        pres_con_iva: cot.con_iva!==false,
+        med_plano:[],
+        prod_materiales:"", prod_procesos:[], prod_notas:"", prod_fecha_est:"", prod_campos:{}, prod_materiales_usados:[],
         inst_fecha:"", inst_direccion:"", inst_responsable:"", inst_firmante:"", inst_notas:"",
         pago_senia:"", pago_senia_fecha:"", pago_senia_metodo:"efectivo",
         pago_total:"", pago_total_fecha:"", pago_total_metodo:"efectivo", pago_notas:"",
       };
       await saveOrden(nuevaOrden);
-      await fsSet("cotizaciones", cot.id, {...cot, estado:"convertida"});
+      await fsSet("cotizaciones",cot.id,{...cot,estado:"convertida"});
       setNav("ordenes");
     };
 
@@ -2717,7 +3031,8 @@ ${bizFooter()}`;
         </div>
         <div style={{display:"grid",gap:8}}>
           {cotizaciones.map(c=>{
-            const total=(c.items||[]).reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0)*1.21;
+            const total=(c.items||[]).reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0)*(c.con_iva!==false?1.21:1);
+            const nombre=c.contacto_nombre||getNombre(c.cliente)||"Sin cliente";
             return(
               <div key={c.id} style={{background:"#071220",borderRadius:11,padding:"12px 16px",border:"1px solid #0f2035",display:"flex",alignItems:"center",gap:12}}>
                 <div style={{background:"#0a1828",border:"1px solid #FFB74D25",borderRadius:7,padding:"4px 10px",minWidth:105,textAlign:"center",flexShrink:0}}>
@@ -2725,13 +3040,18 @@ ${bizFooter()}`;
                   <div style={{fontSize:10,color:"#3a6a9a"}}>{c.fecha}</div>
                 </div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:600,color:"#e2f0ff",marginBottom:2}}>{c.titulo||"Sin título"}</div>
-                  <div style={{fontSize:12,color:"#3a6a9a"}}>{getNombre(c.cliente)}{total>0?` · $${total.toLocaleString("es-AR")}`:""}</div>
+                  <div style={{fontSize:14,fontWeight:600,color:"#e2f0ff",marginBottom:2}}>{c.titulo||nombre}</div>
+                  <div style={{fontSize:12,color:"#3a6a9a"}}>{nombre}{total>0?` · $${total.toLocaleString("es-AR")}`:""}</div>
                 </div>
                 <BadgeCot estado={c.estado}/>
                 <div style={{display:"flex",gap:4}}>
-                  {c.estado!=="convertida"&&<button title="Convertir a Orden" onClick={()=>convertirAOrden(c)} style={{background:"#0a2a26",border:"1px solid #26A69A40",color:"#26A69A",cursor:"pointer",padding:"5px 10px",borderRadius:6,fontSize:11,fontFamily:"inherit",fontWeight:600}}>→ Orden</button>}
-                  <button title="PDF" onClick={()=>printCotizacion(c,getNombre(c.cliente))} style={{background:"none",border:"none",color:"#26A69A",cursor:"pointer",padding:6,borderRadius:6,display:"flex"}}><Icon name="pdf" size={15}/></button>
+                  {c.estado!=="convertida"&&(
+                    <button onClick={()=>convertirAOrden(c)}
+                      style={{background:"#0a2a0f",border:"1px solid #26A69A60",color:"#26A69A",cursor:"pointer",padding:"6px 12px",borderRadius:7,fontSize:12,fontFamily:"inherit",fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
+                      ✅ Convertir en Orden
+                    </button>
+                  )}
+                  <button title="PDF" onClick={()=>printCotizacion(c,getNombre(c.cliente)||c.contacto_nombre)} style={{background:"none",border:"none",color:"#64B5F6",cursor:"pointer",padding:6,borderRadius:6,display:"flex"}}><Icon name="pdf" size={15}/></button>
                   <button onClick={()=>setModal({type:"editar_cotizacion",data:c})} style={{background:"none",border:"none",color:"#3a6a9a",cursor:"pointer",padding:6,display:"flex"}}><Icon name="edit" size={15}/></button>
                   <button onClick={()=>fsDel("cotizaciones",c.id)} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:6,display:"flex"}}><Icon name="trash" size={15}/></button>
                 </div>
@@ -2744,7 +3064,7 @@ ${bizFooter()}`;
     );
   };
 
-  // ── STOCK PAGE ───────────────────────────────────────────────────────────────
+    // ── STOCK PAGE ───────────────────────────────────────────────────────────────
   const CATEGORIAS_STOCK=["Burletes","Perfilería aluminio","Bisagras y herrajes","Silicona y adhesivos","Vidrios (stock propio)","Espejos (stock propio)","Herramientas","Consumibles","Otro"];
 
   const printStock=(items)=>{
