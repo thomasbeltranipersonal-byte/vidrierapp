@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, onSnapshot, setDoc, deleteDoc } from "firebase/firestore";
 
@@ -2343,4 +2343,16 @@ ${bizFooter()}`;
       </Modal>
     </div>
   );
+}
+
+export default function App() {
+  const [currentUser, setCurrentUser] = React.useState(() => {
+    try { return JSON.parse(sessionStorage.getItem("vidrierapp_user")); } catch { return null; }
+  });
+  const handleLogout = () => {
+    sessionStorage.removeItem("vidrierapp_user");
+    setCurrentUser(null);
+  };
+  if (!currentUser) return <LoginScreen onLogin={setCurrentUser}/>;
+  return <AppInner currentUser={currentUser} onLogout={handleLogout}/>;
 }
