@@ -215,6 +215,74 @@ const openPDF = (html) => {
 const mkHTML = (title, body) => `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>${BIZ_CSS}</style></head><body>${body}</body></html>`;
 
 
+// ─── UI PRIMITIVES ───────────────────────────────────────────────────────────
+const iS = {width:"100%",background:"#071220",border:"1px solid #1e3a5a",borderRadius:8,padding:"9px 12px",color:"#c8e0f8",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
+
+const Input = ({style,...p}) => <input style={{...iS,...style}} {...p}/>;
+const Textarea = ({style,...p}) => <textarea style={{...iS,resize:"vertical",minHeight:70,...style}} {...p}/>;
+const Sel = ({style,children,...p}) => <select style={{...iS,...style}} {...p}>{children}</select>;
+
+const Btn = ({variant,small,style,children,...p}) => (
+  <button style={{display:"inline-flex",alignItems:"center",gap:5,padding:small?"5px 12px":"8px 16px",
+    borderRadius:8,border:variant==="secondary"?"1px solid #1e3a5a":"none",
+    background:variant==="secondary"?"transparent":"linear-gradient(135deg,#1565C0,#0d47a1)",
+    color:variant==="secondary"?"#5a8ab8":"#fff",cursor:"pointer",fontSize:small?12:13,
+    fontFamily:"inherit",fontWeight:600,...style}} {...p}>{children}</button>
+);
+
+const Field = ({label,children}) => (
+  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+    {label&&<label style={{fontSize:10,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",letterSpacing:"0.5px"}}>{label}</label>}
+    {children}
+  </div>
+);
+
+const Modal = ({open,onClose,title,children,wide,xwide}) => {
+  if(!open) return null;
+  const maxW = xwide?1100:wide?760:480;
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1000,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 12px",overflowY:"auto"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{background:"#0d1e35",borderRadius:14,width:"100%",maxWidth:maxW,border:"1px solid #1e3a5a",boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:"1px solid #1e3a5a"}}>
+          <div style={{fontSize:16,fontWeight:700,color:"#e2f0ff"}}>{title}</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#3a6a9a",cursor:"pointer",fontSize:20,padding:"0 4px",lineHeight:1}}>✕</button>
+        </div>
+        <div style={{padding:"18px 20px",maxHeight:"82vh",overflowY:"auto"}}>{children}</div>
+      </div>
+    </div>
+  );
+};
+
+const Icon = ({name,size=18}) => {
+  const icons = {
+    home:<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>,
+    orders:<><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></>,
+    board:<><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="4" height="8" rx="1"/></>,
+    clients:<><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></>,
+    glass:<path d="M8 3h8l4 9H4L8 3z"/>,
+    pdf:<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></>,
+    plus:<><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,
+    edit:<><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></>,
+    trash:<><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></>,
+    settings:<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></>,
+    optimize:<><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></>,
+    refresh:<><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></>,
+    template:<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></>,
+    search:<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>,
+    close:<><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
+  };
+  return(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
+      {icons[name]||icons.glass}
+    </svg>
+  );
+};
+
+const Badge = ({estado,estados}) => {
+  const e = (estados||[]).find(x=>x.id===estado)||{label:estado||"—",color:"#90A4AE",bg:"#1a1f22"};
+  return <span style={{background:e.bg,color:e.color,border:`1px solid ${e.color}40`,padding:"2px 10px",borderRadius:99,fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>{e.label}</span>;
+};
+
 const ESTADOS_DEFAULT = [
   { id: "presupuesto",   label: "Presupuesto",         color: "#64B5F6", bg: "#1a2a3a" },
   { id: "pendiente",     label: "Pendiente",            color: "#FFB74D", bg: "#2a1f0a" },
@@ -794,6 +862,135 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
 };
 
 // ─── COTIZACIONES PAGE ───────────────────────────────────────────────────────
+
+// ─── PLANTILLA BUILDER ──────────────────────────────────────────────────────
+const PlantillaBuilder=({plantilla,onSave,onClose})=>{
+  const [form,setForm]=useState(plantilla||{nombre:"",tipo:"",campos:[]});
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const addCampo=()=>setForm(f=>({...f,campos:[...f.campos,{key:"campo_"+Date.now(),label:"",tipo:"texto",opciones:[]}]}));
+  const setCampo=(i,k,v)=>setForm(f=>{const c=[...f.campos];c[i]={...c[i],[k]:v};return{...f,campos:c};});
+  const removeCampo=(i)=>setForm(f=>({...f,campos:f.campos.filter((_,idx)=>idx!==i)}));
+  return(
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+        <Field label="Nombre de la plantilla"><Input value={form.nombre} onChange={e=>set("nombre",e.target.value)} placeholder="Ej: Mampara de baño..."/></Field>
+        <Field label="Tipo de trabajo"><Input value={form.tipo} onChange={e=>set("tipo",e.target.value)} placeholder="Ej: Mampara..."/></Field>
+      </div>
+      <div style={{marginBottom:10}}>
+        {form.campos.map((c,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 28px",gap:8,marginBottom:8,alignItems:"end"}}>
+            <Field label="Etiqueta"><Input value={c.label} onChange={e=>setCampo(i,"label",e.target.value)} placeholder="Nombre del campo"/></Field>
+            <Field label="Tipo"><Sel value={c.tipo} onChange={e=>setCampo(i,"tipo",e.target.value)}><option value="texto">Texto</option><option value="numero">Número</option><option value="select">Selección</option><option value="textarea">Texto largo</option></Sel></Field>
+            <button onClick={()=>removeCampo(i)} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,marginBottom:2,display:"flex"}}><Icon name="trash" size={14}/></button>
+          </div>
+        ))}
+        <Btn small variant="secondary" onClick={addCampo}><Icon name="plus" size={13}/> Agregar campo</Btn>
+      </div>
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end",paddingTop:12,borderTop:"1px solid #1e3a5a"}}>
+        <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+        <Btn onClick={()=>onSave({...form,id:form.id||("tpl_"+Date.now())})}><Icon name="plus" size={16}/> Guardar plantilla</Btn>
+      </div>
+    </div>
+  );
+};
+
+// ─── PROCESS MANAGER ────────────────────────────────────────────────────────
+const ProcessManager=({estados,onSave,onClose})=>{
+  const [lista,setLista]=useState([...estados]);
+  const [nuevo,setNuevo]=useState("");
+  const agregar=()=>{
+    if(!nuevo.trim()) return;
+    const id=nuevo.trim().toLowerCase().replace(/\s+/g,"_");
+    setLista(l=>[...l,{id,label:nuevo.trim(),color:"#90A4AE",bg:"#1a1f22"}]);
+    setNuevo("");
+  };
+  return(
+    <div>
+      <div style={{display:"flex",gap:8,marginBottom:14}}>
+        <Input value={nuevo} onChange={e=>setNuevo(e.target.value)} onKeyDown={e=>e.key==="Enter"&&agregar()} placeholder="Nuevo estado..." style={{flex:1}}/>
+        <Btn small onClick={agregar}><Icon name="plus" size={13}/> Agregar</Btn>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
+        {lista.map((e,i)=>(
+          <div key={e.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"#0a1020",borderRadius:8,border:"1px solid #0f2035"}}>
+            <span style={{width:10,height:10,borderRadius:"50%",background:e.color,flexShrink:0}}/>
+            <div style={{flex:1,fontSize:13,color:"#c8e0f8",fontWeight:500}}>{e.label}</div>
+            {!e.ocultar&&<button onClick={()=>setLista(l=>l.filter((_,idx)=>idx!==i))} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,display:"flex"}}><Icon name="trash" size={13}/></button>}
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:14,paddingTop:12,borderTop:"1px solid #1e3a5a"}}>
+        <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+        <Btn onClick={()=>onSave(lista)}>✓ Guardar ({lista.length} estados)</Btn>
+      </div>
+    </div>
+  );
+};
+
+// ─── OPTIMIZADOR DE CORTES ───────────────────────────────────────────────────
+const Optimizer=()=>{
+  const [sheetW,setSheetW]=useState(3600);
+  const [sheetH,setSheetH]=useState(2500);
+  const [piezas,setPiezas]=useState([{w:"",h:"",qty:1,label:""}]);
+  const [result,setResult]=useState(null);
+  const addPieza=()=>setPiezas(p=>[...p,{w:"",h:"",qty:1,label:""}]);
+  const setP=(i,k,v)=>setPiezas(p=>{const a=[...p];a[i]={...a[i],[k]:v};return a;});
+  const optimizar=()=>{
+    const pieces=piezas.filter(p=>+p.w>0&&+p.h>0).flatMap(p=>Array(+p.qty||1).fill({w:+p.w,h:+p.h,label:p.label||`${p.w}×${p.h}`}));
+    if(!pieces.length){alert("Agregá piezas con medidas.");return;}
+    // Simple shelf-first algorithm
+    const sheets=[];
+    let sheet={placed:[],spaceX:0,spaceY:0,rowH:0};
+    let x=0,y=0,rowH=0;
+    const sorted=[...pieces].sort((a,b)=>b.h-a.h||b.w-a.w);
+    for(const p of sorted){
+      if(x+p.w>sheetW){x=0;y+=rowH;rowH=0;}
+      if(y+p.h>sheetH){sheets.push({placed:sheet.placed});sheet={placed:[]};x=0;y=0;rowH=0;}
+      sheet.placed.push({...p,x,y});
+      x+=p.w;rowH=Math.max(rowH,p.h);
+    }
+    if(sheet.placed.length) sheets.push(sheet);
+    setResult(sheets);
+  };
+  return(
+    <div>
+      <h1 style={{margin:"0 0 4px",fontFamily:"Georgia,serif",fontSize:24,color:"#e2f0ff"}}>Optimización de Cortes</h1>
+      <p style={{margin:"0 0 18px",color:"#3a6a9a",fontSize:13}}>Calculá cuántas hojas necesitás y cómo distribuir los cortes</p>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14,maxWidth:400}}>
+        <Field label="Ancho hoja (mm)"><Input type="number" value={sheetW} onChange={e=>setSheetW(+e.target.value)}/></Field>
+        <Field label="Alto hoja (mm)"><Input type="number" value={sheetH} onChange={e=>setSheetH(+e.target.value)}/></Field>
+      </div>
+      {piezas.map((p,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 60px 1fr 28px",gap:8,marginBottom:8,alignItems:"end"}}>
+          <Field label="Ancho mm"><Input type="number" value={p.w} onChange={e=>setP(i,"w",e.target.value)}/></Field>
+          <Field label="Alto mm"><Input type="number" value={p.h} onChange={e=>setP(i,"h",e.target.value)}/></Field>
+          <Field label="Cant."><Input type="number" min="1" value={p.qty} onChange={e=>setP(i,"qty",e.target.value)}/></Field>
+          <Field label="Etiqueta"><Input value={p.label} onChange={e=>setP(i,"label",e.target.value)} placeholder="Opcional"/></Field>
+          <button onClick={()=>setPiezas(pp=>pp.filter((_,idx)=>idx!==i))} disabled={piezas.length<=1} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,marginBottom:2,opacity:piezas.length<=1?0.3:1,display:"flex"}}><Icon name="trash" size={14}/></button>
+        </div>
+      ))}
+      <div style={{display:"flex",gap:8,marginBottom:20}}>
+        <Btn small variant="secondary" onClick={addPieza}><Icon name="plus" size={13}/> Agregar pieza</Btn>
+        <Btn small onClick={optimizar}>✂️ Calcular</Btn>
+        {result&&<Btn small variant="secondary" onClick={()=>setResult(null)}>Limpiar</Btn>}
+      </div>
+      {result&&<div>
+        <p style={{color:"#A5D6A7",fontWeight:700,marginBottom:12}}>Se necesitan <span style={{fontSize:20}}>{result.length}</span> hoja{result.length>1?"s":""}</p>
+        {result.map((sheet,si)=>(
+          <div key={si} style={{marginBottom:16}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#64B5F6",marginBottom:6}}>Hoja {si+1}</div>
+            <svg viewBox={`0 0 ${sheetW} ${sheetH}`} width="100%" style={{maxHeight:200,border:"1px solid #1565C0",borderRadius:6,background:"#f8fbff",display:"block"}}>
+              {sheet.placed.map((p,pi)=>{
+                const hue=(pi*47)%360;
+                return <g key={pi}><rect x={p.x} y={p.y} width={p.w} height={p.h} fill={`hsl(${hue},60%,80%)`} stroke="#1565C0" strokeWidth="8"/><text x={p.x+p.w/2} y={p.y+p.h/2} textAnchor="middle" dominantBaseline="middle" fontSize={Math.min(p.w,p.h)*0.2} fill="#1565C0" fontWeight="700">{p.label}</text></g>;
+              })}
+            </svg>
+          </div>
+        ))}
+      </div>}
+    </div>
+  );
+};
 
 function AppInner({ currentUser, onLogout }) {
   const [nav,setNav]=useState("home");
