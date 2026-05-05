@@ -237,1087 +237,334 @@ const TIPOS_TRABAJO = ["Mampara de Baño","Espejo","Vidrio Ventana/Puerta","Trab
 const TIPOS_VIDRIO_DEFAULT = ["Float 3mm","Float 4mm","Float 5mm","Float 6mm","Float 8mm","Float 10mm","Templado 6mm","Templado 8mm","Templado 10mm","Templado 12mm","Laminado 4+4","Laminado 6+6","Espejo 3mm","Espejo 4mm","Espejo 5mm","Satinado","Arenado","Reflectivo","DVH","Curvo"];
 const TIPOS_VIDRIO = TIPOS_VIDRIO_DEFAULT; // fallback — se sobreescribe con Firebase
 
-// ─── CORTES PREDEFINIDOS ─────────────────────────────────────────────────────
-const CORTES_PREDEFINIDOS = [
-  {
-    id:"corte_l", label:"Corte en L", emoji:"⌐",
-    desc:"Esquina cortada en ángulo recto",
-    buildShapes:(w,h,cx,cy)=>[
-      // Vidrio con corte en L en esquina sup-der
-      {type:"rect",x1:50,y1:50,x2:50+w-cx,y2:50+h,id:"v1",corners:[0,0,0,0],medidaAncho:`${w}mm`,medidaAlto:`${h}mm`},
-      {type:"rect",x1:50+w-cx,y1:50+cy,x2:50+w,y2:50+h,id:"v2",corners:[0,0,0,0]},
-      // Cota del corte
-      {type:"segment",x1:50+w-cx,y1:30,x2:50+w,y2:30,id:"c1",medidaLinea:`${cx}mm`},
-      {type:"segment",x1:50+w+10,y1:50,x2:50+w+10,y2:50+cy,id:"c2",medidaLinea:`${cy}mm`},
-      {type:"text",x:50+w/2-20,y:50+h/2+5,text:"CORTE L",id:"lbl"},
-    ]
-  },
-  {
-    id:"corte_diagonal", label:"Corte diagonal", emoji:"◺",
-    desc:"Esquina en 45°",
-    buildShapes:(w,h,cx,cy)=>[
-      {type:"rect",x1:50,y1:50,x2:50+w,y2:50+h,id:"v1",corners:[0,0,0,0],medidaAncho:`${w}mm`,medidaAlto:`${h}mm`},
-      {type:"segment",x1:50+w-cx,y1:50,x2:50+w,y2:50+cy,id:"diag",medidaLinea:"corte"},
-      {type:"segment",x1:50+w-cx,y1:30,x2:50+w,y2:30,id:"c1",medidaLinea:`${cx}mm`},
-      {type:"text",x:50+w/2-30,y:50+h/2+5,text:"CORTE DIAGONAL",id:"lbl"},
-    ]
-  },
-  {
-    id:"entrante_rect", label:"Entrante rectangular", emoji:"⊓",
-    desc:"Mordida rectangular en un lado",
-    buildShapes:(w,h,cx,cy)=>[
-      {type:"rect",x1:50,y1:50,x2:50+w,y2:50+h,id:"v1",corners:[0,0,0,0],medidaAncho:`${w}mm`,medidaAlto:`${h}mm`},
-      {type:"rect",x1:50+Math.round((w-cx)/2),y1:50,x2:50+Math.round((w+cx)/2),y2:50+cy,id:"entrante",corners:[0,0,0,0]},
-      {type:"segment",x1:50+Math.round((w-cx)/2),y1:30,x2:50+Math.round((w+cx)/2),y2:30,id:"c1",medidaLinea:`${cx}mm`},
-      {type:"segment",x1:50+w+10,y1:50,x2:50+w+10,y2:50+cy,id:"c2",medidaLinea:`${cy}mm`},
-      {type:"text",x:50+w/2-30,y:50+h/2+10,text:"ENTRANTE",id:"lbl"},
-    ]
-  },
-  {
-    id:"perforacion", label:"Perforación", emoji:"◎",
-    desc:"Agujero circular en posición configurable",
-    buildShapes:(w,h,cx,cy)=>[
-      {type:"rect",x1:50,y1:50,x2:50+w,y2:50+h,id:"v1",corners:[0,0,0,0],medidaAncho:`${w}mm`,medidaAlto:`${h}mm`},
-      {type:"circle",x1:50+cx-15,y1:50+cy-15,x2:50+cx+15,y2:50+cy+15,id:"perf",medidaAncho:"∅30"},
-      {type:"segment",x1:50,y1:50+cy,x2:50+cx,y2:50+cy,id:"c1",medidaLinea:`${cx}mm`},
-      {type:"segment",x1:50+cx,y1:50,x2:50+cx,y2:50+cy,id:"c2",medidaLinea:`${cy}mm`},
-      {type:"text",x:50+cx-10,y:50+cy+30,text:"PERF",id:"lbl"},
-    ]
-  },
-  {
-    id:"bisagra", label:"Entrada bisagra", emoji:"⊣",
-    desc:"Corte de bisagra en lateral",
-    buildShapes:(w,h,cx,cy)=>[
-      {type:"rect",x1:50,y1:50,x2:50+w,y2:50+h,id:"v1",corners:[0,0,0,0],medidaAncho:`${w}mm`,medidaAlto:`${h}mm`},
-      // bisagra sup
-      {type:"rect",x1:50,y1:50+cy-10,x2:50+cx,y2:50+cy+10,id:"bis1",corners:[0,0,0,0]},
-      // bisagra inf
-      {type:"rect",x1:50,y1:50+h-cy-10,x2:50+cx,y2:50+h-cy+10,id:"bis2",corners:[0,0,0,0]},
-      {type:"segment",x1:30,y1:50+cy,x2:30,y2:50+h-cy,id:"c1",medidaLinea:`dist: ${h-2*cy}mm`},
-      {type:"text",x:53,y:50+cy+5,text:"BIS",id:"lbl1"},
-      {type:"text",x:53,y:50+h-cy+5,text:"BIS",id:"lbl2"},
-    ]
-  },
-  {
-    id:"arco", label:"Arco superior", emoji:"⌢",
-    desc:"Vidrio con arco en la parte superior",
-    buildShapes:(w,h,cx,cy)=>[
-      {type:"rect",x1:50,y1:50+cy,x2:50+w,y2:50+h,id:"v1",corners:[0,0,0,0],medidaAncho:`${w}mm`,medidaAlto:`${h}mm`},
-      {type:"circle",x1:50,y1:50,x2:50+w,y2:50+cy*2,id:"arco"},
-      {type:"segment",x1:50,y1:50+h+15,x2:50+w,y2:50+h+15,id:"c1",medidaLinea:`${w}mm`},
-      {type:"text",x:50+w/2-20,y:50+cy/2+5,text:"ARCO",id:"lbl"},
-    ]
-  },
-];
+// ─── OBSERVACIONES DEFAULT ──────────────────────────────────────────────────
+const OBS_DEFAULT = ["Con forma","Con perforación","En altura","Con bisel","Con pulido","Espejo"];
+const SERVICIOS_DEFAULT = ["Service de mampara","Service de puerta templada","Instalación estándar","Solo medición","Reparación"];
 
-const PLANTILLAS_DEFAULT = [
-  { id:"t1", nombre:"Mampara Estándar", tipo:"Mampara de Baño", esCustom:false, campos:[
-    {label:"Alto (cm)",key:"alto",tipo:"numero"},{label:"Ancho (cm)",key:"ancho",tipo:"numero"},
-    {label:"Tipo de vidrio",key:"vidrio",tipo:"select",opciones:TIPOS_VIDRIO},
-    {label:"Perfil",key:"perfil",tipo:"texto"},{label:"Color perfil",key:"color_perfil",tipo:"texto"},
-    {label:"Bisagras",key:"bisagras",tipo:"select",opciones:["Con bisagras","Sin bisagras"]},
-    {label:"Observaciones",key:"obs",tipo:"textarea"}]},
-  { id:"t2", nombre:"Espejo con Medidas", tipo:"Espejo", esCustom:false, campos:[
-    {label:"Alto (cm)",key:"alto",tipo:"numero"},{label:"Ancho (cm)",key:"ancho",tipo:"numero"},
-    {label:"Tipo de espejo",key:"vidrio",tipo:"select",opciones:["Espejo 3mm","Espejo 4mm","Espejo biselado","Espejo arenado"]},
-    {label:"Cantos",key:"cantos",tipo:"select",opciones:["Pulidos","Sin pulir","Biselados"]},
-    {label:"Perforaciones",key:"perforaciones",tipo:"texto"},{label:"Observaciones",key:"obs",tipo:"textarea"}]},
-  { id:"t3", nombre:"Vidrio Ventana/Puerta", tipo:"Vidrio Ventana/Puerta", esCustom:false, campos:[
-    {label:"Alto (cm)",key:"alto",tipo:"numero"},{label:"Ancho (cm)",key:"ancho",tipo:"numero"},
-    {label:"Cantidad",key:"cantidad",tipo:"numero"},{label:"Tipo de vidrio",key:"vidrio",tipo:"select",opciones:TIPOS_VIDRIO},
-    {label:"Observaciones",key:"obs",tipo:"textarea"}]},
-  { id:"t4", nombre:"Trabajo de Obra", tipo:"Trabajo de Obra", esCustom:false, campos:[
-    {label:"Descripción del trabajo",key:"descripcion",tipo:"textarea"},{label:"Arquitecto/Obra",key:"obra",tipo:"texto"},
-    {label:"Items",key:"items",tipo:"textarea"},{label:"Planos/Referencia",key:"planos",tipo:"texto"},
-    {label:"Fecha estimada entrega",key:"fecha_entrega",tipo:"fecha"},{label:"Observaciones",key:"obs",tipo:"textarea"}]},
-];
+// ─── MINI CANVAS (plano por orden) ──────────────────────────────────────────
+const MiniCanvas=({value,onChange})=>{
+  const svgRef=useRef(null);
+  const [tool,setTool]=useState("rect");
+  const [shapes,setShapes]=useState(value||[]);
+  const [drawing,setDrawing]=useState(null);
+  const [selId,setSelId]=useState(null);
+  const nid=()=>Math.random().toString(36).slice(2,8);
+  const commit=(sh)=>{setShapes(sh);onChange(sh);};
 
-// ─── LOCAL FALLBACK (unused, kept for reference) ─────────────────────────────
-const newId = () => Date.now().toString(36)+Math.random().toString(36).slice(2,5);
-const newOrderNum = (ordenes) => {
-  const yr = new Date().getFullYear().toString().slice(-2);
-  const existing = ordenes.filter(o=>o.numero?.startsWith(`OT-${yr}`));
-  const max = existing.reduce((m,o)=>{ const n=parseInt(o.numero?.split("-")[2]||0); return n>m?n:m; },0);
-  return `OT-${yr}-${String(max+1).padStart(4,"0")}`;
-};
-
-// ─── ICONS ────────────────────────────────────────────────────────────────────
-const IP = {
-  home:"M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z M9 22V12h6v10",
-  orders:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 M9 5a2 2 0 012-2h2a2 2 0 012 2",
-  board:"M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z",
-  clients:"M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2 M9 7a4 4 0 108 0 M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75",
-  optimize:"M12 2L2 7l10 5 10-5-10-5z M2 17l10 5 10-5 M2 12l10 5 10-5",
-  plus:"M12 5v14 M5 12h14",
-  close:"M18 6L6 18 M6 6l12 12",
-  edit:"M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7 M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z",
-  trash:"M3 6h18 M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6 M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2",
-  search:"M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0",
-  glass:"M8 3h8l4 9H4L8 3z M4 12v6a2 2 0 002 2h12a2 2 0 002-2v-6",
-  template:"M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8",
-  pdf:"M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z M14 2v6h6 M9 15h6 M9 11h6 M9 18h4",
-  settings:"M12 15a3 3 0 100-6 3 3 0 000 6z M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z",
-  refresh:"M23 4v6h-6 M1 20v-6h6 M3.51 9a9 9 0 0114.85-3.36L23 10 M1 14l4.64 4.36A9 9 0 0020.49 15",
-  grip:"M8 6h.01 M8 12h.01 M8 18h.01 M16 6h.01 M16 12h.01 M16 18h.01",
-};
-const Icon = ({name,size=18}) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    {IP[name]?.split(" M").map((d,i)=><path key={i} d={i===0?d:"M"+d}/>)}
-  </svg>
-);
-
-// ─── PRIMITIVES ───────────────────────────────────────────────────────────────
-const iS = {width:"100%",background:"#071220",border:"1px solid #1e3a5a",borderRadius:8,padding:"10px 12px",color:"#c8e0f8",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
-const Input = p => <input style={iS} {...p}/>;
-const Textarea = p => <textarea style={{...iS,minHeight:80,resize:"vertical"}} {...p}/>;
-const Sel = ({children,...p}) => <select style={{...iS,cursor:"pointer"}} {...p}>{children}</select>;
-
-const Btn = ({children,onClick,variant="primary",small,style:s,disabled}) => {
-  const base={display:"inline-flex",alignItems:"center",gap:6,cursor:disabled?"not-allowed":"pointer",border:"none",borderRadius:8,fontWeight:600,fontFamily:"inherit",padding:small?"6px 14px":"10px 20px",fontSize:small?13:14,opacity:disabled?0.5:1};
-  const V={
-    primary:{background:"linear-gradient(135deg,#1565C0,#0d47a1)",color:"#fff",boxShadow:"0 4px 16px rgba(21,101,192,0.3)"},
-    secondary:{background:"#0d1b2a",border:"1px solid #1e3a5a",color:"#7ab2e8"},
-    danger:{background:"#1a0a0a",border:"1px solid #7f2020",color:"#f48fb1"},
-    ghost:{background:"transparent",color:"#5a8ab8"},
-    success:{background:"linear-gradient(135deg,#1b5e20,#2e7d32)",color:"#fff"},
-  };
-  return <button onClick={onClick} disabled={disabled} style={{...base,...V[variant],...s}}>{children}</button>;
-};
-
-const Field = ({label,children}) => (
-  <div style={{marginBottom:16}}>
-    <label style={{display:"block",fontSize:12,fontWeight:600,color:"#5a8ab8",marginBottom:6,letterSpacing:"0.5px",textTransform:"uppercase"}}>{label}</label>
-    {children}
-  </div>
-);
-
-const Badge = ({estado,estados}) => {
-  const list = estados||ESTADOS_DEFAULT;
-  const e = list.find(x=>x.id===estado)||{label:estado,color:"#64B5F6",bg:"#1a2a3a"};
-  return <span style={{background:e.bg,color:e.color,border:`1px solid ${e.color}40`,padding:"2px 10px",borderRadius:99,fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>{e.label}</span>;
-};
-
-const Modal = ({open,onClose,title,children,wide,xwide}) => {
-  if(!open) return null;
-  return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,10,25,0.88)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16,backdropFilter:"blur(4px)"}}
-      onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:"#0d1b2a",border:"1px solid #1e3a5a",borderRadius:16,width:"100%",maxWidth:xwide?1100:wide?900:600,maxHeight:"92vh",overflow:"hidden",display:"flex",flexDirection:"column",boxShadow:"0 24px 80px rgba(0,0,0,0.7)"}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"20px 24px",borderBottom:"1px solid #1e3a5a"}}>
-          <h2 style={{margin:0,fontSize:18,fontWeight:700,color:"#e2f0ff",fontFamily:"Georgia,serif"}}>{title}</h2>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"#5a8ab8",cursor:"pointer",padding:4,borderRadius:8,display:"flex"}}><Icon name="close"/></button>
-        </div>
-        <div style={{overflowY:"auto",padding:24,flex:1}}>{children}</div>
-      </div>
-    </div>
-  );
-};
-
-// ─── PDF GENERATORS ───────────────────────────────────────────────────────────
-const printOrden = (orden, clienteNombre, plantilla, estados) => {
-  const estadoLabel = (estados||ESTADOS_DEFAULT).find(e=>e.id===orden.estado)?.label||orden.estado;
-  const camposHTML = plantilla&&orden.campos_plantilla
-    ? plantilla.campos.map(c=>`<tr><td style="padding:7px 12px;font-weight:600;color:#1565C0;width:38%;border-bottom:1px solid #e8f0ff;font-size:13px">${c.label}</td><td style="padding:7px 12px;border-bottom:1px solid #e8f0ff;font-size:13px">${orden.campos_plantilla[c.key]||"—"}</td></tr>`).join("")
-    : "";
-  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Orden ${orden.numero||""}</title>
-<style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#1a1a2e;margin:0;padding:0}
-.header{background:linear-gradient(135deg,#0d47a1,#1565C0);color:white;padding:22px 32px;display:flex;justify-content:space-between;align-items:center}
-.logo{font-size:20px;font-weight:800;letter-spacing:1px}.numero{font-size:30px;font-weight:900;letter-spacing:2px}
-.body{padding:26px 32px}.section{margin-bottom:22px}
-.st{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin-bottom:14px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.f label{font-size:10px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:block}
-.f p{margin:3px 0 0;font-size:14px;font-weight:600;color:#1a1a2e}
-table{width:100%;border-collapse:collapse}.badge{display:inline-block;padding:4px 14px;border-radius:99px;font-size:11px;font-weight:700;background:#e3f2fd;color:#1565C0;border:1px solid #90CAF9}
-.footer{margin-top:28px;padding-top:14px;border-top:1px solid #e8e8e8;font-size:10px;color:#aaa;text-align:center}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>
-<div class="header">
-  <div><div class="logo">La Vidriería Rosario</div><div style="font-size:12px;opacity:0.8;margin-top:3px">Orden de Trabajo</div></div>
-  <div class="numero">${orden.numero||"—"}</div>
-</div>
-<div class="body">
-  <div class="section"><div class="st">Información General</div>
-    <div class="grid">
-      <div class="f"><label>Título</label><p>${orden.titulo||"—"}</p></div>
-      <div class="f"><label>Estado</label><p><span class="badge">${estadoLabel}</span></p></div>
-      <div class="f"><label>Cliente</label><p>${clienteNombre||"—"}</p></div>
-      <div class="f"><label>Tipo de Trabajo</label><p>${orden.tipo||"—"}</p></div>
-      <div class="f"><label>Fecha</label><p>${orden.fecha||"—"}</p></div>
-      <div class="f"><label>Monto</label><p>${orden.monto?"$"+parseFloat(orden.monto).toLocaleString("es-AR"):"—"}</p></div>
-    </div>
-  </div>
-  ${camposHTML?`<div class="section"><div class="st">Especificaciones — ${plantilla?.nombre||""}</div><table>${camposHTML}</table></div>`:""}
-  ${orden.notas?`<div class="section"><div class="st">Notas / Observaciones</div><p style="font-size:14px;line-height:1.7;color:#333;background:#f8f9ff;padding:12px 14px;border-radius:6px;border-left:3px solid #1565C0">${orden.notas}</p></div>`:""}
-  <div class="footer">Generado el ${new Date().toLocaleString("es-AR")} · VidrierApp — Sistema de Gestión</div>
-</div></body></html>`;
-  const w=window.open("","_blank","width=860,height=700");
-  if(w){w.document.write(html);w.document.close();w.onload=()=>{w.focus();w.print();};}
-};
-
-const printOptimizacion = (sheets, hoja, cortes, aprovechamiento) => {
-  const COLORS=["#1565C0","#0277BD","#00838F","#00695C","#2E7D32","#558B2F","#F57F17","#E65100","#AD1457","#6A1B9A"];
-  const scale=460/Math.max(hoja.ancho,hoja.alto);
-  const svgSheets=sheets.map((sheet,idx)=>{
-    const W=hoja.ancho*scale,H=hoja.alto*scale;
-    const uniqueLabels=[...new Set(sheet.map(i=>i.label))];
-    const rects=sheet.map(item=>{
-      const ci=uniqueLabels.indexOf(item.label)%COLORS.length;
-      const pw=item.pw*scale,ph=item.ph*scale;
-      return `<rect x="${item.x*scale}" y="${item.y*scale}" width="${pw}" height="${ph}" fill="${COLORS[ci]}25" stroke="${COLORS[ci]}" stroke-width="1.5" rx="2"/>
-${pw>40&&ph>20?`<text x="${item.x*scale+pw/2}" y="${item.y*scale+ph/2}" text-anchor="middle" dominant-baseline="middle" font-size="${Math.max(8,Math.min(13,pw/9))}" fill="${COLORS[ci]}" font-weight="700" font-family="Arial">${item.label}${item.rotated?" ↺":""}</text>`:""}`;
-    }).join("");
-    return `<div style="margin-bottom:30px;break-inside:avoid;page-break-inside:avoid">
-      <div style="font-size:12px;font-weight:700;color:#1565C0;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Hoja #${idx+1} — ${hoja.ancho}×${hoja.alto}mm · ${sheet.length} pieza${sheet.length!==1?"s":""}</div>
-      <svg width="${W}" height="${H}" style="border:2px solid #1565C0;border-radius:4px;background:#f8fbff;display:block">
-        ${rects}<rect x="0" y="0" width="${W}" height="${H}" fill="none" stroke="#1565C0" stroke-width="2"/>
-      </svg>
-    </div>`;
-  }).join("");
-  const lista=cortes.filter(c=>c.ancho&&c.alto).map(c=>`<tr><td style="padding:6px 10px;border-bottom:1px solid #e8f0ff">${c.label||"Sin etiqueta"}</td><td style="padding:6px 10px;border-bottom:1px solid #e8f0ff;text-align:center">${c.ancho}×${c.alto}mm</td><td style="padding:6px 10px;border-bottom:1px solid #e8f0ff;text-align:center">${c.cantidad}</td></tr>`).join("");
-  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Plan de Cortes</title>
-<style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#1a1a2e;margin:0;padding:0}
-.header{background:linear-gradient(135deg,#0d47a1,#1565C0);color:white;padding:20px 32px;display:flex;justify-content:space-between;align-items:center}
-.body{padding:24px 32px}table{width:100%;border-collapse:collapse;font-size:13px}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:12mm}}</style></head><body>
-<div class="header">
-  <div><div style="font-size:19px;font-weight:800">La Vidriería Rosario</div><div style="font-size:12px;opacity:0.75;margin-top:2px">Plan de Cortes · Generado el ${new Date().toLocaleString("es-AR")}</div></div>
-  <div style="text-align:right"><div style="font-size:32px;font-weight:900">${aprovechamiento}%</div><div style="font-size:11px;opacity:0.8">aprovechamiento</div></div>
-</div>
-<div class="body">
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px">
-    <div style="background:#e3f2fd;border-radius:10px;padding:14px;text-align:center"><div style="font-size:28px;font-weight:800;color:#1565C0">${sheets.length}</div><div style="font-size:12px;color:#555">Hojas necesarias</div></div>
-    <div style="background:#e8f5e9;border-radius:10px;padding:14px;text-align:center"><div style="font-size:28px;font-weight:800;color:#2E7D32">${aprovechamiento}%</div><div style="font-size:12px;color:#555">Aprovechamiento</div></div>
-    <div style="background:#f3e5f5;border-radius:10px;padding:14px;text-align:center"><div style="font-size:28px;font-weight:800;color:#6A1B9A">${cortes.filter(c=>c.ancho&&c.alto).reduce((s,c)=>s+parseInt(c.cantidad||0),0)}</div><div style="font-size:12px;color:#555">Piezas totales</div></div>
-  </div>
-  <div style="margin-bottom:24px">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin-bottom:10px">Lista de Piezas</div>
-    <table><thead><tr style="background:#e3f2fd"><th style="padding:7px 10px;text-align:left;font-size:11px">Etiqueta</th><th style="padding:7px 10px;text-align:center;font-size:11px">Medida</th><th style="padding:7px 10px;text-align:center;font-size:11px">Cant.</th></tr></thead><tbody>${lista}</tbody></table>
-  </div>
-  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin-bottom:18px">Diagrama de Cortes</div>
-  ${svgSheets}
-</div></body></html>`;
-  const w=window.open("","_blank","width=960,height=800");
-  if(w){w.document.write(html);w.document.close();w.onload=()=>{w.focus();w.print();};}
-};
-
-// ─── FIELD TYPES ─────────────────────────────────────────────────────────────
-const FIELD_TYPES=[{value:"texto",label:"Texto corto"},{value:"numero",label:"Número"},{value:"textarea",label:"Texto largo"},{value:"fecha",label:"Fecha"},{value:"select",label:"Lista de opciones"}];
-
-// ─── PLANTILLA BUILDER ────────────────────────────────────────────────────────
-const PlantillaBuilder = ({plantilla,onSave,onClose}) => {
-  const [nombre,setNombre]=useState(plantilla?.nombre||"");
-  const [tipo,setTipo]=useState(plantilla?.tipo||"");
-  const [campos,setCampos]=useState(plantilla?.campos||[]);
-  const addCampo=()=>setCampos(c=>[...c,{key:"f_"+Date.now(),label:"",tipo:"texto",opciones:[]}]);
-  const removeCampo=(i)=>setCampos(c=>c.filter((_,idx)=>idx!==i));
-  const updateCampo=(i,k,v)=>setCampos(c=>c.map((x,idx)=>idx===i?{...x,[k]:v}:x));
-  const valid=nombre.trim()&&campos.length>0&&campos.every(c=>c.label.trim());
-  return(
-    <div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-        <Field label="Nombre de la plantilla"><Input value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Ej: Baranda de Balcón"/></Field>
-        <Field label="Tipo de trabajo"><Sel value={tipo} onChange={e=>setTipo(e.target.value)}><option value="">Seleccionar...</option>{TIPOS_TRABAJO.map(t=><option key={t} value={t}>{t}</option>)}</Sel></Field>
-      </div>
-      <div style={{background:"#071220",borderRadius:12,padding:16,border:"1px solid #1e3a5a",marginBottom:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <div style={{color:"#5a8ab8",fontSize:12,fontWeight:600,textTransform:"uppercase"}}>Campos del Formulario</div>
-          <Btn small onClick={addCampo}><Icon name="plus" size={14}/> Agregar campo</Btn>
-        </div>
-        {campos.length===0&&<div style={{color:"#2a4a6a",fontSize:13,padding:"12px 0",textAlign:"center"}}>Agregá al menos un campo</div>}
-        {campos.map((campo,i)=>(
-          <div key={i} style={{padding:12,background:"#0a1828",borderRadius:9,border:"1px solid #0f2035",marginBottom:8}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 28px",gap:10,alignItems:"end"}}>
-              <Field label="Nombre del campo"><Input value={campo.label} onChange={e=>updateCampo(i,"label",e.target.value)} placeholder="Ej: Alto total"/></Field>
-              <Field label="Tipo"><Sel value={campo.tipo} onChange={e=>updateCampo(i,"tipo",e.target.value)}>{FIELD_TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</Sel></Field>
-              <button onClick={()=>removeCampo(i)} style={{background:"none",border:"none",color:"#f48fb1",cursor:"pointer",padding:"10px 4px",marginBottom:16}}><Icon name="trash" size={14}/></button>
-            </div>
-            {campo.tipo==="select"&&(
-              <Field label="Opciones (una por línea)">
-                <Textarea value={(campo.opciones||[]).join("\n")} onChange={e=>updateCampo(i,"opciones",e.target.value.split("\n").filter(Boolean))} placeholder={"Opción 1\nOpción 2"} style={{minHeight:60}}/>
-              </Field>
-            )}
-          </div>
-        ))}
-      </div>
-      <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-        <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
-        <Btn disabled={!valid} onClick={()=>onSave({id:plantilla?.id||newId(),nombre,tipo,esCustom:true,campos:campos.map(c=>({...c,key:c.key||"f_"+newId()}))})}><Icon name="template" size={16}/> {plantilla?"Guardar Cambios":"Crear Plantilla"}</Btn>
-      </div>
-    </div>
-  );
-};
-
-// ─── DRAWING TEMPLATES ───────────────────────────────────────────────────────
-const DrawingTemplates = ({shapes, onLoad}) => {
-  const DEFAULT_TEMPLATES = [
-    { id:"tpl_mampara", name:"Mampara estándar", shapes:[
-      {type:"rect",x1:100,y1:50,x2:300,y2:350,id:"r1",corners:[0,0,0,0]},
-      {type:"text",x:150,y:210,text:"Mampara",id:"t1"},
-    ]},
-    { id:"tpl_espejo", name:"Espejo rectangular", shapes:[
-      {type:"rect",x1:100,y1:80,x2:400,y2:280,id:"r1",corners:[0,0,0,0]},
-      {type:"text",x:200,y:190,text:"Espejo",id:"t1"},
-    ]},
-  ];
-  const [templates, setTemplates] = useState(()=>{
-    try{ const v=localStorage.getItem("drawing_templates"); return v?JSON.parse(v):DEFAULT_TEMPLATES; }
-    catch{ return DEFAULT_TEMPLATES; }
-  });
-  const [showSave, setShowSave] = useState(false);
-  const [saveName, setSaveName] = useState("");
-
-  useEffect(()=>{
-    try{ localStorage.setItem("drawing_templates",JSON.stringify(templates)); }catch{}
-  },[templates]);
-
-  const saveTemplate = () => {
-    if(!saveName.trim()||!shapes.length) return;
-    const tpl={id:"tpl_"+newId(), name:saveName.trim(), shapes:[...shapes]};
-    setTemplates(t=>[...t,tpl]);
-    setSaveName(""); setShowSave(false);
-  };
-  const deleteTemplate = (id) => setTemplates(t=>t.filter(x=>x.id!==id));
-
-  // Mini SVG preview of a template
-  const MiniPreview = ({shapes:sh}) => {
-    if(!sh?.length) return <div style={{width:80,height:60,background:"#0a1520",borderRadius:5,border:"1px solid #0f2035"}}/>;
-    const allX=sh.flatMap(s=>[s.x1,s.x2,s.x??0].filter(v=>v!=null));
-    const allY=sh.flatMap(s=>[s.y1,s.y2,s.y??0].filter(v=>v!=null));
-    const minX=Math.min(...allX)-5, minY=Math.min(...allY)-5;
-    const maxX=Math.max(...allX)+5, maxY=Math.max(...allY)+5;
-    const W=maxX-minX||80, H=maxY-minY||60;
-    const scale=Math.min(80/W,60/H);
-    return(
-      <svg width="80" height="60" style={{background:"#0a1520",borderRadius:5,border:"1px solid #0f2035",display:"block",flexShrink:0}}>
-        <g transform={`translate(${-minX*scale},${-minY*scale}) scale(${scale})`}>
-          {sh.map((s,i)=>{
-            if(s.type==="segment") return <line key={i} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke="#1e90ff" strokeWidth="2"/>;
-            if(s.type==="text") return <text key={i} x={s.x} y={s.y} fontSize="8" fill="#64B5F6">{s.text?.slice(0,8)}</text>;
-            if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return <ellipse key={i} cx={cx} cy={cy} rx={rx} ry={ry} fill="#1565C012" stroke="#1e90ff" strokeWidth="1.5"/>;}
-            const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
-            const corners=s.corners||[0,0,0,0];
-            return <path key={i} d={buildRectPath(x,y,w,h,corners)} fill="#1565C012" stroke="#1e90ff" strokeWidth="1.5"/>;
-          })}
-        </g>
-      </svg>
-    );
-  };
-
-  return(
-    <div style={{background:"#071220",border:"1px solid #1e3a5a",borderRadius:10,padding:14}}>
-      <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Plantillas de Plano</div>
-
-      {templates.map(tpl=>(
-        <div key={tpl.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,padding:"8px 9px",background:"#0a1828",borderRadius:8,border:"1px solid #0f2035"}}>
-          <MiniPreview shapes={tpl.shapes}/>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:12,fontWeight:600,color:"#c8e0f8",marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tpl.name}</div>
-            <div style={{display:"flex",gap:5}}>
-              <button onClick={()=>onLoad([...tpl.shapes.map(s=>({...s,id:newId()}))])}
-                style={{padding:"3px 9px",borderRadius:5,border:"none",background:"#1565C020",color:"#64B5F6",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:600}}>
-                Cargar
-              </button>
-              <button onClick={()=>deleteTemplate(tpl.id)}
-                style={{padding:"3px 7px",borderRadius:5,border:"none",background:"#2a0a0a",color:"#f48fb1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>
-                ✕
-              </button>
-            </div>
-          </div>
-        </div>
-      ))}
-
-      {!showSave&&(
-        <button onClick={()=>{if(shapes.length)setShowSave(true);}}
-          disabled={!shapes.length}
-          style={{width:"100%",padding:"7px 0",borderRadius:7,border:"1px dashed #1e3a5a",background:"transparent",color:shapes.length?"#5a8ab8":"#1e3a5a",cursor:shapes.length?"pointer":"not-allowed",fontSize:12,fontFamily:"inherit",marginTop:4}}>
-          + Guardar plano actual como plantilla
-        </button>
-      )}
-      {showSave&&(
-        <div style={{marginTop:6}}>
-          <div style={{fontSize:11,color:"#5a8ab8",marginBottom:5}}>Nombre de la plantilla</div>
-          <div style={{display:"flex",gap:6}}>
-            <input autoFocus value={saveName} onChange={e=>setSaveName(e.target.value)}
-              onKeyDown={e=>{if(e.key==="Enter")saveTemplate();if(e.key==="Escape")setShowSave(false);}}
-              placeholder="Ej: Paño fijo esquina curva"
-              style={{...iS,padding:"5px 8px",fontSize:12,flex:1}}/>
-            <button onClick={saveTemplate} style={{padding:"5px 10px",borderRadius:6,border:"none",background:"#1565C0",color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:12}}>✓</button>
-            <button onClick={()=>setShowSave(false)} style={{padding:"5px 8px",borderRadius:6,border:"1px solid #1e3a5a",background:"none",color:"#5a8ab8",cursor:"pointer",fontSize:12}}>✕</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ─── DRAWING CANVAS v2 ───────────────────────────────────────────────────────
-const CORNER_LABELS = ["↖ Sup-Izq","↗ Sup-Der","↘ Inf-Der","↙ Inf-Izq"];
-
-const buildRectPath = (x,y,w,h,corners=[0,0,0,0]) => {
-  const [tl,tr,br,bl] = corners.map(r=>Math.max(0,Math.min(r,Math.min(w,h)/2)));
-  return [
-    `M ${x+tl} ${y}`,
-    `L ${x+w-tr} ${y}`, tr>0?`Q ${x+w} ${y} ${x+w} ${y+tr}`:"",
-    `L ${x+w} ${y+h-br}`, br>0?`Q ${x+w} ${y+h} ${x+w-br} ${y+h}`:"",
-    `L ${x+bl} ${y+h}`,   bl>0?`Q ${x} ${y+h} ${x} ${y+h-bl}`:"",
-    `L ${x} ${y+tl}`,     tl>0?`Q ${x} ${y} ${x+tl} ${y}`:"",
-    "Z"
-  ].filter(Boolean).join(" ");
-};
-
-const DrawingCanvas = ({value, onChange}) => {
-  const svgRef   = useRef(null);
-  const [tool,   setTool]   = useState("rect");
-  const [shapes, setShapes] = useState(value||[]);
-  const [drawing,setDrawing]= useState(null);
-  const [selId,  setSelId]  = useState(null);
-  const [textInput, setTextInput] = useState({show:false,x:0,y:0,val:""});
-  const [history,setHistory]= useState([value||[]]);
-  const [hIdx,   setHIdx]   = useState(0);
-  const [cornerR,setCornerR]= useState([0,0,0,0]); // per-corner radius for selected rect
-
-  const selShape = shapes.find(s=>s.id===selId)||null;
-
-  const commit = (ns) => {
-    const next=[...history.slice(0,hIdx+1),ns];
-    setHistory(next); setHIdx(next.length-1);
-    setShapes(ns); onChange(ns);
-  };
-  const undo = ()=>{ if(hIdx>0){const s=history[hIdx-1];setHIdx(h=>h-1);setShapes(s);onChange(s);} };
-  const redo = ()=>{ if(hIdx<history.length-1){const s=history[hIdx+1];setHIdx(h=>h+1);setShapes(s);onChange(s);} };
-  const deleteSelected = ()=>{ if(selId){commit(shapes.filter(s=>s.id!==selId));setSelId(null);} };
-
-  const snap = (v,grid=10) => Math.round(v/grid)*grid;
-  const getSVGPos = (e) => {
+  const getPos=(e)=>{
     if(!svgRef.current) return {x:0,y:0};
-    const r = svgRef.current.getBoundingClientRect();
-    const vbW = 900, vbH = 450;
-    const scaleX = vbW / r.width;
-    const scaleY = vbH / r.height;
-    const raw = {x:(e.clientX-r.left)*scaleX, y:(e.clientY-r.top)*scaleY};
-    return e.ctrlKey ? raw : {x:snap(raw.x),y:snap(raw.y)};
+    const r=svgRef.current.getBoundingClientRect();
+    const sx=500/r.width, sy=220/r.height;
+    const cx=e.touches?e.touches[0].clientX:e.clientX;
+    const cy=e.touches?e.touches[0].clientY:e.clientY;
+    const snap=v=>Math.round(v/10)*10;
+    return {x:snap((cx-r.left)*sx),y:snap((cy-r.top)*sy)};
   };
 
-  const [dragShape,setDragShape] = useState(null); // {id, startMouse, startShape}
-
-  const onMouseDown = (e) => {
-    if(e.target.dataset.handle) return;
-    const p=getSVGPos(e);
-    if(tool==="select") return; // shape click handles selection; drag is handled separately
-    if(tool==="text"){ setTextInput({show:true,x:p.x,y:p.y,val:""}); return; }
-    setSelId(null);
-    const isSquare = tool==="square";
-    const type = (tool==="square")?"rect":tool;
-    setDrawing({type, x1:p.x,y1:p.y,x2:p.x,y2:p.y, id:newId(), square:isSquare, corners:[0,0,0,0]});
-  };
-
-  const onShapeDragStart = (e,id) => {
-    if(tool!=="select") return;
-    const p=getSVGPos(e);
-    const s=shapes.find(x=>x.id===id);
-    setDragShape({id, startMouse:p, startShape:{...s}});
-    setSelId(id);
-    e.stopPropagation();
-  };
-
-  const onMouseMove = (e) => {
-    const p=getSVGPos(e);
-    // move selected shape
-    if(dragShape&&tool==="select"){
-      const dx=p.x-dragShape.startMouse.x, dy=p.y-dragShape.startMouse.y;
-      const s=dragShape.startShape;
-      setShapes(sh=>sh.map(x=>x.id===dragShape.id?{...x,
-        x1:(s.x1||0)+dx, y1:(s.y1||0)+dy,
-        x2:(s.x2||0)+dx, y2:(s.y2||0)+dy,
-        x:(s.x||0)+dx, y:(s.y||0)+dy,
-        points:s.points?.map(pt=>({x:pt.x+dx,y:pt.y+dy}))
-      }:x));
+  const onDown=(e)=>{
+    e.preventDefault();
+    const p=getPos(e);
+    if(tool==="text"){
+      const t=window.prompt("Anotación:");
+      if(t) commit([...shapes,{id:nid(),type:"text",x:p.x,y:p.y,text:t}]);
       return;
     }
-    if(!drawing) return;
-    let x2=p.x,y2=p.y;
-    if(drawing.square||e.shiftKey){
-      const side=Math.max(Math.abs(p.x-drawing.x1),Math.abs(p.y-drawing.y1));
-      x2=drawing.x1+(p.x>=drawing.x1?side:-side);
-      y2=drawing.y1+(p.y>=drawing.y1?side:-side);
-    }
-    setDrawing(d=>({...d,x2,y2}));
+    setDrawing({id:nid(),type:tool,x1:p.x,y1:p.y,x2:p.x,y2:p.y});
   };
-
-  const onMouseUp = () => {
-    if(dragShape){
-      commit(shapes); // save moved position
-      setDragShape(null);
-      return;
-    }
-    if(!drawing) return;
-    const dx=Math.abs(drawing.x2-drawing.x1), dy=Math.abs(drawing.y2-drawing.y1);
-    if(drawing.type==="segment"&&dx<4&&dy<4){setDrawing(null);return;}
-    if(drawing.type!=="segment"&&(dx<8||dy<8)){setDrawing(null);return;}
-    commit([...shapes,drawing]);
+  const onMove=(e)=>{if(!drawing)return;e.preventDefault();const p=getPos(e);setDrawing(d=>({...d,x2:p.x,y2:p.y}));};
+  const onUp=()=>{
+    if(!drawing)return;
+    if(Math.abs(drawing.x2-drawing.x1)>4||Math.abs(drawing.y2-drawing.y1)>4) commit([...shapes,drawing]);
     setDrawing(null);
   };
 
-  const addText = () => {
-    if(!textInput.val.trim()){setTextInput(t=>({...t,show:false}));return;}
-    commit([...shapes,{type:"text",x:textInput.x,y:textInput.y,text:textInput.val,id:newId()}]);
-    setTextInput({show:false,x:0,y:0,val:""});
+  const renderShape=(s,ghost)=>{
+    const sel=selId===s.id&&!ghost;
+    const stroke=ghost?"#42A5F5":sel?"#FF8A65":"#1565C0";
+    const fill=ghost?"rgba(66,165,245,0.1)":sel?"rgba(255,138,101,0.1)":"rgba(21,101,192,0.07)";
+    if(s.type==="text") return <text key={s.id} x={s.x} y={s.y} fontSize="11" fill="#FFB74D" fontWeight="700" style={{cursor:"pointer"}} onClick={()=>setSelId(sel?null:s.id)}>{s.text}</text>;
+    if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.max(2,Math.abs(s.x2-s.x1)/2),ry=Math.max(2,Math.abs(s.y2-s.y1)/2);return <ellipse key={s.id} cx={cx} cy={cy} rx={rx} ry={ry} fill={fill} stroke={stroke} strokeWidth="1.5" style={{cursor:"pointer"}} onClick={()=>setSelId(sel?null:s.id)}/>;}
+    if(s.type==="line") return <line key={s.id} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={stroke} strokeWidth="2" strokeLinecap="round" style={{cursor:"pointer"}} onClick={()=>setSelId(sel?null:s.id)}/>;
+    const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
+    return <rect key={s.id} x={x} y={y} width={w} height={h} fill={fill} stroke={stroke} strokeWidth="1.5" style={{cursor:"pointer"}} onClick={()=>setSelId(sel?null:s.id)}/>;
   };
 
-  // update per-corner radius on selected rect
-  const updateCorner = (idx,val) => {
-    const r=[...cornerR]; r[idx]=+val; setCornerR(r);
-    commit(shapes.map(s=>s.id===selId?{...s,corners:r}:s));
+  const TOOLS=[{id:"rect",label:"□ Rect"},{id:"circle",label:"○ Perf"},{id:"line",label:"╱ Línea"},{id:"text",label:"T Nota"}];
+
+  const printPlano=()=>{
+    if(!shapes.length){alert("El plano está vacío.");return;}
+    const ax=shapes.flatMap(s=>[s.x1,s.x2,s.x].filter(v=>v!=null));
+    const ay=shapes.flatMap(s=>[s.y1,s.y2,s.y].filter(v=>v!=null));
+    const mx=Math.min(...ax)-20,my=Math.min(...ay)-20,Mx=Math.max(...ax)+20,My=Math.max(...ay)+20;
+    const ss=shapes.map(s=>{
+      if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="13" fill="#e65100" font-weight="700">${s.text}</text>`;
+      if(s.type==="line") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2.5" stroke-linecap="round"/>`;
+      if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e8f4ff" stroke="#1565C0" stroke-width="2"/>`;}
+      const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
+      return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#e8f4ff" stroke="#1565C0" stroke-width="2"/>`;
+    }).join("");
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Plano Técnico</title><style>body{margin:20px;font-family:Arial}svg{border:2px solid #1565C0;border-radius:8px;background:#f8fbff}h2{color:#1565C0;margin-bottom:12px}@media print{body{-webkit-print-color-adjust:exact}@page{margin:10mm}}</style></head><body><h2>Plano Técnico — La Vidriería Rosario</h2><svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:80vh">${ss}</svg></body></html>`;
+    const w=window.open("","_blank","width=800,height=700");
+    if(w){w.document.write(html);w.document.close();w.onload=()=>{w.focus();w.print();};}
   };
 
-  const onShapeClick = (e,id) => {
-    e.stopPropagation();
-    setSelId(id);
-    const s=shapes.find(x=>x.id===id);
-    if(s?.corners) setCornerR(s.corners);
-    else setCornerR([0,0,0,0]);
+  return(
+    <div style={{background:"#050e1a",borderRadius:9,padding:10,border:"1px solid #1565C030"}}>
+      <div style={{display:"flex",gap:5,marginBottom:7,flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{fontSize:10,color:"#3a6a9a",fontWeight:700}}>PLANO:</span>
+        {TOOLS.map(t=><button key={t.id} onClick={()=>setTool(t.id)} style={{padding:"3px 8px",borderRadius:5,border:`1px solid ${tool===t.id?"#1565C0":"#1e3a5a"}`,background:tool===t.id?"#1565C020":"transparent",color:tool===t.id?"#64B5F6":"#3a6a9a",cursor:"pointer",fontSize:10,fontFamily:"inherit",fontWeight:tool===t.id?700:400}}>{t.label}</button>)}
+        <div style={{marginLeft:"auto",display:"flex",gap:4}}>
+          {selId&&<button onClick={()=>{commit(shapes.filter(s=>s.id!==selId));setSelId(null);}} style={{padding:"3px 7px",borderRadius:5,border:"1px solid #7f2020",background:"#1a0808",color:"#f48fb1",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>✕ Borrar</button>}
+          {shapes.length>0&&<button onClick={()=>{if(window.confirm("¿Limpiar plano?"))commit([]);}} style={{padding:"3px 7px",borderRadius:5,border:"1px solid #1e3a5a",background:"transparent",color:"#3a6a9a",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>Limpiar</button>}
+          {shapes.length>0&&<button onClick={printPlano} style={{padding:"3px 8px",borderRadius:5,border:"1px solid #26A69A",background:"#0a2a1a",color:"#26A69A",cursor:"pointer",fontSize:10,fontFamily:"inherit",fontWeight:700}}>🖨 Imprimir plano</button>}
+        </div>
+      </div>
+      <svg ref={svgRef} width="100%" viewBox="0 0 500 220" style={{display:"block",background:"#071220",borderRadius:6,border:"1px solid #0f2035",cursor:tool==="text"?"text":"crosshair",touchAction:"none"}}
+        onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}>
+        <defs><pattern id="mcg" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="#0b1e35" strokeWidth="0.5"/></pattern></defs>
+        <rect width="500" height="220" fill="url(#mcg)"/>
+        {shapes.map(s=>renderShape(s,false))}
+        {drawing&&renderShape(drawing,true)}
+      </svg>
+    </div>
+  );
+};
+
+// ─── HELPER: build SVG string for PDF ────────────────────────────────────────
+const buildSVGStr=(shapes)=>{
+  if(!shapes||!shapes.length) return "";
+  const ax=shapes.flatMap(s=>[s.x1,s.x2,s.x].filter(v=>v!=null));
+  const ay=shapes.flatMap(s=>[s.y1,s.y2,s.y].filter(v=>v!=null));
+  if(!ax.length) return "";
+  const mx=Math.min(...ax)-20,my=Math.min(...ay)-20,Mx=Math.max(...ax)+20,My=Math.max(...ay)+20;
+  const ss=shapes.map(s=>{
+    if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="12" fill="#e65100" font-weight="700" font-family="Arial">${s.text}</text>`;
+    if(s.type==="line") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2.5" stroke-linecap="round"/>`;
+    if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2||2,ry=Math.abs(s.y2-s.y1)/2||2;return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e8f4ff" stroke="#1565C0" stroke-width="2"/>`;}
+    const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
+    return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#e8f4ff" stroke="#1565C0" stroke-width="2"/>`;
+  }).join("");
+  return `<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:280px;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block">${ss}</svg>`;
+};
+
+// ─── COTIZACION / ORDEN FORM ─────────────────────────────────────────────────
+const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,estados,onSave,onClose,onConvertir})=>{
+  // modo = "cotizacion" | "orden"
+  const nid=()=>Math.random().toString(36).slice(2,8);
+  const hoy=new Date().toISOString().split("T")[0];
+
+  const emptyItem=()=>({id:nid(),cant:1,tipo_vidrio:"",ancho:"",alto:"",obs:[],servicio:"",colocacion:"con_colocacion"});
+
+  const EMPTY={
+    cliente:"",contacto_nombre:"",contacto_tel:"",contacto_dom:"",
+    fecha:hoy,estado:"presupuesto",
+    items:[emptyItem()],
+    condiciones:"50% al confirmar, saldo contra entrega.",
+    pago_senia:"",pago_saldo:"",pago_total:"",
+    plano:[],
+    inst_notas:"",inst_fecha:"",inst_direccion:"",inst_responsable:"",inst_firmante:"",
+    fotos_instalacion:[],
   };
 
-  // ── RENDER SHAPE ────────────────────────────────────────────────────────────
-  const renderShape = (s, preview=false) => {
-    const sel = s.id===selId && !preview;
-    const stroke = preview?"#42A5F5":"#1e90ff";
-    const fill   = preview?"#42A5F518":"#1565C012";
-    const sw     = sel?2:1.5;
-    const click  = (e)=>onShapeClick(e,s.id);
+  const [form,setForm]=useState(doc?{...EMPTY,...doc}:EMPTY);
+  const [obsExtra,setObsExtra]=useState(obsOpciones||OBS_DEFAULT);
+  const [serviciosExtra,setServiciosExtra]=useState(serviciosOpciones||SERVICIOS_DEFAULT);
+  const [newObs,setNewObs]=useState("");
+  const [newServ,setNewServ]=useState("");
+  const [tab,setTab]=useState("pedido");
 
-    if(s.type==="segment"){
-      const mx=(s.x1+s.x2)/2, my=(s.y1+s.y2)/2;
-      const ang=Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI;
-      const label = s.medidaLinea||"";
-      const lw = Math.max(label.length*7+16, 30);
-      return <g key={s.id} onClick={click} onMouseDown={e=>onShapeDragStart(e,s.id)} style={{cursor:tool==="select"?"move":"pointer"}}>
-        <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={stroke} strokeWidth={sw} strokeLinecap="round"/>
-        <circle cx={s.x1} cy={s.y1} r="3" fill={stroke}/>
-        <circle cx={s.x2} cy={s.y2} r="3" fill={stroke}/>
-        {label&&<g transform={`translate(${mx},${my}) rotate(${ang>90||ang<-90?ang+180:ang})`}>
-          <rect x={-lw/2} y={-11} width={lw} height={14} fill="#071220" rx="3" opacity="0.9"/>
-          <text textAnchor="middle" y={0} fontSize="9" fill="#64B5F6" fontWeight="700" fontFamily="Arial">{label}</text>
-        </g>}
-        {sel&&<><circle cx={s.x1} cy={s.y1} r="6" fill="#42A5F5" opacity="0.9" data-handle="1"/><circle cx={s.x2} cy={s.y2} r="6" fill="#42A5F5" opacity="0.9" data-handle="1"/></>}
-      </g>;
-    }
-    if(s.type==="circle"){
-      const cx=Math.min(s.x1,s.x2)+Math.abs(s.x2-s.x1)/2;
-      const cy=Math.min(s.y1,s.y2)+Math.abs(s.y2-s.y1)/2;
-      const rx=Math.abs(s.x2-s.x1)/2, ry=Math.abs(s.y2-s.y1)/2;
-      const hasW=s.medidaAncho, hasH=s.medidaAlto;
-      const dimLabel = hasW&&hasH ? `${s.medidaAncho} × ${s.medidaAlto}` : (hasW||hasH||"");
-      return <g key={s.id} onClick={click} onMouseDown={e=>onShapeDragStart(e,s.id)} style={{cursor:tool==="select"?"move":"pointer"}}>
-        <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={fill} stroke={stroke} strokeWidth={sw}/>
-        {dimLabel&&rx>20&&<text x={cx} y={cy+4} textAnchor="middle" fontSize="10" fill="#64B5F6" fontFamily="Arial" fontWeight="700">{dimLabel}</text>}
-        {sel&&<ellipse cx={cx} cy={cy} rx={rx+3} ry={ry+3} fill="none" stroke="#42A5F5" strokeWidth="1" strokeDasharray="5"/>}
-      </g>;
-    }
-    if(s.type==="text"){
-      return <g key={s.id} onClick={click} onMouseDown={e=>onShapeDragStart(e,s.id)} style={{cursor:tool==="select"?"move":"pointer"}}>
-        {sel&&<rect x={s.x-4} y={s.y-15} width={Math.max(60,s.text.length*7+8)} height={21} fill="none" stroke="#42A5F5" strokeWidth="1" strokeDasharray="4" rx="3"/>}
-        <text x={s.x} y={s.y} fontSize="13" fill="#e2f0ff" fontFamily="Arial" fontWeight="600">{s.text}</text>
-      </g>;
-    }
-    // rect
-    const x=Math.min(s.x1,s.x2), y=Math.min(s.y1,s.y2);
-    const w=Math.abs(s.x2-s.x1), h=Math.abs(s.y2-s.y1);
-    const corners = s.corners||[0,0,0,0];
-    const d = buildRectPath(x,y,w,h,corners);
-    const hasW=s.medidaAncho, hasH=s.medidaAlto;
-    const dimLine1 = hasW ? s.medidaAncho : "";
-    const dimLine2 = hasH ? s.medidaAlto : "";
-    const bothDims = hasW&&hasH;
-    // per-side labels
-    const sTop=s.ladoSup||"", sRight=s.ladoDer||"", sBot=s.ladoInf||"", sLeft=s.ladoIzq||"";
-    return <g key={s.id} onClick={click} onMouseDown={e=>onShapeDragStart(e,s.id)} style={{cursor:tool==="select"?"move":"pointer"}}>
-      <path d={d} fill={fill} stroke={stroke} strokeWidth={sw}/>
-      {/* center dims */}
-      {bothDims&&w>50&&h>32&&<>
-        <text x={x+w/2} y={y+h/2-5} textAnchor="middle" fontSize="11" fill="#64B5F6" fontFamily="Arial" fontWeight="700">{dimLine1}</text>
-        <text x={x+w/2} y={y+h/2+9} textAnchor="middle" fontSize="11" fill="#64B5F6" fontFamily="Arial" fontWeight="700">{dimLine2}</text>
-      </>}
-      {!bothDims&&(dimLine1||dimLine2)&&w>30&&h>18&&
-        <text x={x+w/2} y={y+h/2+4} textAnchor="middle" fontSize="11" fill="#64B5F6" fontFamily="Arial" fontWeight="700">{dimLine1||dimLine2}</text>
-      }
-      {/* per-side labels */}
-      {sTop&&<text x={x+w/2} y={y-5} textAnchor="middle" fontSize="10" fill="#FFB74D" fontFamily="Arial" fontWeight="700">{sTop}</text>}
-      {sBot&&<text x={x+w/2} y={y+h+13} textAnchor="middle" fontSize="10" fill="#FFB74D" fontFamily="Arial" fontWeight="700">{sBot}</text>}
-      {sLeft&&<text x={x-5} y={y+h/2} textAnchor="end" fontSize="10" fill="#FFB74D" fontFamily="Arial" fontWeight="700">{sLeft}</text>}
-      {sRight&&<text x={x+w+5} y={y+h/2} textAnchor="start" fontSize="10" fill="#FFB74D" fontFamily="Arial" fontWeight="700">{sRight}</text>}
-      {sel&&<path d={buildRectPath(x-3,y-3,w+6,h+6,corners.map(r=>r+3))} fill="none" stroke="#42A5F5" strokeWidth="1" strokeDasharray="5"/>}
-    </g>;
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const setItem=(i,k,v)=>setForm(f=>{const arr=[...f.items];arr[i]={...arr[i],[k]:v};return{...f,items:arr};});
+  const addItem=()=>setForm(f=>({...f,items:[...f.items,emptyItem()]}));
+  const removeItem=(i)=>setForm(f=>({...f,items:f.items.filter((_,idx)=>idx!==i)}));
+  const toggleObs=(i,ob)=>setForm(f=>{
+    const arr=[...f.items];
+    const cur=arr[i].obs||[];
+    arr[i]={...arr[i],obs:cur.includes(ob)?cur.filter(x=>x!==ob):[...cur,ob]};
+    return{...f,items:arr};
+  });
+
+  // Auto-calc total
+  const totalCalc=form.items.reduce((s,it)=>s+(+it.precio||0),0);
+
+  // Sync client data when selected
+  const onClienteChange=(id)=>{
+    const c=clientes.find(x=>x.id===id);
+    setForm(f=>({...f,cliente:id,contacto_nombre:c?.nombre||f.contacto_nombre,contacto_tel:c?.telefono||f.contacto_tel,contacto_dom:c?.direccion||f.contacto_dom}));
   };
 
-  const TOOLS=[
-    {id:"select", emoji:"↖", label:"Seleccionar"},
-    {id:"rect",   emoji:"▭", label:"Rectángulo"},
-    {id:"square", emoji:"□", label:"Cuadrado"},
-    {id:"segment",emoji:"╱", label:"Línea"},
-    {id:"circle", emoji:"○", label:"Círculo"},
-    {id:"text",   emoji:"T", label:"Texto"},
+  const TABS_COT=[{id:"pedido",label:"📋 Pedido"},{id:"plano",label:"✏️ Plano"}];
+  const TABS_ORD=[{id:"pedido",label:"📋 Pedido"},{id:"plano",label:"✏️ Plano"},{id:"instalacion",label:"🚚 Instalación"},{id:"actividad",label:"🕐 Actividad"}];
+  const TABS=modo==="orden"?TABS_ORD:TABS_COT;
+
+  const COLOCACION=[
+    {id:"con_colocacion",label:"Con colocación"},
+    {id:"sin_colocacion",label:"Sin colocación"},
+    {id:"solo_envio",label:"Solo envío"},
   ];
 
-  const [showCortes,setShowCortes]=useState(false);
-  const [corteSelId,setCorteSelId]=useState(null);
-  const [corteW,setCorteW]=useState(600);
-  const [corteH,setCorteH]=useState(400);
-  const [corteCX,setCorteCX]=useState(150);
-  const [corteCY,setCorteCY]=useState(100);
-
-  const aplicarCorte=()=>{
-    const c=CORTES_PREDEFINIDOS.find(x=>x.id===corteSelId);
-    if(!c) return;
-    const newShapes=c.buildShapes(corteW,corteH,corteCX,corteCY).map(s=>({...s,id:newId()}));
-    commit(newShapes);
-    setShowCortes(false);
+  // ── PDF TALLER ────────────────────────────────────────────────────────────
+  const pdfTaller=()=>{
+    const rows=form.items.map((it,i)=>`
+      <tr style="background:${i%2===0?"#f8fbff":"#fff"}">
+        <td style="padding:10px 12px;text-align:center;font-size:18px;font-weight:900;width:50px">${it.cant||1}</td>
+        <td style="padding:10px 12px;font-weight:700;font-size:15px">${it.tipo_vidrio||"—"}</td>
+        <td style="padding:10px 12px;text-align:center;font-size:15px">${it.ancho&&it.alto?`${it.ancho} × ${it.alto} mm`:"—"}</td>
+        <td style="padding:10px 12px;font-size:13px">${(it.obs||[]).join(", ")||"—"}</td>
+        <td style="padding:10px 12px;font-size:13px">${it.servicio||"—"}</td>
+        <td style="padding:10px 12px;font-size:13px">${COLOCACION.find(c=>c.id===it.colocacion)?.label||"—"}</td>
+      </tr>`).join("");
+    const planoSVG=buildSVGStr(form.plano);
+    const instBloque=form.inst_notas||form.inst_fecha||form.inst_direccion?`
+      <div style="margin-top:16px;padding:12px 16px;background:#f8f9ff;border-left:3px solid #1565C0;border-radius:0 6px 6px 0;font-size:13px;line-height:1.8;color:#333">
+        <strong style="color:#1565C0">Instalación:</strong><br/>
+        ${form.inst_fecha?`Fecha: ${form.inst_fecha}<br/>`:""}
+        ${form.inst_direccion?`Dirección: ${form.inst_direccion}<br/>`:""}
+        ${form.inst_responsable?`Responsable: ${form.inst_responsable}<br/>`:""}
+        ${form.inst_notas?`Notas: ${form.inst_notas}`:""}
+      </div>`:"";
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Taller ${form.numero||""}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e}
+.hdr{background:linear-gradient(135deg,#0a2a5e,#1565C0);padding:16px 26px;display:flex;justify-content:space-between;align-items:center}
+.logo{width:54px;height:54px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3))}
+.biz{color:#fff}.biz-name{font-size:18px;font-weight:900}.biz-sub{font-size:10px;opacity:0.7;margin-top:2px}
+.doc-right{text-align:right;color:#fff}.doc-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;opacity:0.7}
+.doc-num{font-size:30px;font-weight:900;display:block;letter-spacing:1px}
+.divider{height:4px;background:linear-gradient(90deg,#1565C0,#42A5F5,#1565C0)}
+.body{padding:18px 26px}
+.st{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin:16px 0 10px}
+.client-row{background:#f0f6ff;border-radius:7px;padding:10px 14px;border:1px solid #e0ecff;display:flex;gap:24px}
+.cf label{font-size:9px;color:#888;font-weight:700;text-transform:uppercase;display:block;margin-bottom:1px}.cf p{font-size:14px;font-weight:600}
+table{width:100%;border-collapse:collapse}
+thead tr{background:linear-gradient(135deg,#0a2a5e,#1565C0);color:#fff}
+thead th{padding:9px 12px;font-size:11px;font-weight:600;letter-spacing:0.5px}
+.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:28px}
+.sign-line{border-top:1.5px solid #1565C0;padding-top:8px;text-align:center;font-size:10px;color:#888;text-transform:uppercase}
+.footer{background:#f0f6ff;border-top:2px solid #e3f2fd;padding:7px 26px;display:flex;justify-content:space-between;font-size:10px;color:#888;margin-top:16px}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:7mm}}</style></head><body>
+<div class="hdr">
+  <div style="display:flex;align-items:center;gap:12px">
+    <img class="logo" src="BIZ_LOGO" alt="LV"/>
+    <div class="biz"><div class="biz-name">La Vidriería Rosario — TALLER</div><div class="biz-sub">Orden de Producción Interna</div></div>
+  </div>
+  <div class="doc-right"><div class="doc-type">Orden N°</div><span class="doc-num">${form.numero||"S/N"}</span>${form.prod_fecha_est?`<div style="font-size:11px;opacity:0.8;margin-top:4px">Entrega: ${form.prod_fecha_est}</div>`:""}</div>
+</div>
+<div class="divider"></div>
+<div class="body">
+  <div class="client-row">
+    <div class="cf"><label>Cliente</label><p>${form.contacto_nombre||"—"}</p></div>
+    <div class="cf"><label>Teléfono</label><p>${form.contacto_tel||"—"}</p></div>
+    <div class="cf"><label>Domicilio</label><p>${form.contacto_dom||"—"}</p></div>
+  </div>
+  <div class="st">Pedido</div>
+  <table>
+    <thead><tr>
+      <th style="text-align:center;width:50px">Cant.</th>
+      <th style="text-align:left">Tipo de vidrio</th>
+      <th style="text-align:center;width:130px">Medidas (mm)</th>
+      <th style="text-align:left">Observaciones</th>
+      <th style="text-align:left">Servicio</th>
+      <th style="text-align:left">Colocación</th>
+    </tr></thead>
+    <tbody>${rows||"<tr><td colspan='6' style='padding:12px;text-align:center;color:#888'>Sin ítems</td></tr>"}</tbody>
+  </table>
+  ${instBloque}
+  ${planoSVG?`<div class="st">Plano Técnico</div><div style="margin-top:8px">${planoSVG}</div>`:""}
+  <div class="sign-grid">
+    <div class="sign-line">Recibido por taller<div style="height:32px"></div></div>
+    <div class="sign-line">Entregado por<div style="height:32px"></div></div>
+  </div>
+</div>
+<div class="footer"><span>Generado el ${new Date().toLocaleString("es-AR")} · VidrierApp</span><span>La Vidriería Rosario · Mendoza 1783 · 341 425-1007</span></div>
+</body></html>`;
+    const w=window.open("","_blank","width=860,height=780");
+    if(w){w.document.write(html.replace("BIZ_LOGO",BIZ_LOGO));w.document.close();w.onload=()=>{w.focus();w.print();};}
   };
 
-  const selIsRect = selShape&&(selShape.type==="rect");
-
-  return(
-    <div style={{display:"flex",gap:12}}>
-      {/* LEFT: canvas */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",gap:8}}>
-        {/* toolbar */}
-        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          <div style={{display:"flex",gap:4,background:"#071220",border:"1px solid #1e3a5a",borderRadius:9,padding:"4px 6px"}}>
-            {TOOLS.map(t=>(
-              <button key={t.id} title={t.label} onClick={()=>{setTool(t.id);setSelId(null);}}
-                style={{padding:"6px 12px",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:tool===t.id?700:500,
-                  background:tool===t.id?"linear-gradient(135deg,#1565C0,#0d47a1)":"transparent",
-                  color:tool===t.id?"#fff":"#5a8ab8",display:"flex",alignItems:"center",gap:5}}>
-                <span style={{fontSize:15}}>{t.emoji}</span>
-                <span style={{fontSize:11}}>{t.label}</span>
-              </button>
-            ))}
-          </div>
-          <div style={{display:"flex",gap:5}}>
-            <button onClick={undo} disabled={hIdx===0} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #1e3a5a",background:"#071220",color:hIdx===0?"#1e3a5a":"#7ab2e8",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>↩</button>
-            <button onClick={redo} disabled={hIdx>=history.length-1} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #1e3a5a",background:"#071220",color:hIdx>=history.length-1?"#1e3a5a":"#7ab2e8",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>↪</button>
-            {selId&&<button onClick={deleteSelected} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #7f2020",background:"#1a0a0a",color:"#f48fb1",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>🗑</button>}
-            <button onClick={()=>{commit([]);setSelId(null);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #1e3a5a",background:"#071220",color:"#5a8ab8",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Limpiar</button>
-            <button onClick={()=>setShowCortes(s=>!s)}
-              style={{padding:"5px 12px",borderRadius:7,border:`1px solid ${showCortes?"#FFB74D":"#1e3a5a"}`,
-                background:showCortes?"#1a1000":"#071220",color:showCortes?"#FFB74D":"#5a8ab8",
-                cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:showCortes?700:400}}>
-              ✂️ Cortes
-            </button>
-          </div>
-          <span style={{fontSize:10,color:"#1e3a5a",marginLeft:"auto"}}>Ctrl = sin snap · Shift = proporcional</span>
-        </div>
-
-        {/* PANEL CORTES PREDEFINIDOS */}
-        {showCortes&&<div style={{background:"#0a1000",borderRadius:10,padding:14,border:"1px solid #FFB74D30",marginBottom:8}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#FFB74D",marginBottom:10}}>✂️ Cortes y entrantes predefinidos</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}}>
-            {CORTES_PREDEFINIDOS.map(c=>(
-              <button key={c.id} onClick={()=>setCorteSelId(c.id)}
-                style={{padding:"8px 10px",borderRadius:8,border:`1px solid ${corteSelId===c.id?"#FFB74D":"#2a1a00"}`,
-                  background:corteSelId===c.id?"#2a1500":"#0d1000",color:corteSelId===c.id?"#FFB74D":"#7a6a4a",
-                  cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                <div style={{fontSize:18,marginBottom:3}}>{c.emoji}</div>
-                <div style={{fontSize:11,fontWeight:700}}>{c.label}</div>
-                <div style={{fontSize:10,opacity:0.7,marginTop:2}}>{c.desc}</div>
-              </button>
-            ))}
-          </div>
-          {corteSelId&&<div style={{background:"#071220",borderRadius:8,padding:12,border:"1px solid #2a1a00"}}>
-            <div style={{fontSize:11,fontWeight:600,color:"#FFB74D",marginBottom:10}}>
-              Configurar: {CORTES_PREDEFINIDOS.find(c=>c.id===corteSelId)?.label}
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:10}}>
-              <div>
-                <div style={{fontSize:10,color:"#5a8ab8",marginBottom:3}}>Ancho vidrio (mm)</div>
-                <input type="number" value={corteW} onChange={e=>setCorteW(+e.target.value)}
-                  style={{...iS,padding:"5px 8px",fontSize:12,width:"100%"}}/>
-              </div>
-              <div>
-                <div style={{fontSize:10,color:"#5a8ab8",marginBottom:3}}>Alto vidrio (mm)</div>
-                <input type="number" value={corteH} onChange={e=>setCorteH(+e.target.value)}
-                  style={{...iS,padding:"5px 8px",fontSize:12,width:"100%"}}/>
-              </div>
-              <div>
-                <div style={{fontSize:10,color:"#FFB74D",marginBottom:3}}>
-                  {corteSelId==="perforacion"||corteSelId==="bisagra"?"Pos X (mm)":"Corte ancho (mm)"}
-                </div>
-                <input type="number" value={corteCX} onChange={e=>setCorteCX(+e.target.value)}
-                  style={{...iS,padding:"5px 8px",fontSize:12,width:"100%"}}/>
-              </div>
-              <div>
-                <div style={{fontSize:10,color:"#FFB74D",marginBottom:3}}>
-                  {corteSelId==="perforacion"||corteSelId==="bisagra"?"Pos Y (mm)":"Corte alto (mm)"}
-                </div>
-                <input type="number" value={corteCY} onChange={e=>setCorteCY(+e.target.value)}
-                  style={{...iS,padding:"5px 8px",fontSize:12,width:"100%"}}/>
-              </div>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={aplicarCorte}
-                style={{padding:"7px 18px",borderRadius:7,border:"none",background:"#FFB74D",color:"#000",
-                  cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700}}>
-                ✓ Insertar en plano
-              </button>
-              <button onClick={()=>setCorteSelId(null)}
-                style={{padding:"7px 12px",borderRadius:7,border:"1px solid #2a1a00",background:"transparent",
-                  color:"#7a6a4a",cursor:"pointer",fontFamily:"inherit",fontSize:12}}>
-                Cancelar
-              </button>
-            </div>
-          </div>}
-        </div>}
-
-        {/* svg canvas */}
-        <div style={{position:"relative",borderRadius:10,overflow:"hidden",border:"1px solid #1e3a5a"}}>
-          <svg ref={svgRef} width="100%" viewBox="0 0 900 450"
-            style={{background:"#050d18",cursor:tool==="select"?"default":"crosshair",display:"block",userSelect:"none",minHeight:300}}
-            onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
-            onClick={e=>{if(e.target===svgRef.current)setSelId(null);}}>
-            <defs>
-              <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#0b1e35" strokeWidth="0.5"/>
-              </pattern>
-              <pattern id="grid5" width="100" height="100" patternUnits="userSpaceOnUse">
-                <rect width="100" height="100" fill="url(#grid)"/>
-                <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#0d2540" strokeWidth="1"/>
-              </pattern>
-            </defs>
-            <rect width="900" height="450" fill="url(#grid5)"/>
-            {shapes.map(s=>renderShape(s))}
-            {drawing&&renderShape(drawing,true)}
-          </svg>
-          {textInput.show&&(
-            <div style={{position:"absolute",top:textInput.y,left:textInput.x,zIndex:10,background:"#0d1b2a",border:"1px solid #1565C0",borderRadius:8,padding:8,display:"flex",gap:6,boxShadow:"0 8px 24px rgba(0,0,0,0.5)"}}>
-              <input autoFocus value={textInput.val} onChange={e=>setTextInput(t=>({...t,val:e.target.value}))}
-                onKeyDown={e=>{if(e.key==="Enter")addText();if(e.key==="Escape")setTextInput(t=>({...t,show:false}));}}
-                style={{...iS,width:180,padding:"5px 9px",fontSize:13}} placeholder="Escribí el texto..."/>
-              <button onClick={addText} style={{background:"#1565C0",border:"none",color:"#fff",borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:13,fontWeight:600}}>✓</button>
-            </div>
-          )}
-        </div>
-        <div style={{fontSize:10,color:"#1e3a5a"}}>💡 Las formas se ajustan a la grilla de 20px automáticamente · Ctrl para desactivar snap</div>
-      </div>
-
-      {/* RIGHT: properties panel */}
-      <div style={{width:210,flexShrink:0,display:"flex",flexDirection:"column",gap:10,maxHeight:480,overflowY:"auto"}}>
-
-        {/* PROPERTIES */}
-        <div style={{background:"#071220",border:"1px solid #1e3a5a",borderRadius:10,padding:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Medidas y Propiedades</div>
-          {!selId&&<div style={{fontSize:12,color:"#2a4a6a",lineHeight:1.6}}>Seleccioná una forma para escribir sus medidas</div>}
-
-          {selId&&(()=>{
-            const upd=(k,v)=>commit(shapes.map(s=>s.id===selId?{...s,[k]:v}:s));
-            const inp=(label,key,placeholder)=>(
-              <div style={{marginBottom:10}}>
-                <div style={{fontSize:10,color:"#5a8ab8",fontWeight:600,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.3px"}}>{label}</div>
-                <input value={selShape?.[key]||""} onChange={e=>upd(key,e.target.value)}
-                  placeholder={placeholder}
-                  style={{...iS,padding:"7px 10px",fontSize:13,fontWeight:600}}/>
-              </div>
-            );
-            return(<>
-              {/* TEXT */}
-              {selShape?.type==="text"&&inp("Contenido","text","Escribí el texto...")}
-
-              {/* SEGMENT: one field "medida" shown on the line */}
-              {selShape?.type==="segment"&&<>
-                {inp("Medida de la línea","medidaLinea","Ej: 1200mm")}
-                <div style={{fontSize:10,color:"#2a4a6a",marginBottom:10,lineHeight:1.5}}>El texto aparece sobre la línea en el plano</div>
-              </>}
-
-              {/* RECT / SQUARE: ancho + alto shown inside */}
-              {selShape?.type==="rect"&&<>
-                {inp("Ancho","medidaAncho","Ej: 1200mm")}
-                {inp("Alto","medidaAlto","Ej: 2000mm")}
-                <div style={{fontSize:10,color:"#2a4a6a",marginBottom:10,lineHeight:1.5}}>Las medidas se muestran dentro de la forma</div>
-              </>}
-
-              {/* CIRCLE: diámetro or ancho×alto */}
-              {selShape?.type==="circle"&&<>
-                {inp("Ancho / Diámetro","medidaAncho","Ej: 800mm")}
-                {inp("Alto","medidaAlto","Ej: 800mm")}
-              </>}
-
-              {/* Corners — rect only */}
-              {selShape?.type==="rect"&&<>
-                <div style={{fontSize:11,color:"#FFB74D",fontWeight:700,marginBottom:6,marginTop:4,borderTop:"1px solid #0f2035",paddingTop:10}}>Medidas por lado</div>
-                <div style={{fontSize:10,color:"#3a6a9a",marginBottom:8,lineHeight:1.5}}>Cada lado independiente — ideal para falsa escuadra</div>
-                {[["ladoSup","↑ Superior"],["ladoDer","→ Derecho"],["ladoInf","↓ Inferior"],["ladoIzq","← Izquierdo"]].map(([key,label])=>(
-                  <div key={key} style={{marginBottom:7}}>
-                    <div style={{fontSize:10,color:"#FFB74D",marginBottom:3,fontWeight:600}}>{label}</div>
-                    <input value={selShape?.[key]||""} onChange={e=>commit(shapes.map(s=>s.id===selId?{...s,[key]:e.target.value}:s))}
-                      placeholder="Ej: 1200mm" style={{...iS,padding:"5px 8px",fontSize:12}}/>
-                  </div>
-                ))}
-                <div style={{fontSize:11,color:"#5a8ab8",fontWeight:600,marginBottom:6,marginTop:8,borderTop:"1px solid #0f2035",paddingTop:8}}>Esquinas</div>
-                <div style={{fontSize:10,color:"#3a6a9a",marginBottom:8}}>0 = recta · 80 = muy curva</div>
-                {CORNER_LABELS.map((label,i)=>(
-                  <div key={i} style={{marginBottom:8}}>
-                    <div style={{fontSize:10,color:"#5a8ab8",marginBottom:3}}>{label}</div>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <input type="range" min="0" max="80" value={cornerR[i]} onChange={e=>updateCorner(i,e.target.value)}
-                        style={{flex:1,accentColor:"#1565C0",cursor:"pointer"}}/>
-                      <span style={{fontSize:11,color:"#64B5F6",minWidth:20,textAlign:"right",fontWeight:700}}>{cornerR[i]}</span>
-                    </div>
-                  </div>
-                ))}
-                <button onClick={()=>{const r=[0,0,0,0];setCornerR(r);commit(shapes.map(s=>s.id===selId?{...s,corners:r}:s));}}
-                  style={{width:"100%",padding:"5px 0",background:"#0d1b2a",border:"1px solid #1e3a5a",borderRadius:6,color:"#5a8ab8",cursor:"pointer",fontSize:11,fontFamily:"inherit",marginTop:2}}>
-                  Resetear esquinas
-                </button>
-              </>}
-            </>);
-          })()}
-        </div>
-
-        {/* DRAWING TEMPLATES */}
-        <DrawingTemplates shapes={shapes} onLoad={(tplShapes)=>commit(tplShapes)} />
-
-        {/* TOOLS quick list */}
-        <div style={{background:"#071220",border:"1px solid #1e3a5a",borderRadius:10,padding:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:10}}>Herramientas</div>
-          {TOOLS.map(t=>(
-            <button key={t.id} onClick={()=>{setTool(t.id);setSelId(null);}}
-              style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",marginBottom:4,borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:tool===t.id?700:400,
-                background:tool===t.id?"#1565C018":"transparent",color:tool===t.id?"#64B5F6":"#3a6a9a",
-                borderLeft:tool===t.id?"2px solid #1565C0":"2px solid transparent"}}>
-              <span style={{fontSize:16,lineHeight:1}}>{t.emoji}</span> {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ─── SCANNER REMITO CON IA ───────────────────────────────────────────────────
-const ScannerRemito = ({onResult}) => {
-  const [loading,setLoading] = useState(false);
-  const [preview,setPreview] = useState(null);
-  const [result,setResult] = useState(null);
-  const [error,setError] = useState("");
-
-  const handleFile = async(e) => {
-    const file = e.target.files[0];
-    if(!file) return;
-    setError(""); setResult(null);
-    const reader = new FileReader();
-    reader.onload = async(ev) => {
-      const b64 = ev.target.result.split(",")[1];
-      const mediaType = file.type || "image/jpeg";
-      setPreview(ev.target.result);
-      setLoading(true);
-      try {
-        const res = await fetch("https://api.anthropic.com/v1/messages",{
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({
-            model:"claude-sonnet-4-20250514",
-            max_tokens:1000,
-            messages:[{
-              role:"user",
-              content:[
-                {type:"image",source:{type:"base64",media_type:mediaType,data:b64}},
-                {type:"text",text:`Analizá esta imagen de un remito o nota de pedido de vidriería. 
-Extraé SOLO la información técnica de los vidrios y materiales.
-Respondé ÚNICAMENTE con un JSON válido sin ningún texto extra, en este formato exacto:
-{
-  "vidrios": [
-    {"cant": 1, "tipo": "Float 6mm", "ancho": "1200", "alto": "2000", "obs": "borde pulido"},
-    ...
-  ],
-  "materiales": "texto libre con accesorios y materiales adicionales"
-}
-Si no podés leer algo, usá "" en ese campo. Si no hay vidrios, devolvé "vidrios": [].`}
-              ]
-            }]
-          })
-        });
-        const data = await res.json();
-        const text = data.content?.find(c=>c.type==="text")?.text||"";
-        const clean = text.replace(/```json|```/g,"").trim();
-        const parsed = JSON.parse(clean);
-        setResult(parsed);
-        setLoading(false);
-      } catch(err) {
-        setError("No se pudo leer el remito. Asegurate que la imagen sea clara y legible.");
-        setLoading(false);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const aplicar = () => {
-    if(result) {
-      onResult(result.vidrios||[], result.materiales||"");
-      setResult(null); setPreview(null);
-    }
-  };
-
-  return(
-    <div>
-      <label style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#0a1020",borderRadius:8,border:"2px dashed #CE93D840",cursor:"pointer"}}>
-        <span style={{fontSize:22}}>📷</span>
-        <div>
-          <div style={{fontSize:13,color:"#CE93D8",fontWeight:600}}>Subir foto del remito físico</div>
-          <div style={{fontSize:11,color:"#3a6a9a",marginTop:2}}>Imagen clara del papel — la IA extrae vidrios, medidas y accesorios</div>
-        </div>
-        <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={handleFile}/>
-      </label>
-
-      {loading&&<div style={{marginTop:10,padding:"12px 16px",background:"#0a1020",borderRadius:8,display:"flex",alignItems:"center",gap:10}}>
-        <div style={{width:16,height:16,border:"2px solid #CE93D8",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
-        <span style={{fontSize:13,color:"#CE93D8"}}>Analizando el remito con IA...</span>
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      </div>}
-
-      {error&&<div style={{marginTop:10,padding:"10px 14px",background:"#2a0a0a",borderRadius:8,border:"1px solid #7f2020",fontSize:12,color:"#f48fb1"}}>{error}</div>}
-
-      {result&&!loading&&<div style={{marginTop:10,background:"#0a2a0f",borderRadius:8,border:"1px solid #26A69A40",padding:14}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#26A69A",marginBottom:10}}>✅ IA detectó {result.vidrios?.length||0} vidrio(s)</div>
-        {(result.vidrios||[]).map((v,i)=>(
-          <div key={i} style={{fontSize:12,color:"#c8e0f8",padding:"4px 0",borderBottom:"1px solid #0f2035"}}>
-            <span style={{fontWeight:700,color:"#A5D6A7"}}>{v.cant}×</span> {v.tipo} — {v.ancho}×{v.alto}mm {v.obs?`· ${v.obs}`:""}
-          </div>
-        ))}
-        {result.materiales&&<div style={{fontSize:12,color:"#7ab2e8",marginTop:8}}>Materiales: {result.materiales}</div>}
-        <div style={{display:"flex",gap:8,marginTop:12}}>
-          <Btn small onClick={aplicar}><Icon name="plus" size={14}/> Cargar en la orden</Btn>
-          <Btn small variant="secondary" onClick={()=>{setResult(null);setPreview(null);}}>Descartar</Btn>
-        </div>
-      </div>}
-    </div>
-  );
-};
-
-// ─── ORDEN FORM (5 TABS) ─────────────────────────────────────────────────────
-const OrdenForm = ({orden,plantillas,clientes,onSave,onClose,stockItems,onDescontarStock}) => {
-  const [tab,setTab]=useState("presupuesto");
-  const EMPTY={cliente:"",tipo:"",fecha:new Date().toISOString().split("T")[0],
-    // Campos obligatorios
-    contacto_nombre:"",contacto_telefono:"",contacto_domicilio:"",
-    // Presupuesto
-    pres_items:[{desc:"",cant:1,precio:""},{desc:"",cant:1,precio:""}],
-    pres_condiciones:"50% al confirmar, saldo contra entrega.",pres_validez:"",pres_firmante:"",
-    pres_con_iva:true,
-    // Vidrios (tabla técnica)
-    vidrios:[{cant:1,tipo:"",ancho:"",alto:"",obs:""}],
-    // Medición
-    med_plano:[],med_notas:"",med_fecha:"",
-    // Producción
-    prod_materiales:"",prod_procesos:[],prod_fecha_est:"",prod_notas:"",prod_plantilla_id:"",prod_campos:{},
-    prod_materiales_usados:[],
-    // Instalación
-    inst_fecha:"",inst_direccion:"",inst_responsable:"",inst_notas:"",inst_firmante:"",
-    inst_entregado:false,inst_fecha_entrega:"",inst_recibio:"",inst_obs_entrega:"",
-    // Fotos
-    fotos_remito:[],fotos_lugar:[],
-    // Pagos
-    pago_senia:"",pago_senia_fecha:"",pago_senia_metodo:"efectivo",
-    pago_total:"",pago_total_fecha:"",pago_total_metodo:"efectivo",pago_notas:"",etapa:"presupuesto"};
-  const [form,setForm]=useState(orden?{...EMPTY,...orden,pres_con_iva:orden.pres_con_iva!==false}:EMPTY);
-  const [errors,setErrors]=useState({});
-  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-  const setItem=(i,k,v)=>setForm(f=>{const it=[...f.pres_items];it[i]={...it[i],[k]:v};return{...f,pres_items:it};});
-  const addItem=()=>setForm(f=>({...f,pres_items:[...f.pres_items,{desc:"",cant:1,precio:""}]}));
-  const removeItem=(i)=>setForm(f=>({...f,pres_items:f.pres_items.filter((_,idx)=>idx!==i)}));
-  const setVidrio=(i,k,v)=>setForm(f=>{const vv=[...(f.vidrios||[])];vv[i]={...vv[i],[k]:v};return{...f,vidrios:vv};});
-  const addVidrio=()=>setForm(f=>({...f,vidrios:[...(f.vidrios||[]),{cant:1,tipo:"",ancho:"",alto:"",obs:""}]}));
-  const removeVidrio=(i)=>setForm(f=>({...f,vidrios:(f.vidrios||[]).filter((_,idx)=>idx!==i)}));
-  const tpl=plantillas.find(p=>p.id===form.prod_plantilla_id);
-  const setCampo=(k,v)=>setForm(f=>({...f,prod_campos:{...f.prod_campos,[k]:v}}));
-  const subTotal=(form.pres_items||[]).reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0);
-  const iva = form.pres_con_iva!==false ? subTotal*0.21 : 0;
-  const totalConIva=subTotal+iva;
-  const tituloOrden = form.numero || "Nueva Orden";
-  const PROCESOS=["Templado","Arenado","Pulido","Biselado","Perforado","Pintado","Vinilado"];
-  const ETAPAS=[{id:"presupuesto",label:"Presupuesto"},{id:"medicion",label:"Medición"},{id:"produccion",label:"Producción"},{id:"instalacion",label:"Instalación/Entrega"}];
-  const METODOS=["Efectivo","Transferencia","Débito","Crédito","Cheque","Otro"];
-  const TABS=[{id:"presupuesto",label:"💰 Presupuesto"},{id:"produccion",label:"🔧 Producción"},{id:"instalacion",label:"🚚 Instalación"},{id:"pagos",label:"💳 Pagos"},{id:"actividad",label:"🕐 Actividad"}];
-
-  const validate=()=>{
-    const e={};
-    if(!form.contacto_nombre?.trim()) e.contacto_nombre="Requerido";
-    if(!form.contacto_telefono?.trim()) e.contacto_telefono="Requerido";
-    if(!form.contacto_domicilio?.trim()) e.contacto_domicilio="Requerido";
-    setErrors(e);
-    if(Object.keys(e).length>0){setTab("presupuesto");return false;}
-    return true;
-  };
-
-  const printOrdenPDF=()=>{
-    const cn=clientes.find(c=>c.id===form.cliente)?.nombre||"Sin cliente";
-    const sub=(form.pres_items||[]).reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0);
-    const ivaAmt=form.pres_con_iva!==false?sub*0.21:0;
-    const tot=sub+ivaAmt;
+  // ── PDF COMPLETO ──────────────────────────────────────────────────────────
+  const pdfCompleto=()=>{
+    const rows=form.items.map((it,i)=>`
+      <tr style="background:${i%2===0?"#f8fbff":"#fff"}">
+        <td style="padding:8px 12px;text-align:center;font-weight:700">${it.cant||1}</td>
+        <td style="padding:8px 12px;font-weight:600">${it.tipo_vidrio||"—"}</td>
+        <td style="padding:8px 12px;text-align:center">${it.ancho&&it.alto?`${it.ancho} × ${it.alto} mm`:"—"}</td>
+        <td style="padding:8px 12px">${(it.obs||[]).join(", ")||"—"}</td>
+        <td style="padding:8px 12px">${it.servicio||"—"}</td>
+        <td style="padding:8px 12px">${COLOCACION.find(c=>c.id===it.colocacion)?.label||"—"}</td>
+        ${modo==="orden"?`<td style="padding:8px 12px;text-align:right;font-weight:700">${it.precio?`$${(+it.precio).toLocaleString("es-AR")}`:""}</td>`:""}
+      </tr>`).join("");
+    const planoSVG=buildSVGStr(form.plano);
     const senia=+form.pago_senia||0;
-    const pagoFinal=+form.pago_total||0;
-    const cobrado=senia+pagoFinal;
-    const resta=Math.max(0,tot-cobrado);
-    const bSVG=(pl)=>{if(!(pl||[]).length)return"";const sh=pl;const ax=sh.flatMap(s=>[s.x1,s.x2,s.x].filter(v=>v!=null));const ay=sh.flatMap(s=>[s.y1,s.y2,s.y].filter(v=>v!=null));if(!ax.length)return"";const mx=Math.min(...ax)-20,my=Math.min(...ay)-20,Mx=Math.max(...ax)+20,My=Math.max(...ay)+20;const ss=sh.map(s=>{if(s.type==="segment")return`<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2.5" stroke-linecap="round"/>${s.medidaLinea?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-9}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaLinea}</text>`:""}`;if(s.type==="text")return`<text x="${s.x}" y="${s.y}" font-size="13" fill="#1a1a2e" font-weight="600">${s.text}</text>`;if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e3f2fd" stroke="#1565C0" stroke-width="2"/>`;}const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const c=s.corners||[0,0,0,0];const d=`M ${x+c[0]} ${y} L ${x+w-c[1]} ${y} ${c[1]>0?`Q ${x+w} ${y} ${x+w} ${y+c[1]}`:""} L ${x+w} ${y+h-c[2]} ${c[2]>0?`Q ${x+w} ${y+h} ${x+w-c[2]} ${y+h}`:""} L ${x+c[3]} ${y+h} ${c[3]>0?`Q ${x} ${y+h} ${x} ${y+h-c[3]}`:""} L ${x} ${y+c[0]} ${c[0]>0?`Q ${x} ${y} ${x+c[0]} ${y}`:""} Z`;const dims=s.medidaAncho&&s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2-5}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAncho}</text><text x="${x+w/2}" y="${y+h/2+11}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAlto}</text>`:s.medidaAncho||s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2+5}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAncho||s.medidaAlto}</text>`:"";const sides=[s.ladoSup?`<text x="${x+w/2}" y="${y-7}" text-anchor="middle" font-size="11" fill="#e65100" font-weight="700">${s.ladoSup}</text>`:"",s.ladoInf?`<text x="${x+w/2}" y="${y+h+15}" text-anchor="middle" font-size="11" fill="#e65100" font-weight="700">${s.ladoInf}</text>`:"",s.ladoIzq?`<text x="${x-6}" y="${y+h/2}" text-anchor="end" font-size="11" fill="#e65100" font-weight="700">${s.ladoIzq}</text>`:"",s.ladoDer?`<text x="${x+w+6}" y="${y+h/2}" text-anchor="start" font-size="11" fill="#e65100" font-weight="700">${s.ladoDer}</text>`:""].join("");return`<path d="${d}" fill="#e8f4ff" stroke="#1565C0" stroke-width="2"/>${dims}${sides}`;}).join("");return`<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:300px;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block">${ss}</svg>`;};
-    const plano=bSVG(form.med_plano);
-    const vrows=(form.vidrios||[]).filter(v=>v.tipo||v.ancho||v.alto).map(v=>`<tr><td style="text-align:center;font-weight:700;font-size:14px;width:50px">${v.cant||1}</td><td style="font-weight:600">${v.tipo||"—"}</td><td style="text-align:center">${v.ancho||"—"} × ${v.alto||"—"} mm</td><td>${v.obs||""}</td></tr>`).join("");
-    const irows=(form.pres_items||[]).filter(i=>i.desc).map((i,idx)=>`<tr style="background:${idx%2===0?"#f8fbff":"#fff"}"><td>${i.desc}</td><td style="text-align:center">${i.cant||1}</td><td style="text-align:right">$${(+i.precio||0).toLocaleString("es-AR")}</td><td style="text-align:right;font-weight:700">$${((+i.precio||0)*(+i.cant||1)).toLocaleString("es-AR")}</td></tr>`).join("");
-    const fotosLugarHTML=(form.fotos_lugar||[]).map(f=>`<img src="${f.data}" style="width:160px;height:120px;object-fit:cover;border-radius:7px;border:1px solid #e0ecff;"/>`).join("");
-    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Orden ${form.numero||""}</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e;background:#fff;font-size:13px}
+    const saldo=+form.pago_saldo||0;
+    const total=+form.pago_total||totalCalc||0;
+    const fotosHTML=(form.fotos_instalacion||[]).map(f=>`<img src="${f.data}" style="width:150px;height:115px;object-fit:cover;border-radius:7px;border:1px solid #e0ecff;"/>`).join("");
+    const instBloque=form.inst_notas||form.inst_fecha||form.inst_direccion?`
+      <div class="st">Instalación / Entrega</div>
+      <div class="g2">
+        ${form.inst_fecha?`<div class="f"><label>Fecha</label><p>${form.inst_fecha}</p></div>`:""}
+        ${form.inst_direccion?`<div class="f"><label>Dirección</label><p>${form.inst_direccion}</p></div>`:""}
+        ${form.inst_responsable?`<div class="f"><label>Responsable</label><p>${form.inst_responsable}</p></div>`:""}
+        ${form.inst_firmante?`<div class="f"><label>Recibe</label><p>${form.inst_firmante}</p></div>`:""}
+      </div>
+      ${form.inst_notas?`<div style="margin-top:8px;padding:10px 14px;background:#f8f9ff;border-left:3px solid #1565C0;border-radius:0 6px 6px 0;font-size:13px;line-height:1.7;color:#333">${form.inst_notas}</div>`:""}`:"";
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${modo==="orden"?"Orden":"Presupuesto"} ${form.numero||""}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e;font-size:13px}
 .hdr{background:linear-gradient(135deg,#0a2a5e,#1565C0);padding:18px 28px;display:flex;justify-content:space-between;align-items:center;gap:16px}
-.hdr-left{display:flex;align-items:center;gap:12px}
-.hdr-logo{width:60px;height:60px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3));flex-shrink:0}
-.biz-name{font-size:19px;font-weight:900;color:#fff}.biz-sub{font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px}.biz-contact{font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px}
-.hdr-right{text-align:right;flex-shrink:0}.doc-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,0.7)}.doc-num{font-size:28px;font-weight:900;color:#fff;letter-spacing:1px;display:block}.doc-date{font-size:10px;color:rgba(255,255,255,0.7);margin-top:3px;display:block}
+.hdr-left{display:flex;align-items:center;gap:12px}.logo{width:58px;height:58px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3))}
+.biz-name{font-size:19px;font-weight:900;color:#fff}.biz-sub{font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px}.biz-c{font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px}
+.hdr-right{text-align:right}.doc-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,0.7)}.doc-num{font-size:28px;font-weight:900;color:#fff;letter-spacing:1px;display:block}.doc-date{font-size:10px;color:rgba(255,255,255,0.7);margin-top:3px;display:block}
 .divider{height:3px;background:linear-gradient(90deg,#1565C0,#42A5F5,#1565C0)}.body{padding:20px 28px}
-.st{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin:18px 0 10px}
+.st{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin:16px 0 10px}
 .client-box{background:#f0f6ff;border-radius:8px;padding:12px 16px;border:1px solid #e0ecff;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-.f label{font-size:9px;color:#888;font-weight:700;text-transform:uppercase;display:block;margin-bottom:2px}.f p{font-size:14px;font-weight:600;color:#1a1a2e}
-table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:linear-gradient(135deg,#0a2a5e,#1565C0);color:#fff}thead th{padding:8px 12px;font-size:11px;font-weight:600}tbody tr:nth-child(even){background:#f8fbff}tbody td{padding:8px 12px;border-bottom:1px solid #e8f0ff}
-.tot-wrap{margin-top:14px;display:flex;justify-content:flex-end}.tot-inner{min-width:280px;background:#f0f6ff;border-radius:8px;padding:14px 18px;border:1px solid #e0ecff}
-.t-row{display:flex;justify-content:space-between;padding:3px 0;font-size:13px;color:#555}
-.t-total{display:flex;justify-content:space-between;padding:10px 0 4px;font-size:20px;font-weight:900;color:#0a2a5e;border-top:2px solid #1565C0;margin-top:6px}
-.t-cobrado{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;color:#2e7d32;font-weight:600}
-.t-resta{display:flex;justify-content:space-between;padding:6px 0 2px;font-size:15px;font-weight:700;color:#e65100}
-.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:32px}
-.sign-line{border-top:1.5px solid #1565C0;padding-top:8px;text-align:center}.sign-label{font-size:10px;color:#888;text-transform:uppercase}.sign-name{font-size:12px;font-weight:600;color:#1565C0;margin-top:3px}
+.f label{font-size:9px;color:#888;font-weight:700;text-transform:uppercase;display:block;margin-bottom:2px}.f p{font-size:14px;font-weight:600}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:linear-gradient(135deg,#0a2a5e,#1565C0);color:#fff}thead th{padding:8px 12px;font-size:11px;font-weight:600}
+.tot-wrap{display:flex;justify-content:flex-end;margin-top:12px}.tot-inner{min-width:260px;background:#f0f6ff;border-radius:8px;padding:14px 18px;border:1px solid #e0ecff}
+.t-row{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;color:#555}
+.t-total{display:flex;justify-content:space-between;padding:10px 0 2px;font-size:20px;font-weight:900;color:#0a2a5e;border-top:2px solid #1565C0;margin-top:6px}
+.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:30px}.sign-line{border-top:1.5px solid #1565C0;padding-top:8px;text-align:center}.sign-label{font-size:10px;color:#888;text-transform:uppercase}.sign-name{font-size:12px;font-weight:600;color:#1565C0;margin-top:3px}
 .footer{background:#f0f6ff;border-top:2px solid #e3f2fd;padding:8px 28px;display:flex;justify-content:space-between;font-size:10px;color:#888}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:8mm}}
-</style></head><body>
-<div class="hdr"><div class="hdr-left"><img class="hdr-logo" src="${BIZ_LOGO}" alt="LV"/><div>
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:8mm}}</style></head><body>
+<div class="hdr"><div class="hdr-left"><img class="logo" src="BIZ_LOGO" alt="LV"/><div>
   <div class="biz-name">La Vidriería Rosario</div>
   <div class="biz-sub">Vidrios · Espejos · Cerramientos · Instalaciones</div>
-  <div class="biz-contact">📍 Mendoza 1783, Rosario, Santa Fe · CP 2000</div>
-  <div class="biz-contact">📞 341 425-1007 / 341 508-4921 &nbsp;·&nbsp; ✉️ lavidrieria@gmail.com</div>
-  <div class="biz-contact">📸 @lavidrieriarosariooficial &nbsp;·&nbsp; 🕐 Lun-Vie 8-19hs · Sáb 8-13hs</div>
+  <div class="biz-c">📍 Mendoza 1783, Rosario, Santa Fe · CP 2000</div>
+  <div class="biz-c">📞 341 425-1007 / 341 508-4921 &nbsp;·&nbsp; ✉️ lavidrieria@gmail.com</div>
+  <div class="biz-c">📸 @lavidrieriarosariooficial &nbsp;·&nbsp; 🕐 Lun-Vie 8-19hs · Sáb 8-13hs</div>
 </div></div>
-<div class="hdr-right"><div class="doc-type">Remito de Trabajo</div><span class="doc-num">${form.numero||"S/N"}</span><span class="doc-date">Fecha: ${form.fecha||""}</span></div>
+<div class="hdr-right"><div class="doc-type">${modo==="orden"?"Orden de Trabajo":"Presupuesto"}</div><span class="doc-num">${form.numero||"S/N"}</span><span class="doc-date">Fecha: ${form.fecha||""}</span></div>
 </div>
 <div class="divider"></div>
 <div class="body">
   <div class="st">Datos del Cliente</div>
   <div class="client-box">
-    <div class="f"><label>Nombre</label><p>${form.contacto_nombre||cn||"—"}</p></div>
-    <div class="f"><label>Teléfono</label><p>${form.contacto_telefono||"—"}</p></div>
-    <div class="f"><label>Domicilio</label><p>${form.contacto_domicilio||"—"}</p></div>
+    <div class="f"><label>Nombre</label><p>${form.contacto_nombre||"—"}</p></div>
+    <div class="f"><label>Teléfono</label><p>${form.contacto_tel||"—"}</p></div>
+    <div class="f"><label>Domicilio</label><p>${form.contacto_dom||"—"}</p></div>
   </div>
-  ${vrows?`<div class="st">Detalle de Materiales y Servicio</div><table><thead><tr><th style="text-align:center;width:50px">Cant.</th><th style="text-align:left">Tipo de vidrio</th><th style="text-align:center">Medidas (mm)</th><th style="text-align:left">Detalle / Borde / Accesorios</th></tr></thead><tbody>${vrows}</tbody></table>`:""}
-  ${form.prod_materiales?`<div style="margin-top:10px;padding:10px 14px;background:#f8f9ff;border-left:3px solid #1565C0;border-radius:0 6px 6px 0;font-size:13px;line-height:1.7;color:#333">${form.prod_materiales}</div>`:""}
-  ${irows?`<div class="st">Servicio e Instalación</div><table><thead><tr><th style="text-align:left">Descripción</th><th style="text-align:center;width:60px">Cant.</th><th style="text-align:right;width:100px">P. Unit.</th><th style="text-align:right;width:110px">Subtotal</th></tr></thead><tbody>${irows}</tbody></table>`:""}
-  <div class="tot-wrap"><div class="tot-inner">
-    <div class="t-row"><span>Subtotal</span><span>$${sub.toLocaleString("es-AR")}</span></div>
-    ${form.pres_con_iva!==false?`<div class="t-row"><span>IVA (21%)</span><span>$${ivaAmt.toLocaleString("es-AR")}</span></div>`:`<div class="t-row"><span style="font-style:italic;color:#aaa">Sin IVA — Efectivo</span></div>`}
-    <div class="t-total"><span>TOTAL</span><span>$${tot.toLocaleString("es-AR")}</span></div>
-    ${senia>0?`<div class="t-cobrado"><span>✓ Seña (${form.pago_senia_metodo||""})</span><span>− $${senia.toLocaleString("es-AR")}</span></div>`:""}
-    ${pagoFinal>0?`<div class="t-cobrado"><span>✓ Pago final (${form.pago_total_metodo||""})</span><span>− $${pagoFinal.toLocaleString("es-AR")}</span></div>`:""}
-    ${resta>0?`<div class="t-resta"><span>SALDO PENDIENTE</span><span>$${resta.toLocaleString("es-AR")}</span></div>`:cobrado>0&&tot>0?`<div style="text-align:right;color:#2e7d32;font-weight:700;font-size:14px;padding-top:6px">✅ PAGADO</div>`:""}
-  </div></div>
-  ${plano?`<div class="st">Plano / Croquis</div><div style="margin-top:6px">${plano}</div>`:""}
-  ${fotosLugarHTML?`<div class="st">Fotos del Lugar / Espacio</div><div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">${fotosLugarHTML}</div>`:""}
-  ${form.pres_condiciones?`<div style="margin-top:14px;padding:10px 14px;background:#f8f9ff;border-left:3px solid #1565C0;border-radius:0 6px 6px 0;font-size:12px;color:#555;line-height:1.6">${form.pres_condiciones}</div>`:""}
+  <div class="st">Pedido</div>
+  <table><thead><tr>
+    <th style="text-align:center;width:50px">Cant.</th>
+    <th style="text-align:left">Tipo de vidrio</th>
+    <th style="text-align:center;width:130px">Medidas (mm)</th>
+    <th style="text-align:left">Observaciones</th>
+    <th style="text-align:left">Servicio</th>
+    <th style="text-align:left">Colocación</th>
+    ${modo==="orden"?"<th style=\"text-align:right;width:90px\">Precio</th>":""}
+  </tr></thead><tbody>${rows||"<tr><td colspan='7' style='padding:12px;text-align:center;color:#888'>Sin ítems</td></tr>"}</tbody></table>
+  ${modo==="cotizacion"&&total?`<div class="tot-wrap"><div class="tot-inner"><div class="t-total"><span>TOTAL</span><span>$${total.toLocaleString("es-AR")}</span></div></div></div>`:""}
+  ${modo==="orden"&&total?`<div class="tot-wrap"><div class="tot-inner">
+    ${senia?`<div class="t-row"><span>Seña abonada</span><span>$${senia.toLocaleString("es-AR")}</span></div>`:""}
+    ${saldo?`<div class="t-row"><span>Saldo pendiente</span><span>$${saldo.toLocaleString("es-AR")}</span></div>`:""}
+    <div class="t-total"><span>TOTAL</span><span>$${total.toLocaleString("es-AR")}</span></div>
+  </div></div>`:""}
+  ${form.condiciones?`<div style="margin-top:12px;padding:10px 14px;background:#f8f9ff;border-left:3px solid #1565C0;border-radius:0 6px 6px 0;font-size:12px;color:#555;line-height:1.6">${form.condiciones}</div>`:""}
+  ${instBloque}
+  ${planoSVG?`<div class="st">Plano Técnico</div><div style="margin-top:8px">${planoSVG}</div>`:""}
+  ${fotosHTML?`<div class="st">Fotos de Instalación</div><div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">${fotosHTML}</div>`:""}
   <div class="sign-grid">
-    <div class="sign-line"><div class="sign-label">Firma del colocador</div><div style="height:36px"></div><div class="sign-name">La Vidriería Rosario</div></div>
-    <div class="sign-line"><div class="sign-label">Conformidad del cliente</div><div style="height:36px"></div><div style="font-size:12px;color:#555;margin-top:2px">${form.contacto_nombre||form.inst_firmante||"________________________"}</div></div>
+    <div class="sign-line"><div class="sign-label">Firma del colocador</div><div style="height:34px"></div><div class="sign-name">La Vidriería Rosario</div></div>
+    <div class="sign-line"><div class="sign-label">Conformidad del cliente</div><div style="height:34px"></div><div style="font-size:12px;color:#555">${form.contacto_nombre||"________________________"}</div></div>
   </div>
 </div>
 <div class="footer"><span>Generado el ${new Date().toLocaleString("es-AR")} · VidrierApp</span><span>Mendoza 1783 · Rosario · 341 425-1007</span></div>
@@ -1326,797 +573,227 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
     if(w){w.document.write(html.replace("BIZ_LOGO",BIZ_LOGO));w.document.close();w.onload=()=>{w.focus();w.print();};}
   };
 
-  const printProduccionPDF=()=>{
-    const cn=clientes.find(c=>c.id===form.cliente)?.nombre||"Sin cliente";
-
-    const bSVG=(pl)=>{if(!(pl||[]).length)return"";const sh=pl;const ax=sh.flatMap(s=>[s.x1,s.x2,s.x].filter(v=>v!=null));const ay=sh.flatMap(s=>[s.y1,s.y2,s.y].filter(v=>v!=null));if(!ax.length)return"";const mx=Math.min(...ax)-20,my=Math.min(...ay)-20,Mx=Math.max(...ax)+20,My=Math.max(...ay)+20;const ss=sh.map(s=>{if(s.type==="segment")return`<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2.5" stroke-linecap="round"/>${s.medidaLinea?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-9}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaLinea}</text>`:""}`;if(s.type==="text")return`<text x="${s.x}" y="${s.y}" font-size="13" fill="#1a1a2e" font-weight="600">${s.text}</text>`;if(s.type==="circle"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e3f2fd" stroke="#1565C0" stroke-width="2"/>`;}const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const c=s.corners||[0,0,0,0];const d=`M ${x+c[0]} ${y} L ${x+w-c[1]} ${y} ${c[1]>0?`Q ${x+w} ${y} ${x+w} ${y+c[1]}`:""} L ${x+w} ${y+h-c[2]} ${c[2]>0?`Q ${x+w} ${y+h} ${x+w-c[2]} ${y+h}`:""} L ${x+c[3]} ${y+h} ${c[3]>0?`Q ${x} ${y+h} ${x} ${y+h-c[3]}`:""} L ${x} ${y+c[0]} ${c[0]>0?`Q ${x} ${y} ${x+c[0]} ${y}`:""} Z`;const dims=s.medidaAncho&&s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2-5}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAncho}</text><text x="${x+w/2}" y="${y+h/2+11}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAlto}</text>`:s.medidaAncho||s.medidaAlto?`<text x="${x+w/2}" y="${y+h/2+5}" text-anchor="middle" font-size="12" fill="#1565C0" font-weight="700">${s.medidaAncho||s.medidaAlto}</text>`:"";const sides=[s.ladoSup?`<text x="${x+w/2}" y="${y-7}" text-anchor="middle" font-size="11" fill="#e65100" font-weight="700">${s.ladoSup}</text>`:"",s.ladoInf?`<text x="${x+w/2}" y="${y+h+15}" text-anchor="middle" font-size="11" fill="#e65100" font-weight="700">${s.ladoInf}</text>`:"",s.ladoIzq?`<text x="${x-6}" y="${y+h/2}" text-anchor="end" font-size="11" fill="#e65100" font-weight="700">${s.ladoIzq}</text>`:"",s.ladoDer?`<text x="${x+w+6}" y="${y+h/2}" text-anchor="start" font-size="11" fill="#e65100" font-weight="700">${s.ladoDer}</text>`:""].join("");return`<path d="${d}" fill="#e8f4ff" stroke="#1565C0" stroke-width="2"/>${dims}${sides}`;}).join("");return`<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:300px;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block">${ss}</svg>`;}; 
-    const plano=bSVG(form.med_plano);
-    const fotosRemito=(form.fotos_remito||[]).map(f=>`<img src="${f.data}" style="width:140px;height:105px;object-fit:cover;border-radius:6px;border:1px solid #e0ecff;"/>`).join("");
-    const vrows=(form.vidrios||[]).filter(v=>v.tipo||v.ancho||v.alto).map((v,i)=>`
-      <tr style="background:${i%2===0?"#f8fbff":"#fff"}">
-        <td style="text-align:center;font-size:18px;font-weight:900;width:50px">${v.cant||1}</td>
-        <td style="font-weight:700;font-size:15px">${v.tipo||"—"}</td>
-        <td style="text-align:center;font-size:15px;font-weight:600">${v.ancho||"—"} × ${v.alto||"—"} mm</td>
-        <td style="font-size:14px">${v.obs||""}</td>
-      </tr>`).join("");
-    // Split prod_materiales by line for line-items style
-    const matLines=(form.prod_materiales||"").split("\n").filter(l=>l.trim()).map((l,i)=>`
-      <tr style="background:${i%2===0?"#f8fbff":"#fff"}">
-        <td style="font-size:14px;padding:10px 14px">${l}</td>
-      </tr>`).join("");
-    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Taller ${form.numero||""}</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e;background:#fff}
-.hdr{background:linear-gradient(135deg,#0a2a5e,#1565C0);padding:16px 28px;display:flex;justify-content:space-between;align-items:center}
-.hdr-logo{width:56px;height:56px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3))}
-.hdr-center{flex:1;padding:0 16px}
-.biz-name{font-size:17px;font-weight:900;color:#fff}
-.biz-sub{font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px}
-.hdr-right{text-align:right}
-.doc-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,0.7)}
-.doc-num{font-size:30px;font-weight:900;color:#fff;letter-spacing:1px;display:block}
-.doc-badge{display:inline-block;margin-top:5px;padding:3px 10px;border-radius:99px;background:rgba(255,255,255,0.2);font-size:11px;font-weight:700;color:#fff}
-.divider{height:4px;background:linear-gradient(90deg,#1565C0,#42A5F5,#1565C0)}
-.body{padding:18px 28px}
-.client-strip{background:#f0f6ff;border-radius:8px;padding:10px 16px;border:1px solid #e0ecff;display:flex;gap:24px;align-items:center;margin-bottom:16px}
-.cf label{font-size:9px;color:#888;font-weight:700;text-transform:uppercase;display:block;margin-bottom:1px}
-.cf p{font-size:14px;font-weight:600;color:#1a1a2e}
-.st{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin:16px 0 8px}
-table{width:100%;border-collapse:collapse}
-thead tr{background:linear-gradient(135deg,#0a2a5e,#1565C0);color:#fff}
-thead th{padding:10px 14px;font-size:12px;font-weight:600;letter-spacing:0.5px}
-tbody td{padding:10px 14px;border-bottom:1px solid #e8f0ff;vertical-align:middle}
-.proc-chip{display:inline-block;padding:5px 14px;background:#e3f2fd;color:#1565C0;border-radius:99px;font-size:12px;font-weight:700;margin:3px;border:1px solid #90CAF9}
-.warn-box{background:#fff8e1;border-left:3px solid #FFA000;border-radius:0 6px 6px 0;padding:10px 14px;font-size:13px;line-height:1.7;color:#333}
-.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:28px}
-.sign-line{border-top:2px solid #1565C0;padding-top:8px;text-align:center}
-.sign-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px}
-.footer{background:#f0f6ff;border-top:2px solid #e3f2fd;padding:7px 28px;display:flex;justify-content:space-between;font-size:10px;color:#888}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:7mm}}
-</style></head><body>
-<div class="hdr">
-  <img class="hdr-logo" src="${BIZ_LOGO}" alt="LV"/>
-  <div class="hdr-center">
-    <div class="biz-name">La Vidriería Rosario — TALLER</div>
-    <div class="biz-sub">Orden de Producción Interna</div>
-  </div>
-  <div class="hdr-right">
-    <div class="doc-type">Orden N°</div>
-    <span class="doc-num">${form.numero||"S/N"}</span>
-    ${form.prod_fecha_est?`<span class="doc-badge">📅 Entrega: ${form.prod_fecha_est}</span>`:""}
-  </div>
-</div>
-<div class="divider"></div>
-<div class="body">
-
-  <div class="client-strip">
-    <div class="cf"><label>Cliente</label><p>${form.contacto_nombre||cn}</p></div>
-    <div class="cf"><label>Teléfono</label><p>${form.contacto_telefono||"—"}</p></div>
-    <div class="cf"><label>Domicilio</label><p>${form.contacto_domicilio||"—"}</p></div>
-  </div>
-
-  ${vrows?`<div class="st">Vidrios a Producir</div>
-  <table>
-    <thead><tr>
-      <th style="text-align:center;width:60px">Cant.</th>
-      <th style="text-align:left">Tipo de vidrio</th>
-      <th style="text-align:center;width:160px">Medidas (mm)</th>
-      <th style="text-align:left">Borde / Corte / Accesorios</th>
-    </tr></thead>
-    <tbody>${vrows}</tbody>
-  </table>`:""}
-
-  ${matLines?`<div class="st">Accesorios y Materiales</div>
-  <table>
-    <thead><tr><th style="text-align:left">Descripción</th></tr></thead>
-    <tbody>${matLines}</tbody>
-  </table>`:""}
-
-  ${plano?`<div class="st">Plano / Croquis</div><div style="margin-top:8px">${plano}</div>`:""}
-
-  ${(form.prod_procesos||[]).length?`<div class="st">Procesos Requeridos</div><div style="margin-top:6px">${(form.prod_procesos||[]).map(p=>`<span class="proc-chip">${p}</span>`).join("")}</div>`:""}
-
-  ${form.prod_notas?`<div class="st">Instrucciones Especiales</div><div class="warn-box">${form.prod_notas}</div>`:""}
-  ${fotosRemito?`<div class="st">Fotos del Remito Físico</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${fotosRemito}</div>`:""}
-
-  <div class="sign-grid">
-    <div class="sign-line"><div class="sign-label">Recibido por taller</div><div style="height:32px"></div></div>
-    <div class="sign-line"><div class="sign-label">Entregado por</div><div style="height:32px"></div></div>
-  </div>
-
-</div>
-<div class="footer">
-  <span>Generado el ${new Date().toLocaleString("es-AR")} · VidrierApp</span>
-  <span>La Vidriería Rosario · Mendoza 1783 · 341 425-1007</span>
-</div>
-</body></html>`;
-    const w=window.open("","_blank","width=860,height=780");
-    if(w){w.document.write(html.replace("BIZ_LOGO",BIZ_LOGO));w.document.close();w.onload=()=>{w.focus();w.print();};}
-  };
-
-    return(
+  // ── RENDER ────────────────────────────────────────────────────────────────
+  return(
     <div>
-      {/* HEADER */}
-      <div style={{display:"grid",gridTemplateColumns:"auto 1fr 1fr auto",gap:10,marginBottom:16,padding:"12px 16px",background:"#071220",borderRadius:10,border:"1px solid #1e3a5a",alignItems:"end"}}>
-        <div style={{paddingBottom:16}}>
-          <div style={{fontSize:10,fontWeight:600,color:"#5a8ab8",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Número</div>
-          <div style={{fontSize:18,fontWeight:800,color:"#1565C0",fontFamily:"monospace",padding:"8px 14px",background:"#0a1828",borderRadius:8,border:"1px solid #1565C030",letterSpacing:"1px"}}>{form.numero||"—"}</div>
+      {/* HEADER: número + fecha + estado */}
+      <div style={{display:"grid",gridTemplateColumns:"auto 1fr 1fr auto",gap:10,alignItems:"end",padding:"12px 16px",background:"#071220",borderRadius:10,border:"1px solid #1e3a5a",marginBottom:14}}>
+        <div>
+          <div style={{fontSize:9,color:"#3a6a9a",fontWeight:700,marginBottom:4}}>N°</div>
+          <div style={{fontFamily:"monospace",fontSize:16,fontWeight:800,color:"#FFB74D",background:"#1a1000",padding:"5px 12px",borderRadius:7,border:"1px solid #FFB74D30",whiteSpace:"nowrap"}}>{doc?.numero||"—"}</div>
         </div>
-        <Field label="Cliente"><Sel value={form.cliente} onChange={e=>set("cliente",e.target.value)}><option value="">Sin asignar</option>{clientes.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</Sel></Field>
-        <Field label="Etapa actual"><Sel value={form.etapa} onChange={e=>set("etapa",e.target.value)}>{ETAPAS.map(e=><option key={e.id} value={e.id}>{e.label}</option>)}</Sel></Field>
-        <div style={{paddingBottom:16,display:"flex",gap:6,flexDirection:"column"}}>
-          <Btn small variant="secondary" onClick={printOrdenPDF}><Icon name="pdf" size={14}/> PDF Completo</Btn>
-          <Btn small variant="secondary" onClick={printProduccionPDF} style={{background:"#0a2a1a",border:"1px solid #26A69A40",color:"#26A69A"}}>
-            <Icon name="glass" size={14}/> PDF Taller
-          </Btn>
+        <Field label="Fecha"><Input type="date" value={form.fecha} onChange={e=>set("fecha",e.target.value)}/></Field>
+        <Field label="Estado">
+          <Sel value={form.estado} onChange={e=>set("estado",e.target.value)}>
+            {estados.map(e=><option key={e.id} value={e.id}>{e.label}</option>)}
+          </Sel>
+        </Field>
+        <div style={{display:"flex",gap:6,paddingBottom:2}}>
+          <button onClick={pdfCompleto} style={{padding:"6px 12px",borderRadius:7,border:"1px solid #1565C040",background:"#0a1828",color:"#64B5F6",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
+            📄 PDF {modo==="orden"?"Completo":"Presupuesto"}
+          </button>
+          {modo==="orden"&&<button onClick={pdfTaller} style={{padding:"6px 12px",borderRadius:7,border:"1px solid #26A69A40",background:"#0a1a10",color:"#26A69A",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:600}}>🔧 PDF Taller</button>}
+          {modo==="cotizacion"&&onConvertir&&<button onClick={()=>onConvertir(form)} style={{padding:"6px 14px",borderRadius:7,border:"none",background:"#1b5e20",color:"#A5D6A7",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:700,display:"flex",alignItems:"center",gap:5}}>✅ → Orden</button>}
         </div>
       </div>
 
       {/* TABS */}
-      <div style={{display:"flex",gap:2,marginBottom:18,borderBottom:"1px solid #1e3a5a"}}>
-        {TABS.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:tab===t.id?700:500,color:tab===t.id?"#64B5F6":"#3a6a9a",borderBottom:tab===t.id?"2px solid #1565C0":"2px solid transparent",marginBottom:-1,whiteSpace:"nowrap"}}>
-            {t.label}
-          </button>
-        ))}
+      <div style={{display:"flex",gap:2,marginBottom:14,background:"#050d18",borderRadius:8,padding:3}}>
+        {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"7px 10px",borderRadius:6,border:"none",background:tab===t.id?"#0d1e35":"transparent",color:tab===t.id?"#e2f0ff":"#3a6a9a",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:tab===t.id?700:400}}>{t.label}</button>)}
       </div>
 
-      {/* TAB: PRESUPUESTO */}
-      {tab==="presupuesto"&&<div>
-        {/* CAMPOS OBLIGATORIOS */}
+      {/* TAB: PEDIDO */}
+      {tab==="pedido"&&<div>
+        {/* Cliente */}
         <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1565C040",marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#64B5F6",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:12}}>
-            ✳️ Datos obligatorios del cliente
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-            <Field label={<span>Nombre <span style={{color:"#f48fb1"}}>*</span></span>}>
-              <Input value={form.contacto_nombre||""} onChange={e=>set("contacto_nombre",e.target.value)}
-                placeholder="Nombre completo..."
-                style={{...iS,borderColor:errors.contacto_nombre?"#f44336":"#1e3a5a"}}/>
-              {errors.contacto_nombre&&<div style={{fontSize:11,color:"#f48fb1",marginTop:3}}>⚠ Campo requerido</div>}
+          <div style={{fontSize:11,fontWeight:700,color:"#64B5F6",textTransform:"uppercase",marginBottom:10}}>Datos del Cliente</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <Field label="Seleccionar cliente">
+              <Sel value={form.cliente} onChange={e=>onClienteChange(e.target.value)}>
+                <option value="">Sin asignar</option>
+                {clientes.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </Sel>
             </Field>
-            <Field label={<span>Teléfono <span style={{color:"#f48fb1"}}>*</span></span>}>
-              <Input value={form.contacto_telefono||""} onChange={e=>set("contacto_telefono",e.target.value)}
-                placeholder="341 000-0000..."
-                style={{...iS,borderColor:errors.contacto_telefono?"#f44336":"#1e3a5a"}}/>
-              {errors.contacto_telefono&&<div style={{fontSize:11,color:"#f48fb1",marginTop:3}}>⚠ Campo requerido</div>}
-            </Field>
-            <Field label={<span>Domicilio <span style={{color:"#f48fb1"}}>*</span></span>}>
-              <Input value={form.contacto_domicilio||""} onChange={e=>set("contacto_domicilio",e.target.value)}
-                placeholder="Calle y número..."
-                style={{...iS,borderColor:errors.contacto_domicilio?"#f44336":"#1e3a5a"}}/>
-              {errors.contacto_domicilio&&<div style={{fontSize:11,color:"#f48fb1",marginTop:3}}>⚠ Campo requerido</div>}
-            </Field>
+            <Field label="Nombre *"><Input value={form.contacto_nombre} onChange={e=>set("contacto_nombre",e.target.value)} placeholder="Nombre completo..."/></Field>
+            <Field label="Teléfono *"><Input value={form.contacto_tel} onChange={e=>set("contacto_tel",e.target.value)} placeholder="341 000-0000"/></Field>
+            <Field label="Domicilio *"><Input value={form.contacto_dom} onChange={e=>set("contacto_dom",e.target.value)} placeholder="Calle y número..."/></Field>
           </div>
         </div>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
-          <Field label="Tipo de Trabajo"><Sel value={form.tipo} onChange={e=>set("tipo",e.target.value)}><option value="">Seleccionar...</option>{TIPOS_TRABAJO.map(t=><option key={t} value={t}>{t}</option>)}</Sel></Field>
-          <Field label="Fecha"><Input type="date" value={form.fecha} onChange={e=>set("fecha",e.target.value)}/></Field>
-          <Field label="Válido hasta"><Input type="date" value={form.pres_validez} onChange={e=>set("pres_validez",e.target.value)}/></Field>
-        </div>
-
-        {/* TABLA DE VIDRIOS */}
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1565C030",marginBottom:14}}>
+        {/* Ítems */}
+        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:14}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#64B5F6",textTransform:"uppercase",letterSpacing:"0.5px"}}>🔷 Detalle de Vidrios</div>
-            <Btn small onClick={addVidrio}><Icon name="plus" size={13}/> Agregar</Btn>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"55px 1fr 90px 90px 1fr 28px",gap:8,marginBottom:6}}>
-            {["Cant.","Tipo de vidrio","Ancho (mm)","Alto (mm)","Observaciones",""].map(h=><span key={h} style={{fontSize:10,color:"#3a6a9a",fontWeight:600}}>{h}</span>)}
-          </div>
-          {(form.vidrios||[{cant:1,tipo:"",ancho:"",alto:"",obs:""}]).map((v,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"55px 1fr 90px 90px 1fr 28px",gap:8,marginBottom:8,alignItems:"center"}}>
-              <Input type="number" min="1" value={v.cant} onChange={e=>setVidrio(i,"cant",e.target.value)} style={{textAlign:"center"}}/>
-              <div>
-                <Sel value={v.tipo==="__custom__"||(!TIPOS_VIDRIO.includes(v.tipo)&&v.tipo)?"__custom__":v.tipo}
-                  onChange={e=>{if(e.target.value==="__custom__")setVidrio(i,"tipo","__custom__");else setVidrio(i,"tipo",e.target.value);}}>
-                  <option value="">Tipo...</option>
-                  {TIPOS_VIDRIO.filter(t=>t!=="Otro").map(t=><option key={t} value={t}>{t}</option>)}
-                  <option value="__custom__">✏️ Escribir manualmente...</option>
-                </Sel>
-                {(v.tipo==="__custom__"||(!TIPOS_VIDRIO.includes(v.tipo)&&v.tipo&&v.tipo!==""))&&(
-                  <Input value={v.tipo==="__custom__"?"":v.tipo} onChange={e=>setVidrio(i,"tipo",e.target.value)}
-                    placeholder="Escribí el tipo de vidrio..." style={{marginTop:5}}/>
-                )}
-              </div>
-              <Input type="number" value={v.ancho} onChange={e=>setVidrio(i,"ancho",e.target.value)} placeholder="mm"/>
-              <Input type="number" value={v.alto} onChange={e=>setVidrio(i,"alto",e.target.value)} placeholder="mm"/>
-              <Input value={v.obs} onChange={e=>setVidrio(i,"obs",e.target.value)} placeholder="Borde, corte..."/>
-              <button onClick={()=>removeVidrio(i)} disabled={(form.vidrios||[]).length<=1} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,opacity:(form.vidrios||[]).length<=1?0.3:1,display:"flex"}}><Icon name="trash" size={13}/></button>
-            </div>
-          ))}
-        </div>
-
-        {/* ÍTEMS PRESUPUESTO */}
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:14}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase"}}>Ítems del Presupuesto</div>
-            <Btn small onClick={addItem}><Icon name="plus" size={13}/> Ítem</Btn>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 60px 120px 28px",gap:8,marginBottom:5}}>
-            {["Descripción","Cant.","Precio unit.",""].map(h=><span key={h} style={{fontSize:10,color:"#3a6a9a",fontWeight:600}}>{h}</span>)}
-          </div>
-          {(form.pres_items||[]).map((item,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 60px 120px 28px",gap:8,marginBottom:7,alignItems:"center"}}>
-              <Input value={item.desc} onChange={e=>setItem(i,"desc",e.target.value)} placeholder="Ej: Mano de obra, instalación..."/>
-              <Input type="number" value={item.cant} min="1" onChange={e=>setItem(i,"cant",e.target.value)} style={{textAlign:"center"}}/>
-              <Input type="number" value={item.precio} onChange={e=>setItem(i,"precio",e.target.value)} placeholder="$0"/>
-              <button onClick={()=>removeItem(i)} disabled={(form.pres_items||[]).length<=1} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,opacity:(form.pres_items||[]).length<=1?0.3:1,display:"flex"}}><Icon name="trash" size={13}/></button>
-            </div>
-          ))}
-
-          {/* IVA TOGGLE */}
-          <div style={{display:"flex",alignItems:"center",gap:10,marginTop:10,padding:"8px 12px",background:"#0a1828",borderRadius:8}}>
-            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
-              <input type="checkbox" checked={form.pres_con_iva!==false} onChange={e=>set("pres_con_iva",e.target.checked)}
-                style={{width:16,height:16,accentColor:"#1565C0",cursor:"pointer"}}/>
-              <span style={{fontSize:13,color:"#7ab2e8",fontWeight:600}}>Aplicar IVA (21%)</span>
-            </label>
-            <span style={{fontSize:11,color:"#3a6a9a",marginLeft:4}}>
-              {form.pres_con_iva!==false?"Factura con IVA incluido":"Efectivo / sin IVA"}
-            </span>
+            <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase"}}>🔷 Pedido de Vidrios</div>
+            <Btn small onClick={addItem}><Icon name="plus" size={13}/> Agregar ítem</Btn>
           </div>
 
-          {subTotal>0&&<div style={{marginTop:10,padding:"10px 12px",background:"#0a1828",borderRadius:8,border:"1px solid #1565C025"}}>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#5a8ab8",marginBottom:2}}><span>Subtotal</span><span>${subTotal.toLocaleString("es-AR")}</span></div>
-            {form.pres_con_iva!==false&&<div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#5a8ab8",marginBottom:2}}><span>IVA 21%</span><span>${iva.toLocaleString("es-AR")}</span></div>}
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:700,color:"#64B5F6"}}><span>TOTAL</span><span>${totalConIva.toLocaleString("es-AR")}</span></div>
-          </div>}
-        </div>
-        <Field label="Condiciones de pago"><Textarea value={form.pres_condiciones} onChange={e=>set("pres_condiciones",e.target.value)}/></Field>
-        <Field label="Firmante (cliente)"><Input value={form.pres_firmante||""} onChange={e=>set("pres_firmante",e.target.value)} placeholder="Nombre del cliente..."/></Field>
-      </div>}
-
-      {/* TAB: MEDICIÓN — REMOVED, merged into produccion */}
-
-      {/* TAB: PRODUCCIÓN */}
-      {tab==="produccion"&&<div>
-
-        {/* ── PLANO ── */}
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1565C040",marginBottom:14}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#64B5F6",textTransform:"uppercase",letterSpacing:"0.5px"}}>✏️ Plano / Croquis</div>
-            <div style={{fontSize:11,color:"#3a6a9a"}}>Dibujá el vidrio con medidas finales</div>
-          </div>
-          <DrawingCanvas value={form.med_plano||[]} onChange={v=>set("med_plano",v)}/>
-        </div>
-
-        {/* ── SCANNER IA ── */}
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #CE93D830",marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#CE93D8",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>
-            🤖 Escanear remito físico con IA
-          </div>
-          <div style={{fontSize:12,color:"#5a8ab8",marginBottom:12,lineHeight:1.6}}>
-            Sacá una foto al remito o papel con las medidas. La IA lee los vidrios, medidas y accesorios y los carga automáticamente en la tabla de arriba.
-          </div>
-          <ScannerRemito onResult={(vidrios,materiales)=>{
-            if(vidrios&&vidrios.length) setForm(f=>({...f,vidrios:[...vidrios]}));
-            if(materiales) setForm(f=>({...f,prod_materiales:materiales}));
-          }}/>
-        </div>
-
-        {/* ── FOTO REMITO FÍSICO ── */}
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:10}}>📷 Fotos del remito / trabajo</div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
-            {(form.fotos_remito||[]).map((foto,i)=>(
-              <div key={i} style={{position:"relative"}}>
-                <img src={foto.data} alt={foto.nombre}
-                  style={{width:80,height:80,objectFit:"cover",borderRadius:7,border:"1px solid #1e3a5a",cursor:"pointer"}}
-                  onClick={()=>window.open(foto.data,"_blank")}/>
-                <button onClick={()=>setForm(f=>({...f,fotos_remito:(f.fotos_remito||[]).filter((_,idx)=>idx!==i)}))}
-                  style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:"#7f2020",border:"none",color:"#fff",cursor:"pointer",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>✕</button>
-              </div>
-            ))}
-            <label style={{width:80,height:80,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,background:"#0a1020",borderRadius:7,border:"2px dashed #1e3a5a",cursor:"pointer"}}>
-              <span style={{fontSize:22}}>📷</span>
-              <span style={{fontSize:9,color:"#3a6a9a"}}>Agregar foto</span>
-              <input type="file" accept="image/*" capture="environment" multiple style={{display:"none"}} onChange={e=>{
-                Array.from(e.target.files).forEach(file=>{
-                  if(file.size>3*1024*1024){alert(`${file.name} es muy grande (máx 3MB)`);return;}
-                  const reader=new FileReader();
-                  reader.onload=ev=>setForm(f=>({...f,fotos_remito:[...(f.fotos_remito||[]),{data:ev.target.result,nombre:file.name}]}));
-                  reader.readAsDataURL(file);
-                });
-              }}/>
-            </label>
-          </div>
-          <div style={{fontSize:11,color:"#2a4a6a"}}>Tocá una foto para verla en grande · máx 3MB por foto</div>
-        </div>
-
-        {/* ── PRODUCCIÓN ── */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-          <Field label="Materiales / Accesorios adicionales"><Textarea value={form.prod_materiales||""} onChange={e=>set("prod_materiales",e.target.value)} placeholder="Burlete D gris, bisagras inox, perfiles..."/></Field>
-          <div>
-            <Field label="Fecha estimada de producción"><Input type="date" value={form.prod_fecha_est||""} onChange={e=>set("prod_fecha_est",e.target.value)}/></Field>
-            <Field label="Notas para el taller"><Textarea value={form.prod_notas||""} onChange={e=>set("prod_notas",e.target.value)} style={{minHeight:60}}/></Field>
-          </div>
-        </div>
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:10}}>Procesos requeridos</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-            {PROCESOS.map(p=>{const active=(form.prod_procesos||[]).includes(p);return(
-              <button key={p} onClick={()=>setForm(f=>({...f,prod_procesos:active?(f.prod_procesos||[]).filter(x=>x!==p):[...(f.prod_procesos||[]),p]}))}
-                style={{padding:"6px 14px",borderRadius:99,border:`1px solid ${active?"#1565C0":"#1e3a5a"}`,background:active?"#1565C020":"transparent",color:active?"#64B5F6":"#3a6a9a",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:active?700:400}}>
-                {p}
-              </button>
-            );})}
-          </div>
-        </div>
-
-        {/* STOCK CONECTADO */}
-        {stockItems&&stockItems.length>0&&<div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #26A69A30",marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#26A69A",textTransform:"uppercase",marginBottom:10}}>📦 Materiales del stock a usar</div>
-          <div style={{fontSize:12,color:"#5a8ab8",marginBottom:10}}>Seleccioná los materiales que vas a usar. Al guardar se descuenta el stock automáticamente.</div>
-          {stockItems.filter(i=>i.stock>0).map(item=>{
-            const usado=(form.prod_materiales_usados||[]).find(x=>x.id===item.id);
-            return(
-              <div key={item.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #0f2035"}}>
-                <input type="checkbox" checked={!!usado} onChange={e=>{
-                  if(e.target.checked) setForm(f=>({...f,prod_materiales_usados:[...(f.prod_materiales_usados||[]),{id:item.id,nombre:item.nombre,cant:1,unidad:item.unidad||"u."}]}));
-                  else setForm(f=>({...f,prod_materiales_usados:(f.prod_materiales_usados||[]).filter(x=>x.id!==item.id)}));
-                }} style={{accentColor:"#26A69A",width:16,height:16,cursor:"pointer"}}/>
-                <div style={{flex:1}}>
-                  <span style={{fontSize:13,color:"#c8e0f8",fontWeight:600}}>{item.nombre}</span>
-                  <span style={{fontSize:11,color:"#3a6a9a",marginLeft:8}}>Stock: {item.stock} {item.unidad||"u."}</span>
+          {form.items.map((item,i)=>(
+            <div key={item.id||i} style={{background:"#0a1828",borderRadius:9,padding:12,marginBottom:10,border:"1px solid #0f2035"}}>
+              {/* Fila 1: cant, tipo, medidas */}
+              <div style={{display:"grid",gridTemplateColumns:"60px 1fr 100px 100px 28px",gap:8,alignItems:"end",marginBottom:8}}>
+                <Field label="Cant."><Input type="number" min="1" value={item.cant} onChange={e=>setItem(i,"cant",e.target.value)} style={{textAlign:"center"}}/></Field>
+                <Field label="Tipo de vidrio">
+                  <Sel value={tiposVidrio.includes(item.tipo_vidrio)?item.tipo_vidrio:item.tipo_vidrio?"__otro__":""}
+                    onChange={e=>{if(e.target.value==="__otro__")setItem(i,"tipo_vidrio","");else setItem(i,"tipo_vidrio",e.target.value);}}>
+                    <option value="">Seleccionar...</option>
+                    {tiposVidrio.map(t=><option key={t} value={t}>{t}</option>)}
+                    <option value="__otro__">✏️ Escribir...</option>
+                  </Sel>
+                  {(!tiposVidrio.includes(item.tipo_vidrio)&&item.tipo_vidrio!=="")&&
+                    <Input value={item.tipo_vidrio} onChange={e=>setItem(i,"tipo_vidrio",e.target.value)} placeholder="Tipo personalizado..." style={{marginTop:5}}/>}
+                </Field>
+                <Field label="Ancho (mm)"><Input type="number" value={item.ancho} onChange={e=>setItem(i,"ancho",e.target.value)} placeholder="0"/></Field>
+                <Field label="Alto (mm)"><Input type="number" value={item.alto} onChange={e=>setItem(i,"alto",e.target.value)} placeholder="0"/></Field>
+                <div style={{paddingBottom:2}}>
+                  <button onClick={()=>removeItem(i)} disabled={form.items.length<=1} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,opacity:form.items.length<=1?0.3:1,marginTop:18,display:"flex"}}><Icon name="trash" size={14}/></button>
                 </div>
-                {usado&&<div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{fontSize:12,color:"#5a8ab8"}}>Cantidad:</span>
-                  <input type="number" min="1" max={item.stock} value={usado.cant}
-                    onChange={e=>setForm(f=>({...f,prod_materiales_usados:(f.prod_materiales_usados||[]).map(x=>x.id===item.id?{...x,cant:+e.target.value}:x)}))}
-                    style={{...iS,width:70,padding:"4px 8px",fontSize:13,textAlign:"center"}}/>
-                  <span style={{fontSize:12,color:"#5a8ab8"}}>{item.unidad||"u."}</span>
-                </div>}
               </div>
-            );
-          })}
-          {(form.prod_materiales_usados||[]).length>0&&<div style={{marginTop:10,padding:"8px 12px",background:"#0a2a1a",borderRadius:8,border:"1px solid #26A69A30",fontSize:12,color:"#26A69A"}}>
-            ✅ Al guardar la orden se descontarán {(form.prod_materiales_usados||[]).length} material(es) del stock.
-          </div>}
-        </div>}
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a"}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:10}}>Plantilla de producción (opcional)</div>
-          <Sel value={form.prod_plantilla_id||""} onChange={e=>set("prod_plantilla_id",e.target.value)}><option value="">Sin plantilla</option>{plantillas.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}</Sel>
-          {tpl&&<div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            {tpl.campos.map(campo=>{const val=form.prod_campos?.[campo.key]||"";return(
-              <div key={campo.key} style={{gridColumn:campo.tipo==="textarea"?"span 2":"auto"}}>
-                <Field label={campo.label}>{campo.tipo==="select"?<Sel value={val} onChange={e=>setCampo(campo.key,e.target.value)}><option value="">Seleccionar...</option>{(campo.opciones||[]).map(o=><option key={o} value={o}>{o}</option>)}</Sel>:campo.tipo==="textarea"?<Textarea value={val} onChange={e=>setCampo(campo.key,e.target.value)}/>:<Input type={campo.tipo==="numero"?"number":"text"} value={val} onChange={e=>setCampo(campo.key,e.target.value)}/>}</Field>
+
+              {/* Fila 2: observaciones (chips) */}
+              <div style={{marginBottom:8}}>
+                <div style={{fontSize:10,color:"#3a6a9a",fontWeight:600,marginBottom:5}}>OBSERVACIONES</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:5,alignItems:"center"}}>
+                  {obsExtra.map(ob=>{
+                    const sel=(item.obs||[]).includes(ob);
+                    return <button key={ob} onClick={()=>toggleObs(i,ob)} style={{padding:"4px 10px",borderRadius:99,border:`1px solid ${sel?"#64B5F6":"#1e3a5a"}`,background:sel?"#1565C020":"transparent",color:sel?"#64B5F6":"#3a6a9a",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:sel?700:400}}>{ob}</button>;
+                  })}
+                  <div style={{display:"flex",gap:4}}>
+                    <input value={newObs} onChange={e=>setNewObs(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&newObs.trim()){setObsExtra(o=>[...o,newObs.trim()]);setNewObs("");}}}
+                      placeholder="+ Nueva obs..." style={{...iS,padding:"3px 8px",fontSize:11,width:120}}/>
+                  </div>
+                </div>
               </div>
-            );})}
+
+              {/* Fila 3: servicio + colocación + precio */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 120px",gap:8,alignItems:"end"}}>
+                <Field label="Servicio">
+                  <div style={{display:"flex",gap:4}}>
+                    <Sel value={serviciosExtra.includes(item.servicio)?item.servicio:item.servicio?"__otro__":""}
+                      onChange={e=>{if(e.target.value==="__otro__")setItem(i,"servicio","");else setItem(i,"servicio",e.target.value);}} style={{flex:1}}>
+                      <option value="">Sin servicio</option>
+                      {serviciosExtra.map(s=><option key={s} value={s}>{s}</option>)}
+                      <option value="__otro__">✏️ Escribir...</option>
+                    </Sel>
+                  </div>
+                  {(!serviciosExtra.includes(item.servicio)&&item.servicio!=="")&&
+                    <Input value={item.servicio} onChange={e=>setItem(i,"servicio",e.target.value)} placeholder="Servicio personalizado..." style={{marginTop:5}}/>}
+                </Field>
+                <Field label="Colocación">
+                  <div style={{display:"flex",gap:4}}>
+                    {COLOCACION.map(c=><button key={c.id} onClick={()=>setItem(i,"colocacion",c.id)} style={{flex:1,padding:"6px 4px",borderRadius:6,border:`1px solid ${item.colocacion===c.id?"#1565C0":"#1e3a5a"}`,background:item.colocacion===c.id?"#1565C020":"transparent",color:item.colocacion===c.id?"#64B5F6":"#3a6a9a",cursor:"pointer",fontSize:10,fontFamily:"inherit",fontWeight:item.colocacion===c.id?700:400,textAlign:"center"}}>{c.label}</button>)}
+                  </div>
+                </Field>
+                {modo==="orden"&&<Field label="Precio $"><Input type="number" value={item.precio||""} onChange={e=>setItem(i,"precio",e.target.value)} placeholder="0"/></Field>}
+              </div>
+            </div>
+          ))}
+
+          {/* Servicios: gestión rápida */}
+          <div style={{marginTop:8,padding:"8px 12px",background:"#050d18",borderRadius:7,display:"flex",gap:6,alignItems:"center"}}>
+            <span style={{fontSize:10,color:"#3a6a9a"}}>+ Servicio:</span>
+            <input value={newServ} onChange={e=>setNewServ(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&newServ.trim()){setServiciosExtra(s=>[...s,newServ.trim()]);setNewServ("");}}}
+              placeholder="Agregar servicio..." style={{...iS,padding:"3px 8px",fontSize:11,flex:1}}/>
+          </div>
+        </div>
+
+        {/* Pagos */}
+        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:10}}>
+            {modo==="orden"?"💳 Pagos":"💰 Total"}
+          </div>
+          {modo==="orden"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
+            <Field label="Seña"><Input type="number" value={form.pago_senia} onChange={e=>set("pago_senia",e.target.value)} placeholder="$0"/></Field>
+            <Field label="Saldo"><Input type="number" value={form.pago_saldo} onChange={e=>set("pago_saldo",e.target.value)} placeholder="$0"/></Field>
+            <Field label="Total"><Input type="number" value={form.pago_total} onChange={e=>set("pago_total",e.target.value)} placeholder="$0"/></Field>
           </div>}
+          {modo==="cotizacion"&&<Field label="Total"><Input type="number" value={form.pago_total||totalCalc} onChange={e=>set("pago_total",e.target.value)} placeholder="$0"/></Field>}
+          <Field label="Condiciones de pago"><Textarea value={form.condiciones} onChange={e=>set("condiciones",e.target.value)}/></Field>
         </div>
       </div>}
 
-      {/* TAB: INSTALACIÓN */}
-      {tab==="instalacion"&&<div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-          <Field label="Fecha de instalación / entrega"><Input type="date" value={form.inst_fecha||""} onChange={e=>set("inst_fecha",e.target.value)}/></Field>
-          <Field label="Dirección"><Input value={form.inst_direccion||""} onChange={e=>set("inst_direccion",e.target.value)} placeholder="Calle, número, piso..."/></Field>
-          <Field label="Responsable instalación"><Input value={form.inst_responsable||""} onChange={e=>set("inst_responsable",e.target.value)} placeholder="Nombre del instalador..."/></Field>
-          <Field label="Quién recibe / firma"><Input value={form.inst_firmante||""} onChange={e=>set("inst_firmante",e.target.value)} placeholder="Cliente o encargado..."/></Field>
-          <div style={{gridColumn:"span 2"}}><Field label="Observaciones"><Textarea value={form.inst_notas||""} onChange={e=>set("inst_notas",e.target.value)} placeholder="Acceso, horarios, instrucciones..."/></Field></div>
+      {/* TAB: PLANO */}
+      {tab==="plano"&&<div>
+        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1565C040"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#64B5F6",textTransform:"uppercase",marginBottom:10}}>✏️ Plano Técnico</div>
+          <MiniCanvas value={form.plano||[]} onChange={v=>set("plano",v)}/>
+        </div>
+      </div>}
+
+      {/* TAB: INSTALACIÓN (solo en orden) */}
+      {tab==="instalacion"&&modo==="orden"&&<div>
+        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:12}}>🚚 Datos de Instalación / Entrega</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <Field label="Fecha de instalación"><Input type="date" value={form.inst_fecha||""} onChange={e=>set("inst_fecha",e.target.value)}/></Field>
+            <Field label="Dirección"><Input value={form.inst_direccion||""} onChange={e=>set("inst_direccion",e.target.value)} placeholder="Calle y número..."/></Field>
+            <Field label="Responsable"><Input value={form.inst_responsable||""} onChange={e=>set("inst_responsable",e.target.value)} placeholder="Instalador..."/></Field>
+            <Field label="Recibe / Firma"><Input value={form.inst_firmante||""} onChange={e=>set("inst_firmante",e.target.value)} placeholder="Cliente o encargado..."/></Field>
+            <div style={{gridColumn:"span 2"}}>
+              <Field label="Notas de instalación (aparecen en ambos PDFs)">
+                <Textarea value={form.inst_notas||""} onChange={e=>set("inst_notas",e.target.value)} placeholder="Detalles del acceso, instrucciones especiales, observaciones..."/>
+              </Field>
+            </div>
+          </div>
         </div>
 
-        {/* FOTOS DEL LUGAR */}
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #CE93D830",marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#CE93D8",textTransform:"uppercase",marginBottom:8}}>🏠 Fotos del lugar / espacio</div>
-          <div style={{fontSize:12,color:"#5a8ab8",marginBottom:10}}>Fotografías del espacio donde va instalado. Aparecen en el PDF completo.</div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
-            {(form.fotos_lugar||[]).map((foto,i)=>(
+        {/* Fotos */}
+        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #CE93D830"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#CE93D8",textTransform:"uppercase",marginBottom:8}}>📷 Fotos de instalación</div>
+          <div style={{fontSize:12,color:"#5a8ab8",marginBottom:10}}>Fotos del cliente o del lugar. Aparecen en el PDF Completo.</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {(form.fotos_instalacion||[]).map((f,i)=>(
               <div key={i} style={{position:"relative"}}>
-                <img src={foto.data} alt={foto.nombre}
-                  style={{width:90,height:90,objectFit:"cover",borderRadius:8,border:"1px solid #CE93D830",cursor:"pointer"}}
-                  onClick={()=>window.open(foto.data,"_blank")}/>
-                <button onClick={()=>setForm(f=>({...f,fotos_lugar:(f.fotos_lugar||[]).filter((_,idx)=>idx!==i)}))}
-                  style={{position:"absolute",top:-6,right:-6,width:20,height:20,borderRadius:"50%",background:"#7f2020",border:"none",color:"#fff",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>✕</button>
+                <img src={f.data} alt="" style={{width:90,height:90,objectFit:"cover",borderRadius:8,border:"1px solid #CE93D830",cursor:"pointer"}} onClick={()=>window.open(f.data,"_blank")}/>
+                <button onClick={()=>setForm(fr=>({...fr,fotos_instalacion:(fr.fotos_instalacion||[]).filter((_,idx)=>idx!==i)}))}
+                  style={{position:"absolute",top:-6,right:-6,width:20,height:20,borderRadius:"50%",background:"#7f2020",border:"none",color:"#fff",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
               </div>
             ))}
             <label style={{width:90,height:90,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,background:"#0a1020",borderRadius:8,border:"2px dashed #CE93D840",cursor:"pointer"}}>
-              <span style={{fontSize:24}}>🏠</span>
-              <span style={{fontSize:9,color:"#3a6a9a",textAlign:"center"}}>Subir foto</span>
+              <span style={{fontSize:22}}>📷</span>
+              <span style={{fontSize:9,color:"#3a6a9a"}}>Agregar foto</span>
               <input type="file" accept="image/*" capture="environment" multiple style={{display:"none"}} onChange={e=>{
-                Array.from(e.target.files).forEach(file=>{
-                  if(file.size>4*1024*1024){alert(`${file.name} muy grande (máx 4MB)`);return;}
-                  const reader=new FileReader();
-                  reader.onload=ev=>setForm(f=>({...f,fotos_lugar:[...(f.fotos_lugar||[]),{data:ev.target.result,nombre:file.name}]}));
-                  reader.readAsDataURL(file);
+                Array.from(e.target.files).forEach(f=>{
+                  if(f.size>4*1024*1024){alert("Máx 4MB por foto");return;}
+                  const r=new FileReader();
+                  r.onload=ev=>setForm(fr=>({...fr,fotos_instalacion:[...(fr.fotos_instalacion||[]),{data:ev.target.result,nombre:f.name}]}));
+                  r.readAsDataURL(f);
                 });
               }}/>
             </label>
           </div>
-          {(form.fotos_lugar||[]).length>0&&<div style={{fontSize:11,color:"#2a4a6a"}}>{(form.fotos_lugar||[]).length} foto(s) · Tocá para ver en grande</div>}
-        </div>
-
-        {/* CONFIRMACIÓN DE ENTREGA */}
-        <div style={{background:"#071220",borderRadius:10,padding:16,border:`1px solid ${form.inst_entregado?"#26A69A40":"#1e3a5a"}`}}>
-          <div style={{fontSize:12,fontWeight:700,color:form.inst_entregado?"#26A69A":"#5a8ab8",textTransform:"uppercase",marginBottom:12}}>
-            {form.inst_entregado?"✅ Trabajo entregado":"🚚 Confirmación de entrega"}
-          </div>
-          <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",marginBottom:form.inst_entregado?12:0}}>
-            <input type="checkbox" checked={!!form.inst_entregado} onChange={e=>{
-              set("inst_entregado",e.target.checked);
-              if(e.target.checked && !form.inst_fecha_entrega) set("inst_fecha_entrega",new Date().toISOString().split("T")[0]);
-            }} style={{width:18,height:18,accentColor:"#26A69A",cursor:"pointer"}}/>
-            <span style={{fontSize:14,color:"#c8e0f8",fontWeight:600}}>Marcar trabajo como entregado al cliente</span>
-          </label>
-          {form.inst_entregado&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12}}>
-            <Field label="Fecha real de entrega"><Input type="date" value={form.inst_fecha_entrega||""} onChange={e=>set("inst_fecha_entrega",e.target.value)}/></Field>
-            <Field label="Recibió conforme"><Input value={form.inst_recibio||""} onChange={e=>set("inst_recibio",e.target.value)} placeholder="Nombre de quien recibió..."/></Field>
-            <div style={{gridColumn:"span 2"}}><Field label="Observaciones de la entrega"><Textarea value={form.inst_obs_entrega||""} onChange={e=>set("inst_obs_entrega",e.target.value)} placeholder="Todo ok, pendiente de instalación de herrajes, etc..." style={{minHeight:60}}/></Field></div>
-          </div>}
         </div>
       </div>}
 
-      {/* TAB: PAGOS */}
-      {tab==="pagos"&&<div>
-        {totalConIva>0&&<div style={{background:"#071220",borderRadius:10,padding:"11px 16px",border:"1px solid #1565C030",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{fontSize:13,color:"#5a8ab8"}}>Total presupuestado</span>
-          <span style={{fontSize:18,fontWeight:800,color:"#64B5F6"}}>${totalConIva.toLocaleString("es-AR")}</span>
-        </div>}
-
-        {/* BOTONES RÁPIDOS */}
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:12}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:12}}>⚡ Registro rápido</div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-            {/* Abonó seña en efectivo */}
-            <button onClick={()=>{
-              const monto=totalConIva>0?Math.round(totalConIva*0.5):"";
-              set("pago_senia", form.pago_senia||monto);
-              set("pago_senia_fecha", new Date().toISOString().split("T")[0]);
-              set("pago_senia_metodo","efectivo");
-              setForm(f=>({...f,pago_registros:[...(f.pago_registros||[]),{tipo:"seña",metodo:"efectivo",monto:form.pago_senia||monto,fecha:new Date().toISOString(),nota:"Seña en efectivo"}]}));
-            }} style={{display:"flex",alignItems:"center",gap:7,padding:"9px 14px",background:"#1a1000",border:"1px solid #FFB74D40",borderRadius:8,color:"#FFB74D",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>
-              💵 Abonó seña — Efectivo
-            </button>
-            {/* Abonó total en efectivo */}
-            <button onClick={()=>{
-              const resta=Math.max(0,totalConIva-(+form.pago_senia||0));
-              set("pago_total", form.pago_total||(resta||totalConIva));
-              set("pago_total_fecha", new Date().toISOString().split("T")[0]);
-              set("pago_total_metodo","efectivo");
-              setForm(f=>({...f,pago_registros:[...(f.pago_registros||[]),{tipo:"pago_final",metodo:"efectivo",monto:resta||totalConIva,fecha:new Date().toISOString(),nota:"Pago final en efectivo"}]}));
-            }} style={{display:"flex",alignItems:"center",gap:7,padding:"9px 14px",background:"#0a2a0f",border:"1px solid #A5D6A740",borderRadius:8,color:"#A5D6A7",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>
-              💵 Abonó total — Efectivo
-            </button>
-            {/* Abonó por transferencia */}
-            <button onClick={()=>{
-              const resta=Math.max(0,totalConIva-(+form.pago_senia||0));
-              set("pago_total", form.pago_total||(resta||totalConIva));
-              set("pago_total_fecha", new Date().toISOString().split("T")[0]);
-              set("pago_total_metodo","transferencia");
-              setForm(f=>({...f,pago_registros:[...(f.pago_registros||[]),{tipo:"pago_final",metodo:"transferencia",monto:resta||totalConIva,fecha:new Date().toISOString(),nota:"Pago por transferencia"}]}));
-            }} style={{display:"flex",alignItems:"center",gap:7,padding:"9px 14px",background:"#0a1a2a",border:"1px solid #64B5F640",borderRadius:8,color:"#64B5F6",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>
-              📲 Abonó total — Transferencia
-            </button>
-          </div>
-        </div>
-
-        {/* SEÑA */}
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #FFB74D20",marginBottom:12}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#FFB74D",textTransform:"uppercase",marginBottom:12}}>💰 Seña / Anticipo</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-            <Field label="Monto ($)"><Input type="number" value={form.pago_senia||""} onChange={e=>set("pago_senia",e.target.value)} placeholder="0"/></Field>
-            <Field label="Fecha de cobro"><Input type="date" value={form.pago_senia_fecha||""} onChange={e=>set("pago_senia_fecha",e.target.value)}/></Field>
-            <Field label="Forma de pago"><Sel value={form.pago_senia_metodo||"efectivo"} onChange={e=>set("pago_senia_metodo",e.target.value)}>{METODOS.map(m=><option key={m} value={m.toLowerCase()}>{m}</option>)}</Sel></Field>
-          </div>
-          {+form.pago_senia>0&&totalConIva>0&&<div style={{marginTop:6,padding:"7px 12px",background:"#0a1828",borderRadius:7,fontSize:12,color:"#5a8ab8"}}>
-            Resta después de seña: <span style={{color:"#FFB74D",fontWeight:700}}>${Math.max(0,totalConIva-(+form.pago_senia)).toLocaleString("es-AR")}</span>
-          </div>}
-        </div>
-
-        {/* PAGO FINAL */}
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #A5D6A720",marginBottom:12}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#A5D6A7",textTransform:"uppercase",marginBottom:12}}>✅ Pago Final / Saldo</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-            <Field label="Monto cobrado ($)"><Input type="number" value={form.pago_total||""} onChange={e=>set("pago_total",e.target.value)} placeholder="0"/></Field>
-            <Field label="Fecha de cobro"><Input type="date" value={form.pago_total_fecha||""} onChange={e=>set("pago_total_fecha",e.target.value)}/></Field>
-            <Field label="Forma de pago"><Sel value={form.pago_total_metodo||"efectivo"} onChange={e=>set("pago_total_metodo",e.target.value)}>{METODOS.map(m=><option key={m} value={m.toLowerCase()}>{m}</option>)}</Sel></Field>
-          </div>
-        </div>
-
-        {/* COMPROBANTE */}
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:12}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:10}}>📎 Comprobante de pago</div>
-          {form.pago_comprobante ? (
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div style={{flex:1,padding:"8px 12px",background:"#0a1828",borderRadius:7,fontSize:12,color:"#64B5F6",border:"1px solid #1565C030"}}>
-                ✅ Comprobante cargado — {form.pago_comprobante_nombre||"archivo"}
-              </div>
-              <button onClick={()=>{set("pago_comprobante","");set("pago_comprobante_nombre","");}}
-                style={{background:"none",border:"none",color:"#f48fb1",cursor:"pointer",padding:4,display:"flex"}}><Icon name="trash" size={14}/></button>
-              {form.pago_comprobante.startsWith("data:image")&&(
-                <img src={form.pago_comprobante} alt="comprobante" style={{width:60,height:60,objectFit:"cover",borderRadius:6,border:"1px solid #1e3a5a",cursor:"pointer"}}
-                  onClick={()=>window.open(form.pago_comprobante,"_blank")}/>
-              )}
-            </div>
-          ) : (
-            <label style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",background:"#0a1828",borderRadius:8,border:"2px dashed #1e3a5a",cursor:"pointer"}}>
-              <span style={{fontSize:20}}>📎</span>
+      {/* TAB: ACTIVIDAD (solo en orden) */}
+      {tab==="actividad"&&modo==="orden"&&<div>
+        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:12}}>🕐 Historial de Actividad</div>
+          {(doc?.actividad||[]).length===0&&<div style={{color:"#2a4a6a",fontSize:13}}>Sin actividad registrada aún.</div>}
+          {(doc?.actividad||[]).map((a,i)=>(
+            <div key={i} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:"1px solid #0f2035",alignItems:"flex-start"}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:"#1565C0",marginTop:5,flexShrink:0}}/>
               <div>
-                <div style={{fontSize:13,color:"#7ab2e8",fontWeight:600}}>Subir comprobante</div>
-                <div style={{fontSize:11,color:"#3a6a9a"}}>Imagen o PDF del comprobante de transferencia</div>
+                <div style={{fontSize:12,color:"#c8e0f8",fontWeight:600}}>{a.accion}</div>
+                <div style={{fontSize:11,color:"#3a6a9a"}}>{a.usuario} · {new Date(a.fecha).toLocaleString("es-AR")}</div>
               </div>
-              <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={e=>{
-                const file=e.target.files[0];
-                if(!file) return;
-                if(file.size>2*1024*1024){alert("El archivo es muy grande. Máximo 2MB.");return;}
-                const reader=new FileReader();
-                reader.onload=ev=>{set("pago_comprobante",ev.target.result);set("pago_comprobante_nombre",file.name);};
-                reader.readAsDataURL(file);
-              }}/>
-            </label>
-          )}
+            </div>
+          ))}
         </div>
-
-        {/* BARRA ESTADO COBRO */}
-        {(()=>{
-          const cobrado=(+form.pago_senia||0)+(+form.pago_total||0);
-          const pct=totalConIva>0?Math.min(100,Math.round((cobrado/totalConIva)*100)):0;
-          const resta=Math.max(0,totalConIva-cobrado);
-          const col=pct>=100?"linear-gradient(90deg,#26A69A,#4CAF50)":pct>0?"linear-gradient(90deg,#1565C0,#FFB74D)":"#1e3a5a";
-          return totalConIva>0?(
-            <div style={{background:"#071220",borderRadius:10,padding:"12px 16px",border:"1px solid #1e3a5a",marginBottom:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
-                <span style={{fontSize:13,color:"#5a8ab8",fontWeight:600}}>Estado de cobro</span>
-                <span style={{fontSize:13,fontWeight:700,color:pct>=100?"#26A69A":pct>0?"#64B5F6":"#3a6a9a"}}>{pct}% cobrado{resta>0?` · Resta $${resta.toLocaleString("es-AR")}`:""}</span>
-              </div>
-              <div style={{height:10,background:"#0a1828",borderRadius:99,overflow:"hidden"}}>
-                <div style={{height:"100%",borderRadius:99,background:col,width:pct+"%",transition:"width 0.4s"}}/>
-              </div>
-              {pct>=100&&<div style={{marginTop:8,fontSize:12,color:"#26A69A",fontWeight:600,textAlign:"center"}}>✅ Orden cobrada en su totalidad</div>}
-            </div>
-          ):null;
-        })()}
-
-        {/* HISTORIAL */}
-        {(form.pago_registros||[]).length>0&&(
-          <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:10}}>🕐 Historial de pagos</div>
-            {(form.pago_registros||[]).map((r,i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #0f2035"}}>
-                <div>
-                  <span style={{fontSize:12,color:"#c8e0f8",fontWeight:600}}>{r.nota}</span>
-                  <span style={{fontSize:11,color:"#3a6a9a",marginLeft:8}}>{new Date(r.fecha).toLocaleDateString("es-AR")}</span>
-                </div>
-                <span style={{fontSize:13,fontWeight:700,color:"#A5D6A7"}}>${(+r.monto||0).toLocaleString("es-AR")}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <Field label="Notas de pagos"><Textarea value={form.pago_notas||""} onChange={e=>set("pago_notas",e.target.value)} placeholder="Referencias de transferencia, cheques, observaciones..."/></Field>
       </div>}
 
-      {/* TAB: ACTIVIDAD */}
-      {tab==="actividad"&&<div>
-        <p style={{color:"#5a8ab8",fontSize:13,margin:"0 0 16px"}}>Historial completo de cambios en esta orden.</p>
-        {(form.actividad||[]).length===0&&(
-          <div style={{textAlign:"center",padding:"32px 0",color:"#2a4a6a",fontSize:13}}>
-            No hay actividad registrada aún.<br/>Los cambios aparecerán acá al guardar.
-          </div>
-        )}
-        {(form.actividad||[]).slice().reverse().map((entry,i)=>{
-          const ROL_COLOR={admin:"#64B5F6",taller:"#CE93D8",local:"#A5D6A7"};
-          const fecha=new Date(entry.fecha);
-          const fechaStr=fecha.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit",year:"2-digit"});
-          const horaStr=fecha.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"});
-          return(
-            <div key={i} style={{display:"flex",gap:12,padding:"12px 0",borderBottom:"1px solid #0f2035",alignItems:"flex-start"}}>
-              <div style={{width:34,height:34,borderRadius:"50%",background:(ROL_COLOR[entry.rol]||"#64B5F6")+"20",border:`1px solid ${ROL_COLOR[entry.rol]||"#64B5F6"}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:ROL_COLOR[entry.rol]||"#64B5F6",flexShrink:0}}>
-                {(entry.usuario||"?")[0].toUpperCase()}
-              </div>
-              <div style={{flex:1}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
-                  <span style={{fontSize:13,fontWeight:600,color:"#c8e0f8"}}>{entry.usuario}</span>
-                  <span style={{fontSize:10,color:ROL_COLOR[entry.rol]||"#64B5F6",background:(ROL_COLOR[entry.rol]||"#64B5F6")+"15",padding:"1px 7px",borderRadius:99,fontWeight:600}}>{entry.rol}</span>
-                </div>
-                <div style={{fontSize:13,color:"#7ab2e8"}}>{entry.accion}</div>
-                <div style={{fontSize:11,color:"#3a6a9a",marginTop:2}}>{fechaStr} a las {horaStr}</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>}
-
+      {/* GUARDAR */}
       <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:16,paddingTop:14,borderTop:"1px solid #1e3a5a"}}>
         <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
-        <Btn onClick={()=>{if(validate())onSave(form);}}><Icon name="plus" size={16}/> {orden?"Guardar Cambios":"Crear Orden"}</Btn>
+        <Btn onClick={()=>{
+          if(!form.contacto_nombre?.trim()){alert("El nombre del cliente es obligatorio.");return;}
+          onSave(form);
+        }}><Icon name="plus" size={16}/> {doc?"Guardar Cambios":"Crear"}</Btn>
       </div>
     </div>
   );
 };
 
-// ─── PROCESS MANAGER ─────────────────────────────────────────────────────────
-const ProcessManager = ({estados,onSave,onClose}) => {
-  const [list,setList]=useState(estados.map(e=>({...e})));
-  const [newLabel,setNewLabel]=useState("");
-  const [newColor,setNewColor]=useState("#64B5F6");
-  const [dragIdx,setDragIdx]=useState(null);
-  const [dragOver,setDragOver]=useState(null);
-  const add=()=>{if(!newLabel.trim())return;setList(l=>[...l,{id:"proc_"+newId(),label:newLabel.trim(),color:newColor,bg:newColor+"22"}]);setNewLabel("");};
-  const remove=(id)=>setList(l=>l.filter(x=>x.id!==id));
-  const upLabel=(id,v)=>setList(l=>l.map(x=>x.id===id?{...x,label:v}:x));
-  const upColor=(id,v)=>setList(l=>l.map(x=>x.id===id?{...x,color:v,bg:v+"22"}:x));
-  const onDrop=(i)=>{if(dragIdx===null||dragIdx===i)return;const l=[...list];const[item]=l.splice(dragIdx,1);l.splice(i,0,item);setList(l);setDragIdx(null);setDragOver(null);};
-  return(
-    <div>
-      <p style={{color:"#5a8ab8",fontSize:13,margin:"0 0 16px"}}>Administrá los procesos del tablero. Podés agregar, renombrar, cambiar color y reordenar arrastrando.</p>
-      <div style={{marginBottom:14}}>
-        {list.map((e,i)=>(
-          <div key={e.id} draggable onDragStart={()=>setDragIdx(i)} onDragOver={ev=>{ev.preventDefault();setDragOver(i);}} onDrop={()=>onDrop(i)} onDragLeave={()=>setDragOver(null)}
-            style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:dragOver===i?"#0f2a1a":"#071220",borderRadius:8,border:"1px solid #0f2035",marginBottom:6,cursor:"grab",transition:"background 0.15s"}}>
-            <span style={{color:"#2a4a6a"}}><Icon name="grip" size={14}/></span>
-            <div style={{width:10,height:10,borderRadius:"50%",background:e.color,flexShrink:0}}/>
-            <input value={e.label} onChange={ev=>upLabel(e.id,ev.target.value)} style={{...iS,padding:"5px 9px",fontSize:13,flex:1}}/>
-            <input type="color" value={e.color} onChange={ev=>upColor(e.id,ev.target.value)} style={{width:28,height:28,border:"none",borderRadius:4,cursor:"pointer",background:"none",padding:0,flexShrink:0}}/>
-            <button onClick={()=>remove(e.id)} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4}}><Icon name="trash" size={14}/></button>
-          </div>
-        ))}
-      </div>
-      <div style={{display:"flex",gap:10,padding:14,background:"#071220",borderRadius:10,border:"1px dashed #1e3a5a",marginBottom:14}}>
-        <Input value={newLabel} onChange={e=>setNewLabel(e.target.value)} placeholder="Nombre del nuevo proceso..." onKeyDown={e=>e.key==="Enter"&&add()}/>
-        <input type="color" value={newColor} onChange={e=>setNewColor(e.target.value)} style={{width:42,height:42,border:"none",borderRadius:8,cursor:"pointer",background:"none",padding:0,flexShrink:0}}/>
-        <Btn onClick={add} style={{flexShrink:0}}><Icon name="plus" size={16}/> Agregar</Btn>
-      </div>
-      <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-        <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
-        <Btn variant="success" onClick={()=>onSave(list)}><Icon name="refresh" size={16}/> Guardar Cambios</Btn>
-      </div>
-    </div>
-  );
-};
-
-// ─── OPTIMIZER ────────────────────────────────────────────────────────────────
-const Optimizer = () => {
-  const [hoja,setHoja]=useState({ancho:3600,alto:2500});
-  const [cortes,setCortes]=useState([{id:1,ancho:"",alto:"",cantidad:1,label:""}]);
-  const [resultado,setResultado]=useState(null);
-  const [loading,setLoading]=useState(false);
-  const addCorte=()=>setCortes(c=>[...c,{id:Date.now(),ancho:"",alto:"",cantidad:1,label:""}]);
-  const removeCorte=(id)=>setCortes(c=>c.filter(x=>x.id!==id));
-  const upCorte=(id,k,v)=>setCortes(c=>c.map(x=>x.id===id?{...x,[k]:v}:x));
-  const optimizar=()=>{
-    const valid=cortes.filter(c=>c.ancho&&c.alto&&c.cantidad>0);
-    if(!valid.length)return;
-    setLoading(true);setResultado(null);
-    const items=[];
-    valid.forEach(c=>{for(let i=0;i<parseInt(c.cantidad);i++)items.push({w:parseFloat(c.ancho),h:parseFloat(c.alto),label:c.label||`${c.ancho}×${c.alto}`,id:`${c.id}-${i}`});});
-    items.sort((a,b)=>(b.w*b.h)-(a.w*a.h));
-    const sheets=[],unplaced=[];
-    const tryPlace=(si,fr,item)=>{
-      for(const[w,h,rotated] of[[item.w,item.h,false],[item.h,item.w,true]]){
-        for(let i=0;i<fr.length;i++){
-          const r=fr[i];
-          if(w<=r.w&&h<=r.h){
-            si.push({...item,x:r.x,y:r.y,pw:w,ph:h,rotated});
-            const nr=[];
-            for(let j=0;j<fr.length;j++){if(j===i){if(r.w-w>0)nr.push({x:r.x+w,y:r.y,w:r.w-w,h});if(r.h-h>0)nr.push({x:r.x,y:r.y+h,w:r.w,h:r.h-h});}else nr.push(fr[j]);}
-            return nr;
-          }
-        }
-      }
-      return null;
-    };
-    let rem=[...items];
-    while(rem.length>0){
-      const si=[];let fr=[{x:0,y:0,w:hoja.ancho,h:hoja.alto}],still=[];
-      for(const item of rem){const nf=tryPlace(si,fr,item);if(nf)fr=nf;else still.push(item);}
-      sheets.push(si);
-      if(still.length===rem.length){unplaced.push(...rem);break;}
-      rem=still;
-    }
-    const totalArea=hoja.ancho*hoja.alto*sheets.length;
-    const usedArea=items.filter(i=>!unplaced.find(u=>u.id===i.id)).reduce((s,i)=>s+i.w*i.h,0);
-    const apr=Math.round((usedArea/totalArea)*100);
-    setTimeout(()=>{setResultado({sheets,unplaced,aprovechamiento:apr,totalHojas:sheets.length});setLoading(false);},500);
-  };
-  const COLORS=["#1565C0","#0277BD","#00838F","#00695C","#2E7D32","#558B2F","#F57F17","#E65100","#AD1457","#6A1B9A"];
-  const renderSheet=(sheet,idx)=>{
-    const sc=250/Math.max(hoja.ancho,hoja.alto);
-    const W=hoja.ancho*sc,H=hoja.alto*sc;
-    const ul=[...new Set(sheet.map(i=>i.label))];
-    return(
-      <div key={idx} style={{background:"#071220",borderRadius:12,padding:12,border:"1px solid #1e3a5a"}}>
-        <div style={{color:"#5a8ab8",fontSize:11,fontWeight:600,marginBottom:7,textTransform:"uppercase"}}>Hoja #{idx+1} — {hoja.ancho}×{hoja.alto}mm</div>
-        <svg width={W} height={H} style={{display:"block",border:"1px solid #1e3a5a",borderRadius:4,background:"#0a1520"}}>
-          {sheet.map((item,i)=>{
-            const ci=ul.indexOf(item.label)%COLORS.length;
-            const pw=item.pw*sc, ph=item.ph*sc;
-            const cx=item.x*sc+pw/2, cy=item.y*sc+ph/2;
-            const fs=Math.max(6,Math.min(9,pw/10));
-            const dimW=item.rotated?item.h:item.w;
-            const dimH=item.rotated?item.w:item.h;
-            const showLabel=pw>32&&ph>16;
-            const showDims=pw>44&&ph>28;
-            return(
-              <g key={i}>
-                <rect x={item.x*sc} y={item.y*sc} width={pw} height={ph} fill={COLORS[ci]+"28"} stroke={COLORS[ci]} strokeWidth="1.5" rx="2"/>
-                {showLabel&&<text x={cx} y={showDims?cy-fs*0.8:cy} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fill={COLORS[ci]} fontWeight="700">{item.label}{item.rotated?" ↺":""}</text>}
-                {showDims&&<text x={cx} y={cy+fs*1.1} textAnchor="middle" dominantBaseline="middle" fontSize={fs*0.9} fill={COLORS[ci]+"cc"} fontWeight="500">{dimW}×{dimH}mm</text>}
-              </g>
-            );
-          })}
-        </svg>
-        <div style={{fontSize:11,color:"#5a8ab8",marginTop:5}}>{sheet.length} piezas</div>
-      </div>
-    );
-  };
-  return(
-    <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
-        <div>
-          <h1 style={{margin:"0 0 4px",fontFamily:"Georgia,serif",fontSize:24,color:"#e2f0ff"}}>Optimizador de Cortes</h1>
-          <p style={{margin:0,color:"#3a6a9a",fontSize:13}}>Calculá cómo cortar la hoja para aprovecharla al máximo.</p>
-        </div>
-        {resultado&&<Btn variant="secondary" onClick={()=>printOptimizacion(resultado.sheets,hoja,cortes,resultado.aprovechamiento)}><Icon name="pdf" size={16}/> Generar PDF</Btn>}
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
-        <div>
-          <div style={{background:"#071220",borderRadius:12,padding:14,border:"1px solid #1e3a5a",marginBottom:12}}>
-            <div style={{color:"#5a8ab8",fontSize:11,fontWeight:600,marginBottom:12,textTransform:"uppercase"}}>Tamaño de Hoja (mm)</div>
-            <div style={{display:"flex",gap:12}}>
-              <Field label="Ancho"><Input type="number" value={hoja.ancho} onChange={e=>setHoja(h=>({...h,ancho:+e.target.value}))}/></Field>
-              <Field label="Alto"><Input type="number" value={hoja.alto} onChange={e=>setHoja(h=>({...h,alto:+e.target.value}))}/></Field>
-            </div>
-          </div>
-          <div style={{background:"#071220",borderRadius:12,padding:14,border:"1px solid #1e3a5a",marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={{color:"#5a8ab8",fontSize:11,fontWeight:600,textTransform:"uppercase"}}>Piezas a Cortar</div>
-              <Btn small onClick={addCorte}><Icon name="plus" size={14}/> Agregar</Btn>
-            </div>
-            {cortes.map((c,i)=>(
-              <div key={c.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 55px 1fr 26px",gap:7,marginBottom:7,alignItems:"end"}}>
-                <Field label={i===0?"Ancho":""}><Input type="number" value={c.ancho} onChange={e=>upCorte(c.id,"ancho",e.target.value)} placeholder="mm"/></Field>
-                <Field label={i===0?"Alto":""}><Input type="number" value={c.alto} onChange={e=>upCorte(c.id,"alto",e.target.value)} placeholder="mm"/></Field>
-                <Field label={i===0?"Cant.":""}><Input type="number" value={c.cantidad} min="1" onChange={e=>upCorte(c.id,"cantidad",e.target.value)}/></Field>
-                <Field label={i===0?"Etiqueta":""}><Input value={c.label} onChange={e=>upCorte(c.id,"label",e.target.value)} placeholder="Ej: Baño 1"/></Field>
-                <button onClick={()=>removeCorte(c.id)} disabled={cortes.length===1} style={{background:"none",border:"none",color:"#f48fb1",cursor:"pointer",padding:"10px 2px",opacity:cortes.length===1?0.3:1}}><Icon name="trash" size={13}/></button>
-              </div>
-            ))}
-          </div>
-          <Btn onClick={optimizar} style={{width:"100%",justifyContent:"center"}}>
-            {loading?<><Icon name="refresh" size={16}/> Calculando...</>:<><Icon name="optimize" size={16}/> Optimizar Cortes</>}
-          </Btn>
-        </div>
-        <div>
-          {resultado&&(
-            <div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:12}}>
-                {[{label:"Hojas",val:resultado.totalHojas,color:"#64B5F6"},{label:"Aprovechamiento",val:resultado.aprovechamiento+"%",color:resultado.aprovechamiento>75?"#A5D6A7":resultado.aprovechamiento>50?"#FFB74D":"#F48FB1"},{label:"Sin colocar",val:resultado.unplaced.length,color:resultado.unplaced.length>0?"#F48FB1":"#A5D6A7"}].map(s=>(
-                  <div key={s.label} style={{background:"#071220",borderRadius:10,padding:12,border:"1px solid #1e3a5a",textAlign:"center"}}>
-                    <div style={{fontSize:22,fontWeight:800,color:s.color,fontFamily:"Georgia,serif"}}>{s.val}</div>
-                    <div style={{fontSize:11,color:"#5a8ab8",marginTop:2}}>{s.label}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:10,maxHeight:460,overflowY:"auto"}}>
-                {resultado.sheets.map((s,i)=>renderSheet(s,i))}
-              </div>
-              {resultado.unplaced.length>0&&<div style={{marginTop:10,background:"#2a0a0a",borderRadius:10,padding:12,border:"1px solid #7f2020"}}><div style={{color:"#f48fb1",fontSize:12,fontWeight:600,marginBottom:4}}>⚠️ No entraron:</div>{resultado.unplaced.map((p,i)=><div key={i} style={{color:"#f48fb180",fontSize:12}}>{p.label} ({p.w}×{p.h}cm)</div>)}</div>}
-            </div>
-          )}
-          {!resultado&&!loading&&<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:260,color:"#2a4a6a",textAlign:"center"}}><Icon name="optimize" size={44}/><p style={{marginTop:14,fontSize:13}}>Ingresá las medidas y presioná<br/>Optimizar para ver el plan de cortes</p></div>}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ─── MAIN APP ─────────────────────────────────────────────────────────────────
-export default function App() {
-  const [currentUser, setCurrentUser] = useState(()=>{
-    try { const s=sessionStorage.getItem("vidrierapp_user"); return s?JSON.parse(s):null; } catch{ return null; }
-  });
-
-  const handleLogin = (user) => setCurrentUser(user);
-  const handleLogout = () => { sessionStorage.removeItem("vidrierapp_user"); setCurrentUser(null); };
-
-  if(!currentUser) return <LoginScreen onLogin={handleLogin}/>;
-
-  return <AppInner currentUser={currentUser} onLogout={handleLogout}/>;
-}
+// ─── COTIZACIONES PAGE ───────────────────────────────────────────────────────
 
 function AppInner({ currentUser, onLogout }) {
   const [nav,setNav]=useState("home");
@@ -2737,407 +1414,7 @@ function AppInner({ currentUser, onLogout }) {
     return `PR-${yr}-${String(max+1).padStart(4,"0")}`;
   };
 
-  // ── MINI CANVAS (por ítem de cotización/orden) ───────────────────────────────
-  const MiniCanvas=({value,onChange,itemIdx})=>{
-    const canvasRef=useRef(null);
-    const [tool,setTool]=useState("rect");
-    const [drawing,setDrawing]=useState(null);
-    const [shapes,setShapes]=useState(value||[]);
-    const [selId,setSelId]=useState(null);
-    const commit=(sh)=>{setShapes(sh);onChange(sh);};
-    const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,4);
-
-    const TOOLS=[
-      {id:"rect",label:"□ Rect"},
-      {id:"circle",label:"○ Perf"},
-      {id:"line",label:"╱ Línea"},
-      {id:"text",label:"T Nota"},
-    ];
-
-    const getPos=(e)=>{
-      const c=canvasRef.current;
-      if(!c) return {x:0,y:0};
-      const r=c.getBoundingClientRect();
-      const scaleX=c.width/r.width;
-      const scaleY=c.height/r.height;
-      const clientX=e.touches?e.touches[0].clientX:e.clientX;
-      const clientY=e.touches?e.touches[0].clientY:e.clientY;
-      return {x:(clientX-r.left)*scaleX,y:(clientY-r.top)*scaleY};
-    };
-
-    const onDown=(e)=>{
-      e.preventDefault();
-      const p=getPos(e);
-      if(tool==="text"){
-        const txt=prompt("Anotación:");
-        if(txt) commit([...shapes,{id:newId(),type:"text",x:p.x,y:p.y,text:txt}]);
-        return;
-      }
-      setDrawing({id:newId(),type:tool,x1:p.x,y1:p.y,x2:p.x,y2:p.y});
-    };
-    const onMove=(e)=>{
-      if(!drawing) return;
-      e.preventDefault();
-      const p=getPos(e);
-      setDrawing(d=>({...d,x2:p.x,y2:p.y}));
-    };
-    const onUp=(e)=>{
-      if(!drawing) return;
-      const dx=Math.abs(drawing.x2-drawing.x1),dy=Math.abs(drawing.y2-drawing.y1);
-      if(dx>3||dy>3) commit([...shapes,drawing]);
-      setDrawing(null);
-    };
-
-    const renderShape=(s,isDrawing)=>{
-      const sel=selId===s.id;
-      const stroke=isDrawing?"#42A5F5":sel?"#FF8A65":"#1565C0";
-      const fill=isDrawing?"rgba(66,165,245,0.1)":sel?"rgba(255,138,101,0.1)":"rgba(21,101,192,0.08)";
-      if(s.type==="text") return(
-        <text key={s.id} x={s.x} y={s.y} fontSize="12" fill="#FFB74D" fontWeight="700" fontFamily="Arial"
-          style={{cursor:"pointer"}} onClick={()=>setSelId(sel?null:s.id)}>{s.text}</text>
-      );
-      if(s.type==="circle"){
-        const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2;
-        const rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;
-        return <ellipse key={s.id} cx={cx} cy={cy} rx={Math.max(rx,2)} ry={Math.max(ry,2)}
-          fill={fill} stroke={stroke} strokeWidth="1.5" style={{cursor:"pointer"}}
-          onClick={()=>setSelId(sel?null:s.id)}/>;
-      }
-      if(s.type==="line") return(
-        <line key={s.id} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2}
-          stroke={stroke} strokeWidth="1.5" strokeLinecap="round" style={{cursor:"pointer"}}
-          onClick={()=>setSelId(sel?null:s.id)}/>
-      );
-      // rect
-      const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2);
-      const w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
-      return <rect key={s.id} x={x} y={y} width={w} height={h}
-        fill={fill} stroke={stroke} strokeWidth="1.5" style={{cursor:"pointer"}}
-        onClick={()=>setSelId(sel?null:s.id)}/>;
-    };
-
-    const allShapes=[...shapes,...(drawing?[drawing]:[])];
-
-    return(
-      <div style={{marginTop:8,background:"#050e1a",borderRadius:8,padding:8,border:"1px solid #1565C030"}}>
-        <div style={{display:"flex",gap:4,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
-          <span style={{fontSize:10,color:"#3a6a9a",fontWeight:600,marginRight:4}}>Plano:</span>
-          {TOOLS.map(t=>(
-            <button key={t.id} onClick={()=>setTool(t.id)}
-              style={{padding:"3px 8px",borderRadius:6,border:`1px solid ${tool===t.id?"#1565C0":"#1e3a5a"}`,
-                background:tool===t.id?"#1565C020":"transparent",color:tool===t.id?"#64B5F6":"#3a6a9a",
-                cursor:"pointer",fontSize:10,fontFamily:"inherit",fontWeight:tool===t.id?700:400}}>
-              {t.label}
-            </button>
-          ))}
-          {selId&&<button onClick={()=>{commit(shapes.filter(s=>s.id!==selId));setSelId(null);}}
-            style={{padding:"3px 8px",borderRadius:6,border:"1px solid #7f2020",background:"#2a0a0a",
-              color:"#f48fb1",cursor:"pointer",fontSize:10,fontFamily:"inherit",marginLeft:"auto"}}>
-            ✕ Borrar
-          </button>}
-          {shapes.length>0&&!selId&&<button onClick={()=>{if(confirm("¿Borrar plano?"))commit([]);}}
-            style={{padding:"3px 8px",borderRadius:6,border:"1px solid #1e3a5a",background:"transparent",
-              color:"#3a6a9a",cursor:"pointer",fontSize:10,fontFamily:"inherit",marginLeft:"auto"}}>
-            Limpiar
-          </button>}
-        </div>
-        <svg ref={canvasRef} width="100%" viewBox="0 0 500 220"
-          style={{display:"block",background:"#071220",borderRadius:6,border:"1px solid #0f2035",
-            cursor:tool==="text"?"text":"crosshair",touchAction:"none"}}
-          onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
-          onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}>
-          {/* Grid */}
-          <defs>
-            <pattern id={`grid-${itemIdx}`} width="25" height="25" patternUnits="userSpaceOnUse">
-              <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#0f2035" strokeWidth="0.5"/>
-            </pattern>
-          </defs>
-          <rect width="500" height="220" fill={`url(#grid-${itemIdx})`}/>
-          {allShapes.map(s=>renderShape(s,s===drawing))}
-        </svg>
-        {shapes.length>0&&<div style={{fontSize:10,color:"#1e3a5a",marginTop:3,textAlign:"right"}}>{shapes.length} elemento{shapes.length>1?"s":""}</div>}
-      </div>
-    );
-  };
-
-  // ── NUEVA COTIZACIÓN FORM ────────────────────────────────────────────────────
-  const printCotizacion=(cot,clienteNombre)=>{
-    const items=cot.items||[];
-    const sub=items.reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0);
-    const conIva=cot.con_iva!==false;
-    const ivaAmt=conIva?sub*0.21:0;
-    const total=sub+ivaAmt;
-    const vidriosRows=items.filter(i=>i.tipo_vidrio||i.ancho||i.alto||i.desc).map((it,idx)=>`
-      <tr style="background:${idx%2===0?"#f8fbff":"#fff"}">
-        <td style="text-align:center;font-weight:700;font-size:14px;padding:9px 12px">${it.cant||1}</td>
-        <td style="padding:9px 12px;font-weight:600">${it.tipo_vidrio||"—"}</td>
-        <td style="padding:9px 12px">${it.desc||""}</td>
-        <td style="text-align:center;padding:9px 12px">${it.ancho&&it.alto?`${it.ancho} × ${it.alto}`:"—"}</td>
-        <td style="padding:9px 12px;color:#555">${it.obs||""}</td>
-        <td style="text-align:right;padding:9px 12px;font-weight:700">$${((+it.precio||0)*(+it.cant||1)).toLocaleString("es-AR")}</td>
-      </tr>`).join("");
-    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Presupuesto ${cot.numero||""}</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e;background:#fff}
-.hdr{background:linear-gradient(135deg,#0a2a5e,#1565C0);padding:18px 28px;display:flex;justify-content:space-between;align-items:center}
-.hdr-left{display:flex;align-items:center;gap:12px}
-.hdr-logo{width:58px;height:58px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3))}
-.biz-name{font-size:19px;font-weight:900;color:#fff}
-.biz-sub{font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px}
-.biz-c{font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px}
-.hdr-right{text-align:right}
-.doc-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,0.7)}
-.doc-num{font-size:28px;font-weight:900;color:#fff;letter-spacing:1px;display:block}
-.doc-date{font-size:10px;color:rgba(255,255,255,0.7);margin-top:3px;display:block}
-.divider{height:3px;background:linear-gradient(90deg,#1565C0,#42A5F5,#1565C0)}
-.body{padding:20px 28px}
-.st{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin:16px 0 10px}
-.client-box{background:#f0f6ff;border-radius:8px;padding:12px 16px;border:1px solid #e0ecff;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-.f label{font-size:9px;color:#888;font-weight:700;text-transform:uppercase;display:block;margin-bottom:2px}
-.f p{font-size:14px;font-weight:600}
-table{width:100%;border-collapse:collapse;font-size:13px}
-thead tr{background:linear-gradient(135deg,#0a2a5e,#1565C0);color:#fff}
-thead th{padding:8px 12px;font-size:11px;font-weight:600}
-.tot-box{margin-top:10px;display:flex;justify-content:flex-end}
-.tot-inner{width:260px;background:#f0f6ff;border-radius:8px;padding:12px 16px;border:1px solid #e0ecff}
-.tot-row{display:flex;justify-content:space-between;padding:3px 0;font-size:13px;color:#555}
-.tot-final{display:flex;justify-content:space-between;padding:8px 0 2px;font-size:17px;font-weight:900;color:#0a2a5e;border-top:2px solid #1565C0;margin-top:4px}
-.note-box{background:#f8f9ff;border-left:3px solid #1565C0;padding:10px 14px;font-size:13px;line-height:1.7;color:#333}
-.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:32px}
-.sign-line{border-top:1.5px solid #1565C0;padding-top:8px;text-align:center}
-.sign-label{font-size:10px;color:#888;text-transform:uppercase}
-.sign-name{font-size:12px;font-weight:600;color:#1565C0;margin-top:3px}
-.footer{background:#f0f6ff;border-top:2px solid #e3f2fd;padding:8px 28px;display:flex;justify-content:space-between;font-size:10px;color:#888}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:8mm}}
-</style></head><body>
-<div class="hdr">
-  <div class="hdr-left">
-    <img class="hdr-logo" src="BIZ_LOGO" alt="LV"/>
-    <div>
-      <div class="biz-name">La Vidriería Rosario</div>
-      <div class="biz-sub">Vidrios · Espejos · Cerramientos · Instalaciones</div>
-      <div class="biz-c">📍 Mendoza 1783, Rosario, Santa Fe · CP 2000</div>
-      <div class="biz-c">📞 341 425-1007 / 341 508-4921 &nbsp;·&nbsp; ✉️ lavidrieria@gmail.com</div>
-      <div class="biz-c">📸 @lavidrieriarosariooficial &nbsp;·&nbsp; 🕐 Lun-Vie 8-19hs · Sáb 8-13hs</div>
-    </div>
-  </div>
-  <div class="hdr-right">
-    <div class="doc-type">Presupuesto</div>
-    <span class="doc-num">${cot.numero||"S/N"}</span>
-    <span class="doc-date">Fecha: ${cot.fecha||""}</span>
-    ${cot.validez?`<span class="doc-date">Válido hasta: ${cot.validez}</span>`:""}
-  </div>
-</div>
-<div class="divider"></div>
-<div class="body">
-  <div class="st">Datos del Cliente</div>
-  <div class="client-box">
-    <div class="f"><label>Nombre</label><p>${clienteNombre||cot.contacto_nombre||"—"}</p></div>
-    <div class="f"><label>Teléfono</label><p>${cot.contacto_tel||"—"}</p></div>
-    <div class="f"><label>Domicilio</label><p>${cot.contacto_dom||"—"}</p></div>
-  </div>
-  ${cot.titulo?`<div style="margin-top:10px;padding:8px 12px;background:#f0f6ff;border-radius:6px;font-size:14px;font-weight:600;color:#0a2a5e">Trabajo: ${cot.titulo}</div>`:""}
-  <div class="st">Detalle de Materiales y Servicio</div>
-  <table>
-    <thead><tr>
-      <th style="text-align:center;width:55px">Cant.</th>
-      <th style="text-align:left">Tipo de vidrio</th>
-      <th style="text-align:left">Descripción</th>
-      <th style="text-align:center;width:120px">Medidas (mm)</th>
-      <th style="text-align:left">Observaciones</th>
-      <th style="text-align:right;width:100px">Subtotal</th>
-    </tr></thead>
-    <tbody>${vidriosRows||"<tr><td colspan='6' style='padding:12px;text-align:center;color:#888'>Sin ítems</td></tr>"}</tbody>
-  </table>
-  <div class="tot-box">
-    <div class="tot-inner">
-      <div class="tot-row"><span>Subtotal</span><span>$${sub.toLocaleString("es-AR")}</span></div>
-      ${conIva?`<div class="tot-row"><span>IVA (21%)</span><span>$${ivaAmt.toLocaleString("es-AR")}</span></div>`:`<div class="tot-row"><span style="font-style:italic;color:#aaa">Sin IVA — Efectivo</span></div>`}
-      <div class="tot-final"><span>TOTAL</span><span>$${total.toLocaleString("es-AR")}</span></div>
-    </div>
-  </div>
-  ${cot.condiciones?`<div class="st">Condiciones de Pago</div><div class="note-box">${cot.condiciones}</div>`:""}
-  <div class="sign-grid">
-    <div class="sign-line"><div class="sign-label">Firma del colocador</div><div style="height:34px"></div><div class="sign-name">La Vidriería Rosario</div></div>
-    <div class="sign-line"><div class="sign-label">Conformidad del cliente</div><div style="height:34px"></div><div style="font-size:12px;color:#555">${clienteNombre||cot.contacto_nombre||"________________________"}</div></div>
-  </div>
-</div>
-<div class="footer">
-  <span>Generado el ${new Date().toLocaleString("es-AR")} · VidrierApp</span>
-  <span>Mendoza 1783 · Rosario · 341 425-1007</span>
-</div>
-</body></html>`;
-    const w=window.open("","_blank","width=940,height=820");
-    if(w){w.document.write(html.replace("BIZ_LOGO",BIZ_LOGO));w.document.close();w.onload=()=>{w.focus();w.print();};}
-  };
-
-  // ── COTIZACIÓN FORM ──────────────────────────────────────────────────────────
-  const CotizacionForm=({cot,clientes,tiposVidrio:tvProp,onSave,onClose})=>{
-    const TV=tvProp||TIPOS_VIDRIO_DEFAULT;
-    const EMPTY={
-      titulo:"", cliente:"",
-      contacto_nombre:"", contacto_tel:"", contacto_dom:"",
-      fecha:new Date().toISOString().split("T")[0], validez:"",
-      condiciones:"50% al confirmar, saldo contra entrega.",
-      con_iva:true,
-      items:[{cant:1,tipo_vidrio:"",desc:"",ancho:"",alto:"",obs:"",precio:"",plano:[]}],
-      estado:"pendiente"
-    };
-    const [form,setForm]=useState(cot?{...EMPTY,...cot}:EMPTY);
-    const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-    const setIt=(i,k,v)=>setForm(f=>{const arr=[...f.items];arr[i]={...arr[i],[k]:v};return{...f,items:arr};});
-    const addItem=()=>setForm(f=>({...f,items:[...f.items,{cant:1,tipo_vidrio:"",desc:"",ancho:"",alto:"",obs:"",precio:"",plano:[]}]}));
-    const removeItem=(i)=>setForm(f=>({...f,items:f.items.filter((_,idx)=>idx!==i)}));
-    const sub=(form.items||[]).reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0);
-    const ivaAmt=form.con_iva!==false?sub*0.21:0;
-    const total=sub+ivaAmt;
-    const clienteData=clientes.find(c=>c.id===form.cliente);
-
-    // Sync datos cliente from list
-    const onClienteChange=(id)=>{
-      const c=clientes.find(x=>x.id===id);
-      setForm(f=>({...f,cliente:id,
-        contacto_nombre:c?.nombre||f.contacto_nombre,
-        contacto_tel:c?.telefono||f.contacto_tel,
-        contacto_dom:c?.direccion||f.contacto_dom,
-      }));
-    };
-
-    const [expandedItems,setExpandedItems]=useState({});
-    const toggleExpand=(i)=>setExpandedItems(e=>({...e,[i]:!e[i]}));
-
-    return(
-      <div>
-        {/* DATOS NEGOCIO + NÚMERO */}
-        <div style={{background:"linear-gradient(135deg,#0a1828,#071220)",borderRadius:10,padding:"12px 16px",border:"1px solid #1565C030",marginBottom:14,display:"flex",alignItems:"center",gap:12}}>
-          <div style={{fontSize:14,fontWeight:800,color:"#64B5F6",fontFamily:"Georgia,serif"}}>La Vidriería Rosario</div>
-          <div style={{flex:1}}/>
-          {cot?.numero&&<div style={{fontFamily:"monospace",fontSize:16,fontWeight:700,color:"#FFB74D",background:"#1a1000",padding:"4px 12px",borderRadius:7,border:"1px solid #FFB74D30"}}>{cot.numero}</div>}
-        </div>
-
-        {/* DATOS CLIENTE */}
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1565C040",marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#64B5F6",textTransform:"uppercase",marginBottom:10}}>Datos del Cliente</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-            <Field label="Seleccionar cliente">
-              <Sel value={form.cliente} onChange={e=>onClienteChange(e.target.value)}>
-                <option value="">Sin asignar</option>
-                {clientes.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
-              </Sel>
-            </Field>
-            <Field label="Descripción del trabajo">
-              <Input value={form.titulo} onChange={e=>set("titulo",e.target.value)} placeholder="Ej: Mampara baño planta alta"/>
-            </Field>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-            <Field label="Nombre *"><Input value={form.contacto_nombre} onChange={e=>set("contacto_nombre",e.target.value)} placeholder="Nombre completo..."/></Field>
-            <Field label="Teléfono *"><Input value={form.contacto_tel} onChange={e=>set("contacto_tel",e.target.value)} placeholder="341 000-0000"/></Field>
-            <Field label="Domicilio *"><Input value={form.contacto_dom} onChange={e=>set("contacto_dom",e.target.value)} placeholder="Calle y número..."/></Field>
-          </div>
-        </div>
-
-        {/* DETALLE DE ÍTEMS */}
-        <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:14}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase"}}>🔷 Detalle de Materiales y Servicio</div>
-            <Btn small onClick={addItem}><Icon name="plus" size={13}/> Agregar ítem</Btn>
-          </div>
-
-          {(form.items||[]).map((item,i)=>(
-            <div key={i} style={{background:"#0a1828",borderRadius:9,padding:12,marginBottom:10,border:`1px solid ${expandedItems[i]?"#1565C040":"#0f2035"}`}}>
-              {/* Fila principal */}
-              <div style={{display:"grid",gridTemplateColumns:"50px 1fr 1fr 90px 90px 110px 28px",gap:8,alignItems:"center",marginBottom:expandedItems[i]?10:0}}>
-                <div>
-                  <div style={{fontSize:9,color:"#3a6a9a",fontWeight:600,marginBottom:3}}>CANT.</div>
-                  <Input type="number" min="1" value={item.cant} onChange={e=>setIt(i,"cant",e.target.value)} style={{textAlign:"center",padding:"6px 4px"}}/>
-                </div>
-                <div>
-                  <div style={{fontSize:9,color:"#3a6a9a",fontWeight:600,marginBottom:3}}>TIPO DE VIDRIO</div>
-                  <div>
-                    <Sel value={TV.includes(item.tipo_vidrio)||item.tipo_vidrio===""?item.tipo_vidrio:"__otro__"}
-                      onChange={e=>{if(e.target.value==="__otro__")setIt(i,"tipo_vidrio","");else setIt(i,"tipo_vidrio",e.target.value);}}>
-                      <option value="">Seleccionar...</option>
-                      {TV.filter(t=>t!=="Otro").map(t=><option key={t} value={t}>{t}</option>)}
-                      <option value="__otro__">✏️ Escribir...</option>
-                    </Sel>
-                    {(!TV.includes(item.tipo_vidrio)&&item.tipo_vidrio!=="")||item.tipo_vidrio===""&&(form.items[i].tipo_vidrio===""&&expandedItems[i])?null:null}
-                    {!TV.filter(t=>t!=="Otro").includes(item.tipo_vidrio)&&item.tipo_vidrio!==""&&(
-                      <Input value={item.tipo_vidrio} onChange={e=>setIt(i,"tipo_vidrio",e.target.value)} placeholder="Tipo personalizado..." style={{marginTop:4}}/>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <div style={{fontSize:9,color:"#3a6a9a",fontWeight:600,marginBottom:3}}>DESCRIPCIÓN</div>
-                  <Input value={item.desc} onChange={e=>setIt(i,"desc",e.target.value)} placeholder="Detalle del trabajo..."/>
-                </div>
-                <div>
-                  <div style={{fontSize:9,color:"#3a6a9a",fontWeight:600,marginBottom:3}}>ANCHO mm</div>
-                  <Input type="number" value={item.ancho} onChange={e=>setIt(i,"ancho",e.target.value)} placeholder="0"/>
-                </div>
-                <div>
-                  <div style={{fontSize:9,color:"#3a6a9a",fontWeight:600,marginBottom:3}}>ALTO mm</div>
-                  <Input type="number" value={item.alto} onChange={e=>setIt(i,"alto",e.target.value)} placeholder="0"/>
-                </div>
-                <div>
-                  <div style={{fontSize:9,color:"#3a6a9a",fontWeight:600,marginBottom:3}}>PRECIO UNIT. $</div>
-                  <Input type="number" value={item.precio} onChange={e=>setIt(i,"precio",e.target.value)} placeholder="0"/>
-                </div>
-                <div style={{display:"flex",flexDirection:"column",gap:4,paddingTop:16}}>
-                  <button onClick={()=>toggleExpand(i)} title={expandedItems[i]?"Ocultar plano":"Agregar plano"}
-                    style={{background:expandedItems[i]?"#1565C020":"transparent",border:`1px solid ${expandedItems[i]?"#1565C0":"#1e3a5a"}`,
-                      color:expandedItems[i]?"#64B5F6":"#3a6a9a",cursor:"pointer",padding:"4px 5px",borderRadius:5,fontSize:11,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    ✏️
-                  </button>
-                  <button onClick={()=>removeItem(i)} disabled={(form.items||[]).length<=1}
-                    style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,opacity:(form.items||[]).length<=1?0.3:1,display:"flex"}}>
-                    <Icon name="trash" size={13}/>
-                  </button>
-                </div>
-              </div>
-              {/* Observaciones */}
-              <div style={{marginBottom:expandedItems[i]?8:0}}>
-                <Input value={item.obs} onChange={e=>setIt(i,"obs",e.target.value)}
-                  placeholder="Observaciones: borde pulido, corte especial, bisagra, perforación..."
-                  style={{fontSize:12}}/>
-              </div>
-              {/* Mini Canvas */}
-              {expandedItems[i]&&(
-                <MiniCanvas value={item.plano||[]} onChange={v=>setIt(i,"plano",v)} itemIdx={i}/>
-              )}
-            </div>
-          ))}
-
-          {/* Totales + IVA */}
-          {sub>0&&<div style={{marginTop:8,padding:"12px 14px",background:"#0a1828",borderRadius:8,border:"1px solid #1565C025"}}>
-            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:8}}>
-              <input type="checkbox" checked={form.con_iva!==false} onChange={e=>set("con_iva",e.target.checked)}
-                style={{width:15,height:15,accentColor:"#1565C0",cursor:"pointer"}}/>
-              <span style={{fontSize:12,color:"#7ab2e8",fontWeight:600}}>Aplicar IVA (21%)</span>
-              <span style={{fontSize:11,color:"#3a6a9a"}}>{form.con_iva!==false?"Factura":"Efectivo / sin IVA"}</span>
-            </label>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#5a8ab8",marginBottom:2}}><span>Subtotal</span><span>${sub.toLocaleString("es-AR")}</span></div>
-            {form.con_iva!==false&&<div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#5a8ab8",marginBottom:2}}><span>IVA 21%</span><span>${ivaAmt.toLocaleString("es-AR")}</span></div>}
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700,color:"#64B5F6",borderTop:"1px solid #1565C030",paddingTop:6,marginTop:4}}><span>TOTAL</span><span>${total.toLocaleString("es-AR")}</span></div>
-          </div>}
-        </div>
-
-        {/* CONDICIONES + FECHAS */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-          <Field label="Fecha"><Input type="date" value={form.fecha} onChange={e=>set("fecha",e.target.value)}/></Field>
-          <Field label="Válida hasta"><Input type="date" value={form.validez} onChange={e=>set("validez",e.target.value)}/></Field>
-        </div>
-        <Field label="Condiciones de pago"><Textarea value={form.condiciones} onChange={e=>set("condiciones",e.target.value)}/></Field>
-
-        <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:14,paddingTop:12,borderTop:"1px solid #1e3a5a"}}>
-          <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
-          <Btn onClick={()=>onSave(form)}><Icon name="plus" size={16}/> {cot?"Guardar":"Crear Cotización"}</Btn>
-        </div>
-      </div>
-    );
-  };
-
-  // ── COTIZACIONES PAGE ────────────────────────────────────────────────────────
+  // ── COTIZACIONES PAGE ────────────────────────────────────────────────────
   const Cotizaciones=()=>{
     const ESTADO_COT=[
       {id:"pendiente",label:"Pendiente",color:"#FFB74D",bg:"#2a1f0a"},
@@ -3147,39 +1424,12 @@ thead th{padding:8px 12px;font-size:11px;font-weight:600}
       {id:"convertida",label:"→ Orden",color:"#26A69A",bg:"#0a2a26"},
     ];
     const BadgeCot=({estado})=>{const e=ESTADO_COT.find(x=>x.id===estado)||ESTADO_COT[0];return <span style={{background:e.bg,color:e.color,border:`1px solid ${e.color}40`,padding:"2px 10px",borderRadius:99,fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>{e.label}</span>;};
-
-    const convertirAOrden=async(cot)=>{
-      const nuevaOrden={
-        cliente: cot.cliente||"",
-        contacto_nombre: cot.contacto_nombre||"",
-        contacto_telefono: cot.contacto_tel||"",
-        contacto_domicilio: cot.contacto_dom||"",
-        tipo: "",
-        etapa: "presupuesto",
-        estado: "pendiente",
-        fecha: new Date().toISOString().split("T")[0],
-        ref_cotizacion: cot.numero,
-        vidrios: (cot.items||[]).map(it=>({cant:it.cant||1,tipo:it.tipo_vidrio||"",ancho:it.ancho||"",alto:it.alto||"",obs:it.obs||"",plano:it.plano||[]})),
-        pres_items: cot.items||[],
-        pres_condiciones: cot.condiciones||"",
-        pres_con_iva: cot.con_iva!==false,
-        med_plano:[],
-        prod_materiales:"", prod_procesos:[], prod_notas:"", prod_fecha_est:"", prod_campos:{}, prod_materiales_usados:[],
-        inst_fecha:"", inst_direccion:"", inst_responsable:"", inst_firmante:"", inst_notas:"",
-        pago_senia:"", pago_senia_fecha:"", pago_senia_metodo:"efectivo",
-        pago_total:"", pago_total_fecha:"", pago_total_metodo:"efectivo", pago_notas:"",
-      };
-      await saveOrden(nuevaOrden);
-      await fsSet("cotizaciones",cot.id,{...cot,estado:"convertida"});
-      setNav("ordenes");
-    };
-
     return(
       <div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22}}>
           <div>
             <h1 style={{margin:"0 0 4px",fontFamily:"Georgia,serif",fontSize:24,color:"#e2f0ff"}}>Cotizaciones</h1>
-            <p style={{margin:0,color:"#3a6a9a",fontSize:13}}>{cotizaciones.length} cotizaciones · Numeración PR-AÑO-XXXX</p>
+            <p style={{margin:0,color:"#3a6a9a",fontSize:13}}>{cotizaciones.length} cotizaciones</p>
           </div>
           <div style={{display:"flex",gap:8}}>
             <Btn small variant="secondary" onClick={()=>setModal({type:"tipos_vidrio"})}><Icon name="settings" size={14}/> Tipos de vidrio</Btn>
@@ -3188,7 +1438,7 @@ thead th{padding:8px 12px;font-size:11px;font-weight:600}
         </div>
         <div style={{display:"grid",gap:8}}>
           {cotizaciones.map(c=>{
-            const total=(c.items||[]).reduce((s,i)=>s+(+i.precio*(+i.cant||1)),0)*(c.con_iva!==false?1.21:1);
+            const total=+c.pago_total||0;
             const nombre=c.contacto_nombre||getNombre(c.cliente)||"Sin cliente";
             return(
               <div key={c.id} style={{background:"#071220",borderRadius:11,padding:"12px 16px",border:"1px solid #0f2035",display:"flex",alignItems:"center",gap:12}}>
@@ -3197,31 +1447,24 @@ thead th{padding:8px 12px;font-size:11px;font-weight:600}
                   <div style={{fontSize:10,color:"#3a6a9a"}}>{c.fecha}</div>
                 </div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:600,color:"#e2f0ff",marginBottom:2}}>{c.titulo||nombre}</div>
-                  <div style={{fontSize:12,color:"#3a6a9a"}}>{nombre}{total>0?` · $${total.toLocaleString("es-AR")}`:""}</div>
+                  <div style={{fontSize:14,fontWeight:600,color:"#e2f0ff",marginBottom:2}}>{nombre}</div>
+                  <div style={{fontSize:12,color:"#3a6a9a"}}>{c.items?.length||0} ítem(s){total>0?` · $${total.toLocaleString("es-AR")}`:""}</div>
                 </div>
                 <BadgeCot estado={c.estado}/>
                 <div style={{display:"flex",gap:4}}>
-                  {c.estado!=="convertida"&&(
-                    <button onClick={()=>convertirAOrden(c)}
-                      style={{background:"#0a2a0f",border:"1px solid #26A69A60",color:"#26A69A",cursor:"pointer",padding:"6px 12px",borderRadius:7,fontSize:12,fontFamily:"inherit",fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
-                      ✅ Convertir en Orden
-                    </button>
-                  )}
-                  <button title="PDF" onClick={()=>printCotizacion(c,getNombre(c.cliente)||c.contacto_nombre)} style={{background:"none",border:"none",color:"#64B5F6",cursor:"pointer",padding:6,borderRadius:6,display:"flex"}}><Icon name="pdf" size={15}/></button>
-                  <button onClick={()=>setModal({type:"editar_cotizacion",data:c})} style={{background:"none",border:"none",color:"#3a6a9a",cursor:"pointer",padding:6,display:"flex"}}><Icon name="edit" size={15}/></button>
-                  <button onClick={()=>fsDel("cotizaciones",c.id)} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:6,display:"flex"}}><Icon name="trash" size={15}/></button>
+                  <button onClick={()=>setModal({type:"editar_cotizacion",data:c})} style={{background:"none",border:"1px solid #1565C040",color:"#64B5F6",cursor:"pointer",padding:"5px 10px",borderRadius:7,fontSize:12,fontFamily:"inherit",fontWeight:600}}>✏️ Abrir</button>
+                  <button onClick={()=>fsDel("cotizaciones",c.id)} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:6,display:"flex",borderRadius:6}}><Icon name="trash" size={15}/></button>
                 </div>
               </div>
             );
           })}
-          {!cotizaciones.length&&<div style={{textAlign:"center",padding:"44px 0",color:"#2a4a6a"}}><Icon name="pdf" size={40}/><p style={{marginTop:12,fontSize:14}}>No hay cotizaciones aún</p><Btn small onClick={()=>setModal({type:"nueva_cotizacion"})} style={{marginTop:8}}><Icon name="plus" size={14}/> Crear primera cotización</Btn></div>}
+          {!cotizaciones.length&&<div style={{textAlign:"center",padding:"44px 0",color:"#2a4a6a"}}><p style={{marginTop:12,fontSize:14}}>No hay cotizaciones aún</p><Btn small onClick={()=>setModal({type:"nueva_cotizacion"})} style={{marginTop:8}}><Icon name="plus" size={14}/> Crear primera cotización</Btn></div>}
         </div>
       </div>
     );
   };
 
-    // ── STOCK PAGE ───────────────────────────────────────────────────────────────
+  // ── STOCK PAGE ───────────────────────────────────────────────────────────────
   const CATEGORIAS_STOCK=["Burletes","Perfilería aluminio","Bisagras y herrajes","Silicona y adhesivos","Vidrios (stock propio)","Espejos (stock propio)","Herramientas","Consumibles","Otro"];
 
   const printStock=(items)=>{
@@ -3863,7 +2106,7 @@ ${bizFooter()}`;
       <main style={{flex:1,padding:26,overflowY:"auto",minHeight:"100vh"}}>{pages[nav]}</main>
 
       <Modal open={modal?.type==="nueva_orden"||modal?.type==="editar_orden"} onClose={()=>setModal(null)} title={modal?.type==="editar_orden"?"Editar Orden":"Nueva Orden de Trabajo"} wide xwide>
-        <OrdenForm orden={modal?.data} plantillas={plantillas} clientes={clientes} stockItems={stock} onSave={saveOrden} onClose={()=>setModal(null)}/>
+        <DocForm doc={modal?.data} modo="orden" clientes={clientes} tiposVidrio={tiposVidrio} estados={estados} onSave={saveOrden} onClose={()=>setModal(null)}/>
       </Modal>
       <Modal open={modal?.type==="nuevo_cliente"||modal?.type==="editar_cliente"} onClose={()=>setModal(null)} title={modal?.type==="editar_cliente"?"Editar Cliente":"Nuevo Cliente / Obra"}>
         <ClienteForm cliente={modal?.data} onSave={saveCliente} onClose={()=>setModal(null)}/>
@@ -3881,12 +2124,25 @@ ${bizFooter()}`;
         <ProcessManager estados={estados} onSave={async(list)=>{await fsCfgSet("estados",list);setModal(null);}} onClose={()=>setModal(null)}/>
       </Modal>
       <Modal open={modal?.type==="nueva_cotizacion"||modal?.type==="editar_cotizacion"} onClose={()=>setModal(null)} title={modal?.type==="editar_cotizacion"?"Editar Cotización":"Nueva Cotización"} wide>
-        <CotizacionForm cot={modal?.data} clientes={clientes} tiposVidrio={tiposVidrio} onSave={async(form)=>{
-          const id=form.id||newId();
-          const numero=form.numero||newCotNum(cotizaciones);
-          await fsSet("cotizaciones",id,{...form,id,numero,createdAt:form.createdAt||new Date().toISOString()});
-          setModal(null);
-        }} onClose={()=>setModal(null)}/>
+        <DocForm doc={modal?.data} modo="cotizacion" clientes={clientes} tiposVidrio={tiposVidrio} estados={estados}
+          onSave={async(form)=>{
+            const id=form.id||newId();
+            const numero=form.numero||newCotNum(cotizaciones);
+            const logEntry={usuario:currentUser.nombre,rol:currentUser.rol,fecha:new Date().toISOString(),accion:form.id?"Editó la cotización":"Creó la cotización"};
+            const actividad=[...(form.actividad||[]),logEntry].slice(-50);
+            await fsSet("cotizaciones",id,{...form,id,numero,actividad,createdAt:form.createdAt||new Date().toISOString()});
+            setModal(null);
+          }}
+          onClose={()=>setModal(null)}
+          onConvertir={async(form)=>{
+            const id=form.id||newId();
+            const numero=form.numero||newCotNum(cotizaciones);
+            await fsSet("cotizaciones",id,{...form,id,numero,estado:"convertida",createdAt:form.createdAt||new Date().toISOString()});
+            const nuevaOrden={...form,id:newId(),numero:undefined,estado:"pendiente",etapa:"presupuesto",ref_cotizacion:numero,createdAt:new Date().toISOString()};
+            await saveOrden(nuevaOrden);
+            setModal(null);
+            setNav("ordenes");
+          }}/>
       </Modal>
     </div>
   );
