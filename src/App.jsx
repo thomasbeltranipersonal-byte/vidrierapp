@@ -305,6 +305,17 @@ const TIPOS_TRABAJO = ["Mampara de Baño","Espejo","Vidrio Ventana/Puerta","Trab
 const TIPOS_VIDRIO_DEFAULT = ["Float 3mm","Float 4mm","Float 5mm","Float 6mm","Float 8mm","Float 10mm","Templado 6mm","Templado 8mm","Templado 10mm","Templado 12mm","Laminado 4+4","Laminado 6+6","Espejo 3mm","Espejo 4mm","Espejo 5mm","Satinado","Arenado","Reflectivo","DVH","Curvo"];
 const TIPOS_VIDRIO = TIPOS_VIDRIO_DEFAULT; // fallback — se sobreescribe con Firebase
 
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+
+const newOrderNum = (list) => {
+  const yr = new Date().getFullYear().toString().slice(-2);
+  const ex = (list||[]).filter(o => o.numero?.startsWith(`OT-${yr}`));
+  const max = ex.reduce((m,o) => { const n = parseInt(o.numero?.split("-")[2]||0); return n>m?n:m; }, 0);
+  return `OT-${yr}-${String(max+1).padStart(4,"0")}`;
+};
+
+const PLANTILLAS_DEFAULT = [];
+
 // ─── OBSERVACIONES DEFAULT ──────────────────────────────────────────────────
 const OBS_DEFAULT = ["Con forma","Con perforación","En altura","Con bisel","Con pulido","Espejo"];
 const SERVICIOS_DEFAULT = ["Service de mampara","Service de puerta templada","Instalación estándar","Solo medición","Reparación"];
@@ -1011,9 +1022,12 @@ function AppInner({ currentUser, onLogout }) {
   // ── FIREBASE SUBSCRIPTIONS (realtime) ──────────────────────────────────────
   useEffect(()=>{
     const unsubs = [];
-    const timeout = setTimeout(()=>setLoading(false), 3000);
+    // Safety timeout — if Firebase takes too long, just show the app
+    const timeout = setTimeout(()=>setLoading(false), 4000);
+    let loaded = false;
+    const markLoaded = () => { if(!loaded){loaded=true; setLoading(false); clearTimeout(timeout);} };
 
-    unsubs.push(fsSub("ordenes", docs => { setOrdenes(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); }));
+    unsubs.push(fsSub("ordenes", docs => { setOrdenes(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); markLoaded(); }));
     unsubs.push(fsSub("clientes", docs => { setClientes(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); }));
     unsubs.push(fsSub("cotizaciones", docs => { setCotizaciones(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); }));
     unsubs.push(fsSub("stock_items", docs => { setStock(docs); }));
@@ -1023,14 +1037,10 @@ function AppInner({ currentUser, onLogout }) {
       if(val&&val.length) {
         setTiposVidrio(val);
       } else {
-        // Primera vez — guardar los defaults en Firebase para que queden permanentes
         fsCfgSet("tipos_vidrio", TIPOS_VIDRIO_DEFAULT);
         setTiposVidrio(TIPOS_VIDRIO_DEFAULT);
       }
     }));
-
-    // Mark as loaded once we get first response from any collection
-    const firstLoad = onSnapshot(collection(db, "ordenes"), ()=>{ setLoading(false); clearTimeout(timeout); }, ()=>{ setLoading(false); clearTimeout(timeout); });
 
     // Connection indicator
     const handleOnline = () => setOnline(true);
@@ -1039,8 +1049,7 @@ function AppInner({ currentUser, onLogout }) {
     window.addEventListener("offline", handleOffline);
 
     return () => {
-      unsubs.forEach(u=>u());
-      firstLoad();
+      unsubs.forEach(u=>{ try{u();}catch(e){} });
       clearTimeout(timeout);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
