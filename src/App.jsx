@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, doc, onSnapshot, setDoc, deleteDoc } from "firebase/firestore";
+import { getFirestore, collection, doc, onSnapshot, setDoc, deleteDoc, getDoc } from "firebase/firestore";
 
 // ─── USUARIOS ────────────────────────────────────────────────────────────────
 const USUARIOS = [
@@ -307,6 +307,25 @@ const TIPOS_VIDRIO = TIPOS_VIDRIO_DEFAULT; // fallback — se sobreescribe con F
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2,5);
 
+// ─── CONTADORES GLOBALES (Firebase) ─────────────────────────────────────────
+// El contador solo sube — nunca se reutiliza un número aunque se borre el documento
+const getNextNum = async (key, prefix) => {
+  const yr = new Date().getFullYear().toString().slice(-2);
+  const counterRef = doc(db, "config", `counter_${key}_${yr}`);
+  try {
+    const snap = await getDoc(counterRef);
+    const current = snap.exists() ? (snap.data()?.value || 0) : 0;
+    const next = current + 1;
+    await setDoc(counterRef, { value: next });
+    return `${prefix}-${yr}-${String(next).padStart(4,"0")}`;
+  } catch(e) {
+    // Si falla Firebase, usar timestamp como fallback único
+    console.error("Counter error:", e);
+    return `${prefix}-${yr}-${Date.now().toString().slice(-4)}`;
+  }
+};
+
+// Versión sincrónica de fallback (usada como inicial antes de que el async resuelva)
 const newOrderNum = (list) => {
   const yr = new Date().getFullYear().toString().slice(-2);
   const ex = (list||[]).filter(o => o.numero?.startsWith(`OT-${yr}`));
@@ -1059,7 +1078,7 @@ function AppInner({ currentUser, onLogout }) {
   // ── DATA OPERATIONS ────────────────────────────────────────────────────────
   const saveOrden = async (form) => {
     const id = form.id || newId();
-    const numero = form.numero || newOrderNum(ordenes);
+    const numero = form.numero || await getNextNum("ordenes", "OT");
     const anterior = ordenes.find(o=>o.id===id);
     // Log de actividad
     const logEntry = {
@@ -1613,12 +1632,8 @@ function AppInner({ currentUser, onLogout }) {
   );
 
   // ── COTIZACIONES PAGE ────────────────────────────────────────────────────────
-  const newCotNum=(list)=>{
-    const yr=new Date().getFullYear().toString().slice(-2);
-    const ex=list.filter(c=>c.numero?.startsWith(`PR-${yr}`));
-    const max=ex.reduce((m,c)=>{const n=parseInt(c.numero?.split("-")[2]||0);return n>m?n:m;},0);
-    return `PR-${yr}-${String(max+1).padStart(4,"0")}`;
-  };
+  // newCotNum ahora usa el contador global de Firebase (no se repiten números al borrar)
+  const newCotNum = async () => getNextNum("cotizaciones", "PR");
 
   // ── COTIZACIONES PAGE ────────────────────────────────────────────────────
   const Cotizaciones=()=>{
@@ -2333,7 +2348,7 @@ ${bizFooter()}`;
         <DocForm doc={modal?.data} modo="cotizacion" clientes={clientes} tiposVidrio={tiposVidrio} estados={estados}
           onSave={async(form)=>{
             const id=form.id||newId();
-            const numero=form.numero||newCotNum(cotizaciones);
+            const numero=form.numero||(await newCotNum());
             const logEntry={usuario:currentUser.nombre,rol:currentUser.rol,fecha:new Date().toISOString(),accion:form.id?"Editó la cotización":"Creó la cotización"};
             const actividad=[...(form.actividad||[]),logEntry].slice(-50);
             await fsSet("cotizaciones",id,{...form,id,numero,actividad,createdAt:form.createdAt||new Date().toISOString()});
@@ -2342,7 +2357,7 @@ ${bizFooter()}`;
           onClose={()=>setModal(null)}
           onConvertir={async(form)=>{
             const id=form.id||newId();
-            const numero=form.numero||newCotNum(cotizaciones);
+            const numero=form.numero||(await newCotNum());
             await fsSet("cotizaciones",id,{...form,id,numero,estado:"convertida",createdAt:form.createdAt||new Date().toISOString()});
             const nuevaOrden={...form,id:newId(),numero:undefined,estado:"pendiente",etapa:"presupuesto",ref_cotizacion:numero,createdAt:new Date().toISOString()};
             await saveOrden(nuevaOrden);
