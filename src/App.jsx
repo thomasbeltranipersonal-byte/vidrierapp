@@ -338,6 +338,7 @@ const PLANTILLAS_DEFAULT = [];
 // ─── OBSERVACIONES DEFAULT ──────────────────────────────────────────────────
 const OBS_DEFAULT = ["Con forma","Con perforación","En altura","Con bisel","Con pulido","Espejo"];
 const SERVICIOS_DEFAULT = ["Service de mampara","Service de puerta templada","Instalación estándar","Solo medición","Reparación"];
+const PROCESOS_TALLER_DEFAULT = ["Corte","Pulido de borde","Perforación","Templado","Arenado","Biselado","Limpieza","Control de calidad","Embalaje"];
 
 // ─── MINI CANVAS (plano por orden) ──────────────────────────────────────────
 const MiniCanvas=({value,onChange})=>{
@@ -460,11 +461,12 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
     condiciones:"50% al confirmar, saldo contra entrega.",
     pago_senia:"",pago_saldo:"",pago_total:"",
     plano:[],
+    procesos_taller:PROCESOS_TALLER_DEFAULT,
     inst_notas:"",inst_fecha:"",inst_direccion:"",inst_responsable:"",inst_firmante:"",
     fotos_instalacion:[],
   };
 
-  const [form,setForm]=useState(doc?{...EMPTY,...doc}:EMPTY);
+  const [form,setForm]=useState(doc?{...EMPTY,...doc,procesos_taller:doc.procesos_taller||PROCESOS_TALLER_DEFAULT}:EMPTY);
   const [obsExtra,setObsExtra]=useState(obsOpciones||OBS_DEFAULT);
   const [serviciosExtra,setServiciosExtra]=useState(serviciosOpciones||SERVICIOS_DEFAULT);
   const [newObs,setNewObs]=useState("");
@@ -491,8 +493,9 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
     setForm(f=>({...f,cliente:id,contacto_nombre:c?.nombre||f.contacto_nombre,contacto_tel:c?.telefono||f.contacto_tel,contacto_dom:c?.direccion||f.contacto_dom}));
   };
 
+  const [newProc,setNewProc]=useState("");
   const TABS_COT=[{id:"pedido",label:"📋 Pedido"},{id:"plano",label:"✏️ Plano"}];
-  const TABS_ORD=[{id:"pedido",label:"📋 Pedido"},{id:"plano",label:"✏️ Plano"},{id:"instalacion",label:"🚚 Instalación"},{id:"actividad",label:"🕐 Actividad"}];
+  const TABS_ORD=[{id:"pedido",label:"📋 Pedido"},{id:"plano",label:"✏️ Plano"},{id:"produccion",label:"🏭 Producción"},{id:"instalacion",label:"🚚 Instalación"},{id:"actividad",label:"🕐 Actividad"}];
   const TABS=modo==="orden"?TABS_ORD:TABS_COT;
 
   const COLOCACION=[
@@ -521,6 +524,41 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
         ${form.inst_responsable?`Responsable: ${form.inst_responsable}<br/>`:""}
         ${form.inst_notas?`Notas: ${form.inst_notas}`:""}
       </div>`:"";
+
+    // Checklist de procesos — casilleros para tildar a mano
+    const procesos = form.procesos_taller||PROCESOS_TALLER_DEFAULT;
+    const checklistHTML = procesos.length ? `
+      <div style="margin-top:20px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin-bottom:12px">
+          Seguimiento de Procesos
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="background:#f0f6ff">
+              <th style="padding:7px 12px;text-align:left;font-size:11px;color:#1565C0;font-weight:700;border:1px solid #dde8ff">Proceso</th>
+              <th style="padding:7px 12px;text-align:center;width:80px;font-size:11px;color:#1565C0;font-weight:700;border:1px solid #dde8ff">Hecho ✓</th>
+              <th style="padding:7px 12px;text-align:center;width:100px;font-size:11px;color:#1565C0;font-weight:700;border:1px solid #dde8ff">Fecha</th>
+              <th style="padding:7px 12px;text-align:center;width:120px;font-size:11px;color:#1565C0;font-weight:700;border:1px solid #dde8ff">Operario</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${procesos.map((p,i)=>`
+              <tr style="background:${i%2===0?"#fff":"#f9fbff"}">
+                <td style="padding:10px 12px;border:1px solid #dde8ff;font-weight:600;font-size:14px">${p}</td>
+                <td style="padding:10px 12px;border:1px solid #dde8ff;text-align:center">
+                  <div style="width:22px;height:22px;border:2px solid #1565C0;border-radius:4px;margin:0 auto;background:#fff"></div>
+                </td>
+                <td style="padding:10px 12px;border:1px solid #dde8ff;border-bottom:1px solid #bbb">
+                  <div style="border-bottom:1px solid #bbb;height:20px;width:100%"></div>
+                </td>
+                <td style="padding:10px 12px;border:1px solid #dde8ff;border-bottom:1px solid #bbb">
+                  <div style="border-bottom:1px solid #bbb;height:20px;width:100%"></div>
+                </td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>` : "";
+
     const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Taller ${form.numero||""}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e}
 .hdr{background:linear-gradient(135deg,#0a2a5e,#1565C0);padding:16px 26px;display:flex;justify-content:space-between;align-items:center}
@@ -545,7 +583,7 @@ thead th{padding:9px 12px;font-size:11px;font-weight:600;letter-spacing:0.5px}
     <img class="logo" src="BIZ_LOGO" alt="LV"/>
     <div class="biz"><div class="biz-name">La Vidriería Rosario — TALLER</div><div class="biz-sub">Orden de Producción Interna</div></div>
   </div>
-  <div class="doc-right"><div class="doc-type">Orden N°</div><span class="doc-num">${form.numero||"S/N"}</span>${form.prod_fecha_est?`<div style="font-size:11px;opacity:0.8;margin-top:4px">Entrega: ${form.prod_fecha_est}</div>`:""}</div>
+  <div class="doc-right"><div class="doc-type">Orden N°</div><span class="doc-num">${form.numero||"S/N"}</span></div>
 </div>
 <div class="divider"></div>
 <div class="body">
@@ -568,6 +606,7 @@ thead th{padding:9px 12px;font-size:11px;font-weight:600;letter-spacing:0.5px}
   </table>
   ${instBloque}
   ${planoSVG?`<div class="st">Plano Técnico</div><div style="margin-top:8px">${planoSVG}</div>`:""}
+  ${checklistHTML}
   <div class="sign-grid">
     <div class="sign-line">Recibido por taller<div style="height:32px"></div></div>
     <div class="sign-line">Entregado por<div style="height:32px"></div></div>
@@ -814,6 +853,60 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
         <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1565C040"}}>
           <div style={{fontSize:11,fontWeight:700,color:"#64B5F6",textTransform:"uppercase",marginBottom:10}}>✏️ Plano Técnico</div>
           <MiniCanvas value={form.plano||[]} onChange={v=>set("plano",v)}/>
+        </div>
+      </div>}
+
+      {/* TAB: PRODUCCIÓN (solo en orden) */}
+      {tab==="produccion"&&modo==="orden"&&<div>
+        <div style={{background:"#071220",borderRadius:10,padding:16,border:"1px solid #FFB74D30"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#FFB74D",textTransform:"uppercase",marginBottom:6}}>
+            ✂️ Checklist de procesos — aparece en el PDF Taller
+          </div>
+          <div style={{fontSize:12,color:"#5a8ab8",marginBottom:14,lineHeight:1.6}}>
+            Estos son los procesos que el taller tiene que completar para esta orden. Se imprimen con casilleros para tildar a mano. Podés agregar, reordenar o eliminar los que no aplican.
+          </div>
+
+          {/* Lista de procesos */}
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+            {(form.procesos_taller||[]).map((proc,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#0a1828",borderRadius:8,border:"1px solid #0f2035"}}>
+                <div style={{width:18,height:18,border:"2px solid #FFB74D",borderRadius:4,flexShrink:0,background:"#fff"}}/>
+                <div style={{flex:1,fontSize:13,color:"#c8e0f8",fontWeight:600}}>{i+1}. {proc}</div>
+                <div style={{display:"flex",gap:4}}>
+                  {i>0&&<button onClick={()=>{
+                    const arr=[...(form.procesos_taller||[])];
+                    [arr[i-1],arr[i]]=[arr[i],arr[i-1]];
+                    set("procesos_taller",arr);
+                  }} style={{background:"none",border:"1px solid #1e3a5a",color:"#3a6a9a",cursor:"pointer",padding:"2px 6px",borderRadius:5,fontSize:11}}>↑</button>}
+                  {i<(form.procesos_taller||[]).length-1&&<button onClick={()=>{
+                    const arr=[...(form.procesos_taller||[])];
+                    [arr[i],arr[i+1]]=[arr[i+1],arr[i]];
+                    set("procesos_taller",arr);
+                  }} style={{background:"none",border:"1px solid #1e3a5a",color:"#3a6a9a",cursor:"pointer",padding:"2px 6px",borderRadius:5,fontSize:11}}>↓</button>}
+                  <button onClick={()=>set("procesos_taller",(form.procesos_taller||[]).filter((_,idx)=>idx!==i))}
+                    style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,display:"flex"}}><Icon name="trash" size={13}/></button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Agregar proceso */}
+          <div style={{display:"flex",gap:8}}>
+            <Input value={newProc} onChange={e=>setNewProc(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"&&newProc.trim()){set("procesos_taller",[...(form.procesos_taller||[]),newProc.trim()]);setNewProc("");}}}
+              placeholder="Agregar proceso... (ej: Templado, Embalaje)" style={{flex:1}}/>
+            <Btn small onClick={()=>{
+              if(!newProc.trim()) return;
+              set("procesos_taller",[...(form.procesos_taller||[]),newProc.trim()]);
+              setNewProc("");
+            }}><Icon name="plus" size={13}/> Agregar</Btn>
+          </div>
+
+          {/* Botón para restaurar defaults */}
+          <button onClick={()=>set("procesos_taller",PROCESOS_TALLER_DEFAULT)}
+            style={{marginTop:10,background:"none",border:"none",color:"#3a6a9a",cursor:"pointer",fontSize:11,padding:0,textDecoration:"underline"}}>
+            Restaurar procesos por defecto
+          </button>
         </div>
       </div>}
 
