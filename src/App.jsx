@@ -525,61 +525,36 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
         ${form.inst_notas?`Notas: ${form.inst_notas}`:""}
       </div>`:"";
 
-    // Checklist de procesos — casilleros para tildar a mano
+    // Checklist compacto — casilleros por ítem y proceso
     const procesos = form.procesos_taller||PROCESOS_TALLER_DEFAULT;
-    const checklistHTML = procesos.length ? `
-      <div style="margin-top:20px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin-bottom:12px">
-          Seguimiento de Procesos
-        </div>
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <thead>
-            <tr style="background:#f0f6ff">
-              <th style="padding:7px 12px;text-align:left;font-size:11px;color:#1565C0;font-weight:700;border:1px solid #dde8ff">Proceso</th>
-              <th style="padding:7px 12px;text-align:center;width:80px;font-size:11px;color:#1565C0;font-weight:700;border:1px solid #dde8ff">Hecho ✓</th>
-              <th style="padding:7px 12px;text-align:center;width:100px;font-size:11px;color:#1565C0;font-weight:700;border:1px solid #dde8ff">Fecha</th>
-              <th style="padding:7px 12px;text-align:center;width:120px;font-size:11px;color:#1565C0;font-weight:700;border:1px solid #dde8ff">Operario</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${procesos.map((p,i)=>`
-              <tr style="background:${i%2===0?"#fff":"#f9fbff"}">
-                <td style="padding:10px 12px;border:1px solid #dde8ff;font-weight:600;font-size:14px">${p}</td>
-                <td style="padding:10px 12px;border:1px solid #dde8ff;text-align:center">
-                  <div style="width:22px;height:22px;border:2px solid #1565C0;border-radius:4px;margin:0 auto;background:#fff"></div>
-                </td>
-                <td style="padding:10px 12px;border:1px solid #dde8ff;border-bottom:1px solid #bbb">
-                  <div style="border-bottom:1px solid #bbb;height:20px;width:100%"></div>
-                </td>
-                <td style="padding:10px 12px;border:1px solid #dde8ff;border-bottom:1px solid #bbb">
-                  <div style="border-bottom:1px solid #bbb;height:20px;width:100%"></div>
-                </td>
-              </tr>`).join("")}
-          </tbody>
-        </table>
-      </div>` : "";
+    const procesoHeaders = procesos.map(p=>`<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.3px;border:1px solid #c8d8f0;min-width:52px;max-width:70px;color:#fff">${p}</th>`).join("");
+    const procesoRows = form.items.map((it,i)=>`
+      <tr style="background:${i%2===0?"#fff":"#f8fbff"}">
+        <td style="padding:8px 10px;text-align:center;font-weight:900;font-size:16px;border:1px solid #dde8ff;width:40px">${it.cant||1}</td>
+        <td style="padding:8px 10px;font-weight:700;font-size:13px;border:1px solid #dde8ff">${it.tipo_vidrio||"—"}</td>
+        <td style="padding:8px 10px;text-align:center;font-size:13px;border:1px solid #dde8ff;white-space:nowrap">${it.ancho&&it.alto?`${it.ancho}×${it.alto}`:"—"}</td>
+        <td style="padding:8px 10px;font-size:12px;border:1px solid #dde8ff;color:#555">${(it.obs||[]).join(", ")||""}</td>
+        ${procesos.map(()=>`<td style="padding:8px;text-align:center;border:1px solid #dde8ff"><div style="width:18px;height:18px;border:1.5px solid #1565C0;border-radius:3px;margin:0 auto;background:#fff"></div></td>`).join("")}
+      </tr>`).join("");
 
     const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Taller ${form.numero||""}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e}
-.hdr{background:linear-gradient(135deg,#0a2a5e,#1565C0);padding:16px 26px;display:flex;justify-content:space-between;align-items:center}
-.logo{width:54px;height:54px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3))}
-.biz{color:#fff}.biz-name{font-size:18px;font-weight:900}.biz-sub{font-size:10px;opacity:0.7;margin-top:2px}
-.doc-right{text-align:right;color:#fff}.doc-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;opacity:0.7}
-.doc-num{font-size:30px;font-weight:900;display:block;letter-spacing:1px}
-.divider{height:4px;background:linear-gradient(90deg,#1565C0,#42A5F5,#1565C0)}
-.body{padding:18px 26px}
-.st{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:4px;margin:16px 0 10px}
-.client-row{background:#f0f6ff;border-radius:7px;padding:10px 14px;border:1px solid #e0ecff;display:flex;gap:24px}
-.cf label{font-size:9px;color:#888;font-weight:700;text-transform:uppercase;display:block;margin-bottom:1px}.cf p{font-size:14px;font-weight:600}
+.hdr{background:linear-gradient(135deg,#0a2a5e,#1565C0);padding:14px 22px;display:flex;justify-content:space-between;align-items:center}
+.logo{width:48px;height:48px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3))}
+.biz{color:#fff}.biz-name{font-size:16px;font-weight:900}.biz-sub{font-size:9px;opacity:0.7;margin-top:1px}
+.doc-right{text-align:right;color:#fff}.doc-type{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;opacity:0.7}
+.doc-num{font-size:26px;font-weight:900;display:block;letter-spacing:1px}
+.divider{height:3px;background:linear-gradient(90deg,#1565C0,#42A5F5,#1565C0)}
+.body{padding:14px 22px}
+.client-row{background:#f0f6ff;border-radius:6px;padding:8px 12px;border:1px solid #e0ecff;display:flex;gap:20px;margin-bottom:12px}
+.cf label{font-size:8px;color:#888;font-weight:700;text-transform:uppercase;display:block;margin-bottom:1px}.cf p{font-size:13px;font-weight:600}
 table{width:100%;border-collapse:collapse}
-thead tr{background:linear-gradient(135deg,#0a2a5e,#1565C0);color:#fff}
-thead th{padding:9px 12px;font-size:11px;font-weight:600;letter-spacing:0.5px}
-.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:28px}
-.sign-line{border-top:1.5px solid #1565C0;padding-top:8px;text-align:center;font-size:10px;color:#888;text-transform:uppercase}
-.footer{background:#f0f6ff;border-top:2px solid #e3f2fd;padding:7px 26px;display:flex;justify-content:space-between;font-size:10px;color:#888;margin-top:16px}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:7mm}}</style></head><body>
+.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:20px}
+.sign-line{border-top:1.5px solid #1565C0;padding-top:7px;text-align:center;font-size:10px;color:#888;text-transform:uppercase}
+.footer{background:#f0f6ff;border-top:1px solid #e3f2fd;padding:6px 22px;display:flex;justify-content:space-between;font-size:9px;color:#888;margin-top:12px}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:6mm}}</style></head><body>
 <div class="hdr">
-  <div style="display:flex;align-items:center;gap:12px">
+  <div style="display:flex;align-items:center;gap:10px">
     <img class="logo" src="BIZ_LOGO" alt="LV"/>
     <div class="biz"><div class="biz-name">La Vidriería Rosario — TALLER</div><div class="biz-sub">Orden de Producción Interna</div></div>
   </div>
@@ -592,24 +567,23 @@ thead th{padding:9px 12px;font-size:11px;font-weight:600;letter-spacing:0.5px}
     <div class="cf"><label>Teléfono</label><p>${form.contacto_tel||"—"}</p></div>
     <div class="cf"><label>Domicilio</label><p>${form.contacto_dom||"—"}</p></div>
   </div>
-  <div class="st">Pedido</div>
   <table>
-    <thead><tr>
-      <th style="text-align:center;width:50px">Cant.</th>
-      <th style="text-align:left">Tipo de vidrio</th>
-      <th style="text-align:center;width:130px">Medidas (mm)</th>
-      <th style="text-align:left">Observaciones</th>
-      <th style="text-align:left">Servicio</th>
-      <th style="text-align:left">Colocación</th>
-    </tr></thead>
-    <tbody>${rows||"<tr><td colspan='6' style='padding:12px;text-align:center;color:#888'>Sin ítems</td></tr>"}</tbody>
+    <thead>
+      <tr style="background:linear-gradient(135deg,#0a2a5e,#1565C0)">
+        <th style="padding:7px 10px;text-align:center;font-size:10px;font-weight:700;border:1px solid #1a4a8e;color:#fff;width:40px">Cant.</th>
+        <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;border:1px solid #1a4a8e;color:#fff">Tipo de vidrio</th>
+        <th style="padding:7px 10px;text-align:center;font-size:10px;font-weight:700;border:1px solid #1a4a8e;color:#fff;width:90px">Medidas mm</th>
+        <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;border:1px solid #1a4a8e;color:#fff">Obs.</th>
+        ${procesoHeaders}
+      </tr>
+    </thead>
+    <tbody>${procesoRows}</tbody>
   </table>
-  ${instBloque}
-  ${planoSVG?`<div class="st">Plano Técnico</div><div style="margin-top:8px">${planoSVG}</div>`:""}
-  ${checklistHTML}
+  ${form.inst_notas||form.inst_fecha?`<div style="margin-top:10px;padding:8px 12px;background:#f8f9ff;border-left:3px solid #1565C0;font-size:12px;line-height:1.7;color:#333">${form.inst_fecha?`<strong>Fecha entrega:</strong> ${form.inst_fecha} &nbsp;`:""}${form.inst_direccion?`<strong>Dirección:</strong> ${form.inst_direccion} &nbsp;`:""}${form.inst_notas?`<strong>Notas:</strong> ${form.inst_notas}`:""}</div>`:""}
+  ${planoSVG?`<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1565C0;border-bottom:1.5px solid #1565C0;padding-bottom:3px;margin:12px 0 8px">Plano</div>${planoSVG}`:""}
   <div class="sign-grid">
-    <div class="sign-line">Recibido por taller<div style="height:32px"></div></div>
-    <div class="sign-line">Entregado por<div style="height:32px"></div></div>
+    <div class="sign-line">Recibido por taller<div style="height:28px"></div></div>
+    <div class="sign-line">Entregado por<div style="height:28px"></div></div>
   </div>
 </div>
 <div class="footer"><span>Generado el ${new Date().toLocaleString("es-AR")} · VidrierApp</span><span>La Vidriería Rosario · Mendoza 1783 · 341 425-1007</span></div>
