@@ -341,7 +341,6 @@ const SERVICIOS_DEFAULT = ["Service de mampara","Service de puerta templada","In
 const PROCESOS_TALLER_DEFAULT = ["Corte","Pulido de borde","Perforación","Templado","Arenado","Biselado","Limpieza","Control de calidad","Embalaje"];
 
 
-const MiniCanvas=({value,onChange})=><ItemCanvas value={value} onChange={onChange} label="Plano general" itemIdx={0}/>;
 
 // buildSVGStr — renders shape array as SVG HTML string for PDFs
 const buildSVGStr=(shapes)=>{
@@ -365,6 +364,293 @@ const buildSVGStr=(shapes)=>{
 };
 
 // ─── COTIZACION / ORDEN FORM ─────────────────────────────────────────────────
+// ─── ITEM CANVAS ─────────────────────────────────────────────────────────────
+const ItemCanvas=({value,onChange,label,itemIdx})=>{
+  const svgRef=useRef(null);
+  const [tool,setTool]=useState("select");
+  const [shapes,setShapes]=useState(value||[]);
+  const [drawing,setDrawing]=useState(null);
+  const [selId,setSelId]=useState(null);
+  const [drag,setDrag]=useState(null);
+  const [open,setOpen]=useState(!!(value&&value.length));
+  const uid=()=>Math.random().toString(36).slice(2,8);
+  const W=500,H=280,SNAP=5;
+  const snap=v=>Math.round(v/SNAP)*SNAP;
+  const commit=(sh)=>{setShapes(sh);onChange(sh);};
+
+  const getPos=(e)=>{
+    if(!svgRef.current) return {x:0,y:0};
+    const r=svgRef.current.getBoundingClientRect();
+    const sx=W/r.width,sy=H/r.height;
+    const src=e.touches?e.touches[0]:e;
+    return {x:snap((src.clientX-r.left)*sx),y:snap((src.clientY-r.top)*sy)};
+  };
+
+  // Hit test
+  const hitTest=(s,p)=>{
+    if(s.type==="text") return Math.abs(p.x-s.x)<35&&Math.abs(p.y-s.y)<16;
+    if(s.type==="perf") return Math.hypot(p.x-s.cx,p.y-s.cy)<s.r+8;
+    if(s.type==="bisagra"){const hw=s.rw||14,hh=(s.h||50)/2;return p.x>=s.cx-hw-6&&p.x<=s.cx+hw+6&&p.y>=s.cy-hh-6&&p.y<=s.cy+hh+6;}
+    if(s.type==="vidrio"||s.type==="rect"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);return p.x>=x-4&&p.x<=x+w+4&&p.y>=y-4&&p.y<=y+h+4;}
+    if(s.type==="line"){const dx=s.x2-s.x1,dy=s.y2-s.y1,len=Math.hypot(dx,dy);if(!len)return false;const t=Math.max(0,Math.min(1,((p.x-s.x1)*dx+(p.y-s.y1)*dy)/(len*len)));return Math.hypot(p.x-s.x1-t*dx,p.y-s.y1-t*dy)<8;}
+    return false;
+  };
+
+  const moveShape=(s,dx,dy)=>{
+    if(s.type==="text") return {...s,x:snap(s.x+dx),y:snap(s.y+dy)};
+    if(s.type==="perf"||s.type==="bisagra") return {...s,cx:snap(s.cx+dx),cy:snap(s.cy+dy)};
+    return {...s,x1:snap(s.x1+dx),y1:snap(s.y1+dy),x2:snap(s.x2+dx),y2:snap(s.y2+dy)};
+  };
+
+  const onDown=(e)=>{
+    e.preventDefault();
+    const p=getPos(e);
+    if(tool==="select"){
+      const hit=[...shapes].reverse().find(s=>hitTest(s,p));
+      if(hit){setSelId(hit.id);setDrag({id:hit.id,px:p.x,py:p.y,orig:shapes.map(s=>({...s}))});}
+      else setSelId(null);
+      return;
+    }
+    if(tool==="bisagra"){commit([...shapes,{id:uid(),type:"bisagra",cx:p.x,cy:p.y,rw:14,h:50}]);return;}
+    if(tool==="perf"){commit([...shapes,{id:uid(),type:"perf",cx:p.x,cy:p.y,r:15}]);return;}
+    if(tool==="text"){const t=window.prompt("Anotación:");if(t)commit([...shapes,{id:uid(),type:"text",x:p.x,y:p.y,text:t}]);return;}
+    setDrawing({id:uid(),type:tool,x1:p.x,y1:p.y,x2:p.x,y2:p.y,cornerTL:0,cornerTR:0,cornerBR:0,cornerBL:0,satinado:false});
+  };
+
+  const onMove=(e)=>{
+    if(!drawing&&!drag) return;
+    e.preventDefault();
+    const p=getPos(e);
+    if(drawing){setDrawing(d=>({...d,x2:p.x,y2:p.y}));return;}
+    if(drag){
+      const dx=p.x-drag.px,dy=p.y-drag.py;
+      commit(drag.orig.map(s=>s.id===drag.id?moveShape(s,dx,dy):s));
+    }
+  };
+
+  const onUp=()=>{
+    if(drawing){if(Math.abs(drawing.x2-drawing.x1)>6||Math.abs(drawing.y2-drawing.y1)>6)commit([...shapes,drawing]);setDrawing(null);}
+    setDrag(null);
+  };
+
+  const selShape=shapes.find(s=>s.id===selId);
+  const updateSel=(k,v)=>commit(shapes.map(s=>s.id===selId?{...s,[k]:v}:s));
+
+  // ── RENDER ────────────────────────────────────────────────────────────────
+  const renderShape=(s,ghost)=>{
+    const sel=!ghost&&selId===s.id;
+    const sc=ghost?"#42A5F5":sel?"#FF8A65":"#1565C0";
+    const sf=ghost?"rgba(66,165,245,0.07)":sel?"rgba(255,138,101,0.1)":"rgba(21,101,192,0.06)";
+    const sw=sel?2.5:1.8;
+    const onClick=ghost?undefined:()=>{if(tool==="select")setSelId(sel?null:s.id);};
+    const cur=tool==="select"?"pointer":"default";
+
+    if(s.type==="text") return(
+      <text key={s.id} x={s.x} y={s.y} fontSize="12" fill={sel?"#FF8A65":"#FFB74D"}
+        fontWeight="700" style={{cursor:cur,userSelect:"none"}} onClick={onClick}>{s.text}</text>
+    );
+
+    if(s.type==="perf") return(
+      <g key={s.id} style={{cursor:cur}} onClick={onClick}>
+        <circle cx={s.cx} cy={s.cy} r={s.r} fill="white" stroke={sc} strokeWidth={sw}/>
+        <line x1={s.cx-s.r*0.6} y1={s.cy} x2={s.cx+s.r*0.6} y2={s.cy} stroke={sc} strokeWidth="1.2"/>
+        <line x1={s.cx} y1={s.cy-s.r*0.6} x2={s.cx} y2={s.cy+s.r*0.6} stroke={sc} strokeWidth="1.2"/>
+        <text x={s.cx} y={s.cy+s.r+11} textAnchor="middle" fontSize="9" fill={sc} fontWeight="700">⌀{(s.r*2)}</text>
+      </g>
+    );
+
+    if(s.type==="bisagra"){
+      // Full bisagra shape: rectangle body with FULL semicircles at top and bottom
+      // Like the drawing: a vertical rectangle where top and bottom edges are replaced by semicircles
+      const rw=s.rw||14, hh=(s.h||50)/2, rh=rw; // semicircle radius = half width
+      // Path: start bottom-left, go up left side, semicircle top (outward), down right side, semicircle bottom (outward)
+      const path=[
+        `M ${s.cx-rw} ${s.cy-hh+rh}`,        // bottom of top curve, left
+        `L ${s.cx-rw} ${s.cy+hh-rh}`,          // up to top of bottom curve, left
+        `A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh}`, // bottom semicircle (outward = away from center)
+        `L ${s.cx+rw} ${s.cy-hh+rh}`,          // down right side
+        `A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh}`, // top semicircle (outward)
+        `Z`
+      ].join(" ");
+      return(
+        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
+          <path d={path} fill="white" stroke={sc} strokeWidth={sw}/>
+          <text x={s.cx} y={s.cy+4} textAnchor="middle" fontSize="8" fill={sc} fontWeight="700">BIS</text>
+          {sel&&<rect x={s.cx-rw-6} y={s.cy-hh-6} width={rw*2+12} height={s.h+12} fill="none" stroke="#FF8A65" strokeWidth="1" strokeDasharray="3 2" rx="2"/>}
+        </g>
+      );
+    }
+
+    if(s.type==="vidrio"){
+      const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2);
+      const w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
+      const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;
+      const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;
+      return(
+        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
+          {s.satinado&&<defs><pattern id={`sat${s.id}`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#1565C0" strokeWidth="1.5" opacity="0.22"/></pattern></defs>}
+          <path d={d} fill={s.satinado?`url(#sat${s.id})`:sf} stroke={sc} strokeWidth={sw}/>
+          {s.satinado&&<text x={x+w/2} y={y+h/2+5} textAnchor="middle" fontSize="10" fill={sc} fontWeight="700" opacity="0.5">SAT</text>}
+          {sel&&<path d={d} fill="none" stroke="#FF8A65" strokeWidth="1" strokeDasharray="4 2"/>}
+        </g>
+      );
+    }
+
+    if(s.type==="line") return(
+      <line key={s.id} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2}
+        stroke={sc} strokeWidth={sw} strokeLinecap="round" style={{cursor:cur}} onClick={onClick}/>
+    );
+
+    // generic rect (fallback / drawing preview)
+    const x=Math.min(s.x1||0,s.x2||0),y=Math.min(s.y1||0,s.y2||0);
+    const w=Math.abs((s.x2||0)-(s.x1||0)),h=Math.abs((s.y2||0)-(s.y1||0));
+    return <rect key={s.id} x={x} y={y} width={w} height={h} fill={sf} stroke={sc} strokeWidth={sw} style={{cursor:"crosshair"}} onClick={onClick}/>;
+  };
+
+  // ── SVG → PDF string ──────────────────────────────────────────────────────
+  const shapeToStr=(s)=>{
+    if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="12" fill="#e65100" font-weight="700">${s.text}</text>`;
+    if(s.type==="perf") return `<circle cx="${s.cx}" cy="${s.cy}" r="${s.r}" fill="white" stroke="#1565C0" stroke-width="2"/><line x1="${s.cx-s.r*0.6}" y1="${s.cy}" x2="${s.cx+s.r*0.6}" y2="${s.cy}" stroke="#1565C0" stroke-width="1.5"/><line x1="${s.cx}" y1="${s.cy-s.r*0.6}" x2="${s.cx}" y2="${s.cy+s.r*0.6}" stroke="#1565C0" stroke-width="1.5"/><text x="${s.cx}" y="${s.cy+s.r+11}" text-anchor="middle" font-size="9" fill="#1565C0" font-weight="700">⌀${s.r*2}</text>`;
+    if(s.type==="bisagra"){
+      const rw=s.rw||14,hh=(s.h||50)/2,rh=rw;
+      const path=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;
+      return `<path d="${path}" fill="white" stroke="#1565C0" stroke-width="2.5"/><text x="${s.cx}" y="${s.cy+4}" text-anchor="middle" font-size="8" fill="#1565C0" font-weight="700">BIS</text>`;
+    }
+    if(s.type==="vidrio"){
+      const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
+      const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;
+      const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;
+      const satDef=s.satinado?`<defs><pattern id="sp" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#1565C0" stroke-width="1.2" opacity="0.28"/></pattern></defs>`:"";
+      return `${satDef}<path d="${d}" fill="${s.satinado?"url(#sp)":"#e8f4ff"}" stroke="#1565C0" stroke-width="2"/>${s.satinado?`<text x="${x+w/2}" y="${y+h/2+5}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700" opacity="0.6">SATINADO</text>`:""}`;
+    }
+    if(s.type==="line") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2.5" stroke-linecap="round"/>`;
+    return "";
+  };
+
+  const getSVGForPDF=()=>{
+    if(!shapes.length) return "";
+    const pts=shapes.flatMap(s=>{
+      if(s.cx!=null){const rw=s.rw||s.r||20,rh=(s.h||rw*2)/2;return[[s.cx-rw,s.cy-rh],[s.cx+rw,s.cy+rh]];}
+      if(s.x!=null&&s.w!=null) return [[s.x,s.y],[s.x+s.w,s.y+s.h]];
+      return [[s.x1||0,s.y1||0],[s.x2||0,s.y2||0]];
+    });
+    const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
+    const mx=Math.min(...xs)-20,my=Math.min(...ys)-20,Mx=Math.max(...xs)+20,My=Math.max(...ys)+20;
+    return `<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:200px;border:1.5px solid #1565C0;border-radius:6px;background:#f8fbff;display:block">${shapes.map(shapeToStr).join("")}</svg>`;
+  };
+
+  const printPlano=()=>{
+    if(!shapes.length){alert("El plano está vacío.");return;}
+    const svg=getSVGForPDF().replace('max-height:200px;border:1.5px solid #1565C0;border-radius:6px;background:#f8fbff;display:block','max-height:80vh;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block;width:100%');
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Plano</title><style>body{margin:20px;font-family:Arial}h2{color:#1565C0;margin-bottom:8px}p{color:#555;font-size:12px;margin-bottom:12px}@media print{body{-webkit-print-color-adjust:exact}@page{margin:8mm}}</style></head><body><h2>Plano Técnico — La Vidriería Rosario</h2><p>${label||""}</p>${svg}</body></html>`;
+    const w=window.open("","_blank","width=800,height=700");
+    if(w){w.document.write(html);w.document.close();w.onload=()=>{w.focus();w.print();};}
+  };
+
+  const TOOLS=[
+    {id:"select",label:"↖ Mover"},
+    {id:"vidrio",label:"□ Vidrio"},
+    {id:"bisagra",label:"⊢ Bisagra"},
+    {id:"perf",label:"⊙ Perf."},
+    {id:"line",label:"╱ Línea"},
+    {id:"text",label:"T Nota"},
+  ];
+
+  if(!open) return(
+    <button onClick={()=>setOpen(true)} style={{width:"100%",marginTop:6,padding:"5px 0",background:"transparent",border:"1px dashed #1e3a5a",borderRadius:6,color:"#3a6a9a",cursor:"pointer",fontSize:11,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+      ✏️ {shapes.length>0?`Plano (${shapes.length} elem.)`:"Agregar plano técnico"}
+    </button>
+  );
+
+  return(
+    <div style={{marginTop:8,background:"#050e1a",borderRadius:9,padding:10,border:"1px solid #1565C030"}}>
+      {/* Toolbar */}
+      <div style={{display:"flex",gap:3,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
+        {TOOLS.map(t=>(
+          <button key={t.id} onClick={()=>setTool(t.id)}
+            style={{padding:"3px 8px",borderRadius:5,border:`1px solid ${tool===t.id?"#1565C0":"#1e3a5a"}`,
+              background:tool===t.id?"#1565C030":"transparent",
+              color:tool===t.id?"#64B5F6":"#3a6a9a",
+              cursor:"pointer",fontSize:10,fontFamily:"inherit",fontWeight:tool===t.id?700:400}}>
+            {t.label}
+          </button>
+        ))}
+        <div style={{marginLeft:"auto",display:"flex",gap:3}}>
+          {selId&&<button onClick={()=>{commit(shapes.filter(s=>s.id!==selId));setSelId(null);}}
+            style={{padding:"3px 8px",borderRadius:5,border:"1px solid #7f2020",background:"#1a0808",color:"#f48fb1",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>✕ Borrar</button>}
+          {shapes.length>0&&<button onClick={()=>{if(window.confirm("¿Limpiar plano?"))commit([]);setSelId(null);}}
+            style={{padding:"3px 7px",borderRadius:5,border:"1px solid #1e3a5a",background:"transparent",color:"#3a6a9a",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>Limpiar</button>}
+          {shapes.length>0&&<button onClick={printPlano}
+            style={{padding:"3px 7px",borderRadius:5,border:"1px solid #26A69A",background:"#0a2a1a",color:"#26A69A",cursor:"pointer",fontSize:10,fontFamily:"inherit",fontWeight:700}}>🖨</button>}
+          <button onClick={()=>setOpen(false)}
+            style={{padding:"3px 7px",borderRadius:5,border:"1px solid #1e3a5a",background:"transparent",color:"#3a6a9a",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>▲</button>
+        </div>
+      </div>
+
+      {/* Properties panel */}
+      {selShape&&<div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"6px 10px",background:"#0a1828",borderRadius:7,marginBottom:6,alignItems:"center",fontSize:11}}>
+        <span style={{color:"#FFB74D",fontWeight:700,fontSize:10,textTransform:"uppercase"}}>{selShape.type}</span>
+        {selShape.type==="vidrio"&&<>
+          {[["↖","cornerTL"],["↗","cornerTR"],["↘","cornerBR"],["↙","cornerBL"]].map(([ic,k])=>(
+            <label key={k} style={{display:"flex",alignItems:"center",gap:3,color:"#5a8ab8"}}>
+              <span style={{fontSize:11}}>{ic}</span>
+              <input type="number" min="0" max="60" value={selShape[k]||0} onChange={e=>updateSel(k,+e.target.value)}
+                style={{width:36,background:"#071220",border:"1px solid #1e3a5a",borderRadius:4,color:"#c8e0f8",padding:"2px 4px",fontSize:11,textAlign:"center"}}/>
+            </label>
+          ))}
+          <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",color:selShape.satinado?"#64B5F6":"#3a6a9a"}}>
+            <input type="checkbox" checked={!!selShape.satinado} onChange={e=>updateSel("satinado",e.target.checked)} style={{accentColor:"#1565C0",width:13,height:13}}/>
+            <span>Satinado</span>
+          </label>
+        </>}
+        {selShape.type==="bisagra"&&<>
+          <span style={{color:"#3a6a9a"}}>Ancho:</span>
+          <input type="range" min="6" max="30" value={selShape.rw||14} onChange={e=>updateSel("rw",+e.target.value)} style={{width:70,accentColor:"#1565C0"}}/>
+          <span style={{color:"#64B5F6",minWidth:18}}>{selShape.rw||14}</span>
+          <span style={{color:"#3a6a9a"}}>Alto:</span>
+          <input type="range" min="20" max="120" value={selShape.h||50} onChange={e=>updateSel("h",+e.target.value)} style={{width:70,accentColor:"#1565C0"}}/>
+          <span style={{color:"#64B5F6",minWidth:18}}>{selShape.h||50}</span>
+        </>}
+        {selShape.type==="perf"&&<>
+          <span style={{color:"#3a6a9a"}}>Diámetro:</span>
+          <input type="range" min="6" max="50" value={selShape.r||15} onChange={e=>updateSel("r",+e.target.value)} style={{width:80,accentColor:"#1565C0"}}/>
+          <span style={{color:"#64B5F6"}}>⌀{(selShape.r||15)*2}mm</span>
+        </>}
+        {selShape.type==="text"&&
+          <input value={selShape.text} onChange={e=>updateSel("text",e.target.value)}
+            style={{flex:1,minWidth:120,background:"#071220",border:"1px solid #1e3a5a",borderRadius:4,color:"#c8e0f8",padding:"2px 6px",fontSize:11}}/>}
+        <button onClick={()=>{commit(shapes.filter(s=>s.id!==selId));setSelId(null);}}
+          style={{marginLeft:"auto",padding:"2px 8px",borderRadius:4,border:"1px solid #7f2020",background:"#1a0808",color:"#f48fb1",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>✕</button>
+      </div>}
+
+      {/* Canvas */}
+      <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${H}`}
+        style={{display:"block",background:"#071220",borderRadius:6,border:"1px solid #0f2035",
+          cursor:tool==="select"?"default":"crosshair",touchAction:"none",minHeight:150}}
+        onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
+        onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}>
+        <defs>
+          <pattern id={`grd${itemIdx||0}`} width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#0b1e35" strokeWidth="0.5"/>
+          </pattern>
+        </defs>
+        <rect width={W} height={H} fill={`url(#grd${itemIdx||0})`}/>
+        {shapes.map(s=>renderShape(s,false))}
+        {drawing&&renderShape(drawing,true)}
+      </svg>
+      <div style={{fontSize:9,color:"#1e3a5a",marginTop:3,textAlign:"right"}}>
+        {tool==="select"&&"Click para seleccionar · Arrastrá para mover"}
+        {tool==="vidrio"&&"Arrastrá para dibujar el vidrio"}
+        {tool==="bisagra"&&"Click para colocar bisagra · Seleccioná para ajustar"}
+        {tool==="perf"&&"Click para colocar perforación · Seleccioná para ajustar diámetro"}
+        {tool==="line"&&"Arrastrá para dibujar línea"}
+        {tool==="text"&&"Click para agregar texto"}
+      </div>
+    </div>
+  );
+};
+const MiniCanvas=({value,onChange})=><ItemCanvas value={value} onChange={onChange} label="Plano general" itemIdx={0}/>;
+
 const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,estados,onSave,onClose,onConvertir})=>{
   // modo = "cotizacion" | "orden"
   const nid=()=>Math.random().toString(36).slice(2,8);
@@ -2375,290 +2661,4 @@ export default function App() {
   };
   if (!currentUser) return <LoginScreen onLogin={setCurrentUser}/>;
   return <AppInner currentUser={currentUser} onLogout={handleLogout}/>;
-// ─── ITEM CANVAS ─────────────────────────────────────────────────────────────
-const ItemCanvas=({value,onChange,label,itemIdx})=>{
-  const svgRef=useRef(null);
-  const [tool,setTool]=useState("select");
-  const [shapes,setShapes]=useState(value||[]);
-  const [drawing,setDrawing]=useState(null);
-  const [selId,setSelId]=useState(null);
-  const [drag,setDrag]=useState(null);
-  const [open,setOpen]=useState(!!(value&&value.length));
-  const uid=()=>Math.random().toString(36).slice(2,8);
-  const W=500,H=280,SNAP=5;
-  const snap=v=>Math.round(v/SNAP)*SNAP;
-  const commit=(sh)=>{setShapes(sh);onChange(sh);};
-
-  const getPos=(e)=>{
-    if(!svgRef.current) return {x:0,y:0};
-    const r=svgRef.current.getBoundingClientRect();
-    const sx=W/r.width,sy=H/r.height;
-    const src=e.touches?e.touches[0]:e;
-    return {x:snap((src.clientX-r.left)*sx),y:snap((src.clientY-r.top)*sy)};
-  };
-
-  // Hit test
-  const hitTest=(s,p)=>{
-    if(s.type==="text") return Math.abs(p.x-s.x)<35&&Math.abs(p.y-s.y)<16;
-    if(s.type==="perf") return Math.hypot(p.x-s.cx,p.y-s.cy)<s.r+8;
-    if(s.type==="bisagra"){const hw=s.rw||14,hh=(s.h||50)/2;return p.x>=s.cx-hw-6&&p.x<=s.cx+hw+6&&p.y>=s.cy-hh-6&&p.y<=s.cy+hh+6;}
-    if(s.type==="vidrio"||s.type==="rect"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);return p.x>=x-4&&p.x<=x+w+4&&p.y>=y-4&&p.y<=y+h+4;}
-    if(s.type==="line"){const dx=s.x2-s.x1,dy=s.y2-s.y1,len=Math.hypot(dx,dy);if(!len)return false;const t=Math.max(0,Math.min(1,((p.x-s.x1)*dx+(p.y-s.y1)*dy)/(len*len)));return Math.hypot(p.x-s.x1-t*dx,p.y-s.y1-t*dy)<8;}
-    return false;
-  };
-
-  const moveShape=(s,dx,dy)=>{
-    if(s.type==="text") return {...s,x:snap(s.x+dx),y:snap(s.y+dy)};
-    if(s.type==="perf"||s.type==="bisagra") return {...s,cx:snap(s.cx+dx),cy:snap(s.cy+dy)};
-    return {...s,x1:snap(s.x1+dx),y1:snap(s.y1+dy),x2:snap(s.x2+dx),y2:snap(s.y2+dy)};
-  };
-
-  const onDown=(e)=>{
-    e.preventDefault();
-    const p=getPos(e);
-    if(tool==="select"){
-      const hit=[...shapes].reverse().find(s=>hitTest(s,p));
-      if(hit){setSelId(hit.id);setDrag({id:hit.id,px:p.x,py:p.y,orig:shapes.map(s=>({...s}))});}
-      else setSelId(null);
-      return;
-    }
-    if(tool==="bisagra"){commit([...shapes,{id:uid(),type:"bisagra",cx:p.x,cy:p.y,rw:14,h:50}]);return;}
-    if(tool==="perf"){commit([...shapes,{id:uid(),type:"perf",cx:p.x,cy:p.y,r:15}]);return;}
-    if(tool==="text"){const t=window.prompt("Anotación:");if(t)commit([...shapes,{id:uid(),type:"text",x:p.x,y:p.y,text:t}]);return;}
-    setDrawing({id:uid(),type:tool,x1:p.x,y1:p.y,x2:p.x,y2:p.y,cornerTL:0,cornerTR:0,cornerBR:0,cornerBL:0,satinado:false});
-  };
-
-  const onMove=(e)=>{
-    if(!drawing&&!drag) return;
-    e.preventDefault();
-    const p=getPos(e);
-    if(drawing){setDrawing(d=>({...d,x2:p.x,y2:p.y}));return;}
-    if(drag){
-      const dx=p.x-drag.px,dy=p.y-drag.py;
-      commit(drag.orig.map(s=>s.id===drag.id?moveShape(s,dx,dy):s));
-    }
-  };
-
-  const onUp=()=>{
-    if(drawing){if(Math.abs(drawing.x2-drawing.x1)>6||Math.abs(drawing.y2-drawing.y1)>6)commit([...shapes,drawing]);setDrawing(null);}
-    setDrag(null);
-  };
-
-  const selShape=shapes.find(s=>s.id===selId);
-  const updateSel=(k,v)=>commit(shapes.map(s=>s.id===selId?{...s,[k]:v}:s));
-
-  // ── RENDER ────────────────────────────────────────────────────────────────
-  const renderShape=(s,ghost)=>{
-    const sel=!ghost&&selId===s.id;
-    const sc=ghost?"#42A5F5":sel?"#FF8A65":"#1565C0";
-    const sf=ghost?"rgba(66,165,245,0.07)":sel?"rgba(255,138,101,0.1)":"rgba(21,101,192,0.06)";
-    const sw=sel?2.5:1.8;
-    const onClick=ghost?undefined:()=>{if(tool==="select")setSelId(sel?null:s.id);};
-    const cur=tool==="select"?"pointer":"default";
-
-    if(s.type==="text") return(
-      <text key={s.id} x={s.x} y={s.y} fontSize="12" fill={sel?"#FF8A65":"#FFB74D"}
-        fontWeight="700" style={{cursor:cur,userSelect:"none"}} onClick={onClick}>{s.text}</text>
-    );
-
-    if(s.type==="perf") return(
-      <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-        <circle cx={s.cx} cy={s.cy} r={s.r} fill="white" stroke={sc} strokeWidth={sw}/>
-        <line x1={s.cx-s.r*0.6} y1={s.cy} x2={s.cx+s.r*0.6} y2={s.cy} stroke={sc} strokeWidth="1.2"/>
-        <line x1={s.cx} y1={s.cy-s.r*0.6} x2={s.cx} y2={s.cy+s.r*0.6} stroke={sc} strokeWidth="1.2"/>
-        <text x={s.cx} y={s.cy+s.r+11} textAnchor="middle" fontSize="9" fill={sc} fontWeight="700">⌀{(s.r*2)}</text>
-      </g>
-    );
-
-    if(s.type==="bisagra"){
-      // Full bisagra shape: rectangle body with FULL semicircles at top and bottom
-      // Like the drawing: a vertical rectangle where top and bottom edges are replaced by semicircles
-      const rw=s.rw||14, hh=(s.h||50)/2, rh=rw; // semicircle radius = half width
-      // Path: start bottom-left, go up left side, semicircle top (outward), down right side, semicircle bottom (outward)
-      const path=[
-        `M ${s.cx-rw} ${s.cy-hh+rh}`,        // bottom of top curve, left
-        `L ${s.cx-rw} ${s.cy+hh-rh}`,          // up to top of bottom curve, left
-        `A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh}`, // bottom semicircle (outward = away from center)
-        `L ${s.cx+rw} ${s.cy-hh+rh}`,          // down right side
-        `A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh}`, // top semicircle (outward)
-        `Z`
-      ].join(" ");
-      return(
-        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-          <path d={path} fill="white" stroke={sc} strokeWidth={sw}/>
-          <text x={s.cx} y={s.cy+4} textAnchor="middle" fontSize="8" fill={sc} fontWeight="700">BIS</text>
-          {sel&&<rect x={s.cx-rw-6} y={s.cy-hh-6} width={rw*2+12} height={s.h+12} fill="none" stroke="#FF8A65" strokeWidth="1" strokeDasharray="3 2" rx="2"/>}
-        </g>
-      );
-    }
-
-    if(s.type==="vidrio"){
-      const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2);
-      const w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
-      const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;
-      const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;
-      return(
-        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-          {s.satinado&&<defs><pattern id={`sat${s.id}`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#1565C0" strokeWidth="1.5" opacity="0.22"/></pattern></defs>}
-          <path d={d} fill={s.satinado?`url(#sat${s.id})`:sf} stroke={sc} strokeWidth={sw}/>
-          {s.satinado&&<text x={x+w/2} y={y+h/2+5} textAnchor="middle" fontSize="10" fill={sc} fontWeight="700" opacity="0.5">SAT</text>}
-          {sel&&<path d={d} fill="none" stroke="#FF8A65" strokeWidth="1" strokeDasharray="4 2"/>}
-        </g>
-      );
-    }
-
-    if(s.type==="line") return(
-      <line key={s.id} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2}
-        stroke={sc} strokeWidth={sw} strokeLinecap="round" style={{cursor:cur}} onClick={onClick}/>
-    );
-
-    // generic rect (fallback / drawing preview)
-    const x=Math.min(s.x1||0,s.x2||0),y=Math.min(s.y1||0,s.y2||0);
-    const w=Math.abs((s.x2||0)-(s.x1||0)),h=Math.abs((s.y2||0)-(s.y1||0));
-    return <rect key={s.id} x={x} y={y} width={w} height={h} fill={sf} stroke={sc} strokeWidth={sw} style={{cursor:"crosshair"}} onClick={onClick}/>;
-  };
-
-  // ── SVG → PDF string ──────────────────────────────────────────────────────
-  const shapeToStr=(s)=>{
-    if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="12" fill="#e65100" font-weight="700">${s.text}</text>`;
-    if(s.type==="perf") return `<circle cx="${s.cx}" cy="${s.cy}" r="${s.r}" fill="white" stroke="#1565C0" stroke-width="2"/><line x1="${s.cx-s.r*0.6}" y1="${s.cy}" x2="${s.cx+s.r*0.6}" y2="${s.cy}" stroke="#1565C0" stroke-width="1.5"/><line x1="${s.cx}" y1="${s.cy-s.r*0.6}" x2="${s.cx}" y2="${s.cy+s.r*0.6}" stroke="#1565C0" stroke-width="1.5"/><text x="${s.cx}" y="${s.cy+s.r+11}" text-anchor="middle" font-size="9" fill="#1565C0" font-weight="700">⌀${s.r*2}</text>`;
-    if(s.type==="bisagra"){
-      const rw=s.rw||14,hh=(s.h||50)/2,rh=rw;
-      const path=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;
-      return `<path d="${path}" fill="white" stroke="#1565C0" stroke-width="2.5"/><text x="${s.cx}" y="${s.cy+4}" text-anchor="middle" font-size="8" fill="#1565C0" font-weight="700">BIS</text>`;
-    }
-    if(s.type==="vidrio"){
-      const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
-      const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;
-      const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;
-      const satDef=s.satinado?`<defs><pattern id="sp" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#1565C0" stroke-width="1.2" opacity="0.28"/></pattern></defs>`:"";
-      return `${satDef}<path d="${d}" fill="${s.satinado?"url(#sp)":"#e8f4ff"}" stroke="#1565C0" stroke-width="2"/>${s.satinado?`<text x="${x+w/2}" y="${y+h/2+5}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700" opacity="0.6">SATINADO</text>`:""}`;
-    }
-    if(s.type==="line") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2.5" stroke-linecap="round"/>`;
-    return "";
-  };
-
-  const getSVGForPDF=()=>{
-    if(!shapes.length) return "";
-    const pts=shapes.flatMap(s=>{
-      if(s.cx!=null){const rw=s.rw||s.r||20,rh=(s.h||rw*2)/2;return[[s.cx-rw,s.cy-rh],[s.cx+rw,s.cy+rh]];}
-      if(s.x!=null&&s.w!=null) return [[s.x,s.y],[s.x+s.w,s.y+s.h]];
-      return [[s.x1||0,s.y1||0],[s.x2||0,s.y2||0]];
-    });
-    const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
-    const mx=Math.min(...xs)-20,my=Math.min(...ys)-20,Mx=Math.max(...xs)+20,My=Math.max(...ys)+20;
-    return `<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:200px;border:1.5px solid #1565C0;border-radius:6px;background:#f8fbff;display:block">${shapes.map(shapeToStr).join("")}</svg>`;
-  };
-
-  const printPlano=()=>{
-    if(!shapes.length){alert("El plano está vacío.");return;}
-    const svg=getSVGForPDF().replace('max-height:200px;border:1.5px solid #1565C0;border-radius:6px;background:#f8fbff;display:block','max-height:80vh;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block;width:100%');
-    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Plano</title><style>body{margin:20px;font-family:Arial}h2{color:#1565C0;margin-bottom:8px}p{color:#555;font-size:12px;margin-bottom:12px}@media print{body{-webkit-print-color-adjust:exact}@page{margin:8mm}}</style></head><body><h2>Plano Técnico — La Vidriería Rosario</h2><p>${label||""}</p>${svg}</body></html>`;
-    const w=window.open("","_blank","width=800,height=700");
-    if(w){w.document.write(html);w.document.close();w.onload=()=>{w.focus();w.print();};}
-  };
-
-  const TOOLS=[
-    {id:"select",label:"↖ Mover"},
-    {id:"vidrio",label:"□ Vidrio"},
-    {id:"bisagra",label:"⊢ Bisagra"},
-    {id:"perf",label:"⊙ Perf."},
-    {id:"line",label:"╱ Línea"},
-    {id:"text",label:"T Nota"},
-  ];
-
-  if(!open) return(
-    <button onClick={()=>setOpen(true)} style={{width:"100%",marginTop:6,padding:"5px 0",background:"transparent",border:"1px dashed #1e3a5a",borderRadius:6,color:"#3a6a9a",cursor:"pointer",fontSize:11,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-      ✏️ {shapes.length>0?`Plano (${shapes.length} elem.)`:"Agregar plano técnico"}
-    </button>
-  );
-
-  return(
-    <div style={{marginTop:8,background:"#050e1a",borderRadius:9,padding:10,border:"1px solid #1565C030"}}>
-      {/* Toolbar */}
-      <div style={{display:"flex",gap:3,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
-        {TOOLS.map(t=>(
-          <button key={t.id} onClick={()=>setTool(t.id)}
-            style={{padding:"3px 8px",borderRadius:5,border:`1px solid ${tool===t.id?"#1565C0":"#1e3a5a"}`,
-              background:tool===t.id?"#1565C030":"transparent",
-              color:tool===t.id?"#64B5F6":"#3a6a9a",
-              cursor:"pointer",fontSize:10,fontFamily:"inherit",fontWeight:tool===t.id?700:400}}>
-            {t.label}
-          </button>
-        ))}
-        <div style={{marginLeft:"auto",display:"flex",gap:3}}>
-          {selId&&<button onClick={()=>{commit(shapes.filter(s=>s.id!==selId));setSelId(null);}}
-            style={{padding:"3px 8px",borderRadius:5,border:"1px solid #7f2020",background:"#1a0808",color:"#f48fb1",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>✕ Borrar</button>}
-          {shapes.length>0&&<button onClick={()=>{if(window.confirm("¿Limpiar plano?"))commit([]);setSelId(null);}}
-            style={{padding:"3px 7px",borderRadius:5,border:"1px solid #1e3a5a",background:"transparent",color:"#3a6a9a",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>Limpiar</button>}
-          {shapes.length>0&&<button onClick={printPlano}
-            style={{padding:"3px 7px",borderRadius:5,border:"1px solid #26A69A",background:"#0a2a1a",color:"#26A69A",cursor:"pointer",fontSize:10,fontFamily:"inherit",fontWeight:700}}>🖨</button>}
-          <button onClick={()=>setOpen(false)}
-            style={{padding:"3px 7px",borderRadius:5,border:"1px solid #1e3a5a",background:"transparent",color:"#3a6a9a",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>▲</button>
-        </div>
-      </div>
-
-      {/* Properties panel */}
-      {selShape&&<div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"6px 10px",background:"#0a1828",borderRadius:7,marginBottom:6,alignItems:"center",fontSize:11}}>
-        <span style={{color:"#FFB74D",fontWeight:700,fontSize:10,textTransform:"uppercase"}}>{selShape.type}</span>
-        {selShape.type==="vidrio"&&<>
-          {[["↖","cornerTL"],["↗","cornerTR"],["↘","cornerBR"],["↙","cornerBL"]].map(([ic,k])=>(
-            <label key={k} style={{display:"flex",alignItems:"center",gap:3,color:"#5a8ab8"}}>
-              <span style={{fontSize:11}}>{ic}</span>
-              <input type="number" min="0" max="60" value={selShape[k]||0} onChange={e=>updateSel(k,+e.target.value)}
-                style={{width:36,background:"#071220",border:"1px solid #1e3a5a",borderRadius:4,color:"#c8e0f8",padding:"2px 4px",fontSize:11,textAlign:"center"}}/>
-            </label>
-          ))}
-          <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",color:selShape.satinado?"#64B5F6":"#3a6a9a"}}>
-            <input type="checkbox" checked={!!selShape.satinado} onChange={e=>updateSel("satinado",e.target.checked)} style={{accentColor:"#1565C0",width:13,height:13}}/>
-            <span>Satinado</span>
-          </label>
-        </>}
-        {selShape.type==="bisagra"&&<>
-          <span style={{color:"#3a6a9a"}}>Ancho:</span>
-          <input type="range" min="6" max="30" value={selShape.rw||14} onChange={e=>updateSel("rw",+e.target.value)} style={{width:70,accentColor:"#1565C0"}}/>
-          <span style={{color:"#64B5F6",minWidth:18}}>{selShape.rw||14}</span>
-          <span style={{color:"#3a6a9a"}}>Alto:</span>
-          <input type="range" min="20" max="120" value={selShape.h||50} onChange={e=>updateSel("h",+e.target.value)} style={{width:70,accentColor:"#1565C0"}}/>
-          <span style={{color:"#64B5F6",minWidth:18}}>{selShape.h||50}</span>
-        </>}
-        {selShape.type==="perf"&&<>
-          <span style={{color:"#3a6a9a"}}>Diámetro:</span>
-          <input type="range" min="6" max="50" value={selShape.r||15} onChange={e=>updateSel("r",+e.target.value)} style={{width:80,accentColor:"#1565C0"}}/>
-          <span style={{color:"#64B5F6"}}>⌀{(selShape.r||15)*2}mm</span>
-        </>}
-        {selShape.type==="text"&&
-          <input value={selShape.text} onChange={e=>updateSel("text",e.target.value)}
-            style={{flex:1,minWidth:120,background:"#071220",border:"1px solid #1e3a5a",borderRadius:4,color:"#c8e0f8",padding:"2px 6px",fontSize:11}}/>}
-        <button onClick={()=>{commit(shapes.filter(s=>s.id!==selId));setSelId(null);}}
-          style={{marginLeft:"auto",padding:"2px 8px",borderRadius:4,border:"1px solid #7f2020",background:"#1a0808",color:"#f48fb1",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>✕</button>
-      </div>}
-
-      {/* Canvas */}
-      <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${H}`}
-        style={{display:"block",background:"#071220",borderRadius:6,border:"1px solid #0f2035",
-          cursor:tool==="select"?"default":"crosshair",touchAction:"none",minHeight:150}}
-        onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
-        onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}>
-        <defs>
-          <pattern id={`grd${itemIdx||0}`} width="20" height="20" patternUnits="userSpaceOnUse">
-            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#0b1e35" strokeWidth="0.5"/>
-          </pattern>
-        </defs>
-        <rect width={W} height={H} fill={`url(#grd${itemIdx||0})`}/>
-        {shapes.map(s=>renderShape(s,false))}
-        {drawing&&renderShape(drawing,true)}
-      </svg>
-      <div style={{fontSize:9,color:"#1e3a5a",marginTop:3,textAlign:"right"}}>
-        {tool==="select"&&"Click para seleccionar · Arrastrá para mover"}
-        {tool==="vidrio"&&"Arrastrá para dibujar el vidrio"}
-        {tool==="bisagra"&&"Click para colocar bisagra · Seleccioná para ajustar"}
-        {tool==="perf"&&"Click para colocar perforación · Seleccioná para ajustar diámetro"}
-        {tool==="line"&&"Arrastrá para dibujar línea"}
-        {tool==="text"&&"Click para agregar texto"}
-      </div>
-    </div>
-  );
-};
-
 }
