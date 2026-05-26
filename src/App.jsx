@@ -346,25 +346,31 @@ const PROCESOS_TALLER_DEFAULT = ["Corte","Pulido de borde","Perforación","Templ
 const buildSVGStr=(shapes)=>{
   if(!shapes||!shapes.length) return "";
   const pts=shapes.flatMap(s=>{
-    if(s.cx!=null){const rw=s.rw||s.r||20,rh=(s.h||rw*2)/2;return[[s.cx-rw,s.cy-rh],[s.cx+rw,s.cy+rh]];}
-    return [[s.x1||0,s.y1||0],[s.x2||0,s.y2||0]];
+    if(s.cx!=null){const rw=s.rw||s.r||20,rh=(s.h||rw*2)/2;return[[s.cx-rw-20,s.cy-rh-20],[s.cx+rw+20,s.cy+rh+20]];}
+    if(s.x!=null&&s.x1==null) return[[s.x-5,s.y-14],[s.x+120,s.y+5]];
+    return[[s.x1||0,s.y1||0],[s.x2||0,s.y2||0]];
   });
   const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
   if(!xs.length) return "";
-  const mx=Math.min(...xs)-20,my=Math.min(...ys)-20,Mx=Math.max(...xs)+20,My=Math.max(...ys)+20;
+  const mx=Math.min(...xs)-30,my=Math.min(...ys)-30,Mx=Math.max(...xs)+30,My=Math.max(...ys)+30;
+  const DIM="#333",REF="#555",GLASS="#1a4a6e",NOTE="#2d6a2d";
   const toStr=(s)=>{
-    if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="12" fill="#e65100" font-weight="700">${s.text}</text>`;
-    if(s.type==="perf") return `<circle cx="${s.cx}" cy="${s.cy}" r="${s.r}" fill="white" stroke="#1565C0" stroke-width="2"/><line x1="${s.cx-s.r*0.6}" y1="${s.cy}" x2="${s.cx+s.r*0.6}" y2="${s.cy}" stroke="#1565C0" stroke-width="1.5"/><line x1="${s.cx}" y1="${s.cy-s.r*0.6}" x2="${s.cx}" y2="${s.cy+s.r*0.6}" stroke="#1565C0" stroke-width="1.5"/><text x="${s.cx}" y="${s.cy+s.r+11}" text-anchor="middle" font-size="9" fill="#1565C0" font-weight="700">⌀${s.r*2}</text>`;
-    if(s.type==="bisagra"){const rw=s.rw||14,hh=(s.h||50)/2,rh=rw;const path=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;return `<path d="${path}" fill="white" stroke="#1565C0" stroke-width="2.5"/>`; }
-    if(s.type==="vidrio"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;const satDef=s.satinado?`<defs><pattern id="sp" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#1565C0" stroke-width="1.2" opacity="0.28"/></pattern></defs>`:"";return `${satDef}<path d="${d}" fill="${s.satinado?"url(#sp)":"#e8f4ff"}" stroke="#1565C0" stroke-width="2"/>${s.satinado?`<text x="${x+w/2}" y="${y+h/2+5}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700" opacity="0.6">SATINADO</text>`:""}`;}
-    if(s.type==="line") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2.5" stroke-linecap="round"/>`;
+    if(!s||!s.type) return "";
+    if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="${s.size||11}" fill="${DIM}" font-family="monospace" font-weight="600">${s.text||""}</text>`;
+    if(s.type==="nota") return `<text x="${s.x}" y="${s.y}" font-size="10" fill="${NOTE}" font-family="Arial" font-style="italic">${s.text||""}</text>`;
+    if(s.type==="perf"){const r=s.r||15;return `<circle cx="${s.cx}" cy="${s.cy}" r="${r}" fill="none" stroke="#c62828" stroke-width="1.5"/><line x1="${s.cx-r-4}" y1="${s.cy}" x2="${s.cx+r+4}" y2="${s.cy}" stroke="#c62828" stroke-width="0.7" stroke-dasharray="3 2"/><line x1="${s.cx}" y1="${s.cy-r-4}" x2="${s.cx}" y2="${s.cy+r+4}" stroke="#c62828" stroke-width="0.7" stroke-dasharray="3 2"/><text x="${s.cx+r+6}" y="${s.cy-2}" font-size="9" fill="${DIM}" font-family="monospace" font-weight="700">⌀${r*2}</text>`;}
+    if(s.type==="bisagra"){const rw=s.rw||12,hh=(s.h||46)/2,rh=rw;const p=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;return `<path d="${p}" fill="none" stroke="#006064" stroke-width="1.8"/><line x1="${s.cx-4}" y1="${s.cy}" x2="${s.cx+4}" y2="${s.cy}" stroke="#006064" stroke-width="0.7"/><line x1="${s.cx}" y1="${s.cy-4}" x2="${s.cx}" y2="${s.cy+4}" stroke="#006064" stroke-width="0.7"/>`;}
+    if(s.type==="vidrio"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;const satDef=s.satinado?`<defs><pattern id="sp${x}${y}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="${GLASS}" stroke-width="1" opacity="0.4"/></pattern></defs>`:"";const cp=`<defs><clipPath id="cp${x}${y}"><path d="${d}"/></clipPath></defs>`;const fill=s.satinado?`url(#sp${x}${y})`:"#e8f4ff";const lT=s.labelT?`<text x="${x+w/2}" y="${y-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelT}</text>`:"";const lB=s.labelB?`<text x="${x+w/2}" y="${y+h+13}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelB}</text>`:"";const lL=s.labelL?`<text x="${x-5}" y="${y+h/2}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelL}</text>`:"";const lR=s.labelR?`<text x="${x+w+5}" y="${y+h/2}" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelR}</text>`:"";return `${satDef}${cp}<path d="${d}" fill="${fill}" stroke="${GLASS}" stroke-width="1.8"/><line x1="${x}" y1="${y}" x2="${x+w}" y2="${y+h}" stroke="${GLASS}" stroke-width="0.5" opacity="0.2" clip-path="url(#cp${x}${y})"/><line x1="${x+w}" y1="${y}" x2="${x}" y2="${y+h}" stroke="${GLASS}" stroke-width="0.5" opacity="0.2" clip-path="url(#cp${x}${y})"/>${s.satinado?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="8" fill="${GLASS}" font-weight="700" opacity="0.6">SAT</text>`:""}${lT}${lB}${lL}${lR}`;}
+    if(s.type==="cota"){const off=s.offset||18;const dx=s.x2-s.x1,dy=s.y2-s.y1;const len=Math.hypot(dx,dy);if(!len)return"";const px=-dy/len,py=dx/len;const ox1=s.x1+px*off,oy1=s.y1+py*off,ox2=s.x2+px*off,oy2=s.y2+py*off;const ux=dx/len,uy=dy/len,as=5;const lbl=s.label||(Math.round(len)+"");const ang=Math.atan2(dy,dx)*180/Math.PI;const mmx=(ox1+ox2)/2,mmy=(oy1+oy2)/2;return `<line x1="${s.x1+px*3}" y1="${s.y1+py*3}" x2="${ox1+px*3}" y2="${oy1+py*3}" stroke="${DIM}" stroke-width="0.8" stroke-dasharray="2 2"/><line x1="${s.x2+px*3}" y1="${s.y2+py*3}" x2="${ox2+px*3}" y2="${oy2+py*3}" stroke="${DIM}" stroke-width="0.8" stroke-dasharray="2 2"/><line x1="${ox1}" y1="${oy1}" x2="${ox2}" y2="${oy2}" stroke="${DIM}" stroke-width="1.2"/><polygon points="${ox1},${oy1} ${ox1+ux*as-uy*as*0.4},${oy1+uy*as+ux*as*0.4} ${ox1+ux*as+uy*as*0.4},${oy1+uy*as-ux*as*0.4}" fill="${DIM}"/><polygon points="${ox2},${oy2} ${ox2-ux*as-uy*as*0.4},${oy2-uy*as+ux*as*0.4} ${ox2-ux*as+uy*as*0.4},${oy2-uy*as-ux*as*0.4}" fill="${DIM}"/><text x="${mmx}" y="${mmy-4}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" font-weight="700" transform="rotate(${ang},${mmx},${mmy})">${lbl}</text>`;}
+    if(s.type==="linea"||s.type==="line") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="${REF}" stroke-width="1.5" stroke-linecap="round"/>${s.label?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" transform="rotate(${Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI},${(s.x1+s.x2)/2},${(s.y1+s.y2)/2})">${s.label}</text>`:""}`;
+    if(s.type==="linea_punteada") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="${REF}" stroke-width="1.2" stroke-dasharray="${s.dash||"6 4"}" stroke-linecap="round"/>${s.label?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" transform="rotate(${Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI},${(s.x1+s.x2)/2},${(s.y1+s.y2)/2})">${s.label}</text>`:""}`;
+    if(s.type==="arco"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e8f4ff" stroke="${GLASS}" stroke-width="1.8"/><text x="${cx+rx+5}" y="${cy}" dominant-baseline="middle" font-size="9" fill="${DIM}" font-family="monospace">R${Math.round(ry)}</text>`;}
     return "";
   };
-  return `<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:260px;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block">${shapes.map(toStr).join("")}</svg>`;
+  return `<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:260px;border:1.5px solid #1a4a6e;border-radius:4px;background:#f0f8ff;display:block">${shapes.map(toStr).join("")}</svg>`;
 };
-
 // ─── COTIZACION / ORDEN FORM ─────────────────────────────────────────────────
-// ─── ITEM CANVAS ─────────────────────────────────────────────────────────────
+// ─── ITEM CANVAS PRO ─────────────────────────────────────────────────────────
 const ItemCanvas=({value,onChange,label,itemIdx})=>{
   const svgRef=useRef(null);
   const [tool,setTool]=useState("select");
@@ -373,33 +379,43 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
   const [selId,setSelId]=useState(null);
   const [drag,setDrag]=useState(null);
   const [open,setOpen]=useState(!!(value&&value.length));
+  const [scale,setScale]=useState(1); // zoom
   const uid=()=>Math.random().toString(36).slice(2,8);
-  const W=500,H=280,SNAP=5;
+  const W=600,H=320,SNAP=5;
   const snap=v=>Math.round(v/SNAP)*SNAP;
   const commit=(sh)=>{setShapes(sh);onChange(sh);};
 
   const getPos=(e)=>{
-    if(!svgRef.current) return {x:0,y:0};
+    if(!svgRef.current)return{x:0,y:0};
     const r=svgRef.current.getBoundingClientRect();
     const sx=W/r.width,sy=H/r.height;
     const src=e.touches?e.touches[0]:e;
-    return {x:snap((src.clientX-r.left)*sx),y:snap((src.clientY-r.top)*sy)};
+    const raw={x:(src.clientX-r.left)*sx,y:(src.clientY-r.top)*sy};
+    return e.ctrlKey?raw:{x:snap(raw.x),y:snap(raw.y)};
   };
 
-  // Hit test
   const hitTest=(s,p)=>{
-    if(s.type==="text") return Math.abs(p.x-s.x)<35&&Math.abs(p.y-s.y)<16;
-    if(s.type==="perf") return Math.hypot(p.x-s.cx,p.y-s.cy)<s.r+8;
-    if(s.type==="bisagra"){const hw=s.rw||14,hh=(s.h||50)/2;return p.x>=s.cx-hw-6&&p.x<=s.cx+hw+6&&p.y>=s.cy-hh-6&&p.y<=s.cy+hh+6;}
-    if(s.type==="vidrio"||s.type==="rect"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);return p.x>=x-4&&p.x<=x+w+4&&p.y>=y-4&&p.y<=y+h+4;}
-    if(s.type==="line"){const dx=s.x2-s.x1,dy=s.y2-s.y1,len=Math.hypot(dx,dy);if(!len)return false;const t=Math.max(0,Math.min(1,((p.x-s.x1)*dx+(p.y-s.y1)*dy)/(len*len)));return Math.hypot(p.x-s.x1-t*dx,p.y-s.y1-t*dy)<8;}
+    if(s.type==="text"||s.type==="nota") return Math.abs(p.x-s.x)<40&&Math.abs(p.y-s.y)<14;
+    if(s.type==="perf") return Math.hypot(p.x-s.cx,p.y-s.cy)<(s.r||15)+8;
+    if(s.type==="bisagra"){const hw=s.rw||14,hh=(s.h||50)/2;return p.x>=s.cx-hw-8&&p.x<=s.cx+hw+8&&p.y>=s.cy-hh-8&&p.y<=s.cy+hh+8;}
+    if(s.cx!=null) return Math.hypot(p.x-s.cx,p.y-s.cy)<20; // arc center
+    if(s.type==="vidrio"||s.type==="poligono"){
+      const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
+      return p.x>=x-5&&p.x<=x+w+5&&p.y>=y-5&&p.y<=y+h+5;
+    }
+    if(s.type==="cota"||s.type==="linea"||s.type==="linea_punteada"){
+      const dx=s.x2-s.x1,dy=s.y2-s.y1,len=Math.hypot(dx,dy);
+      if(!len)return false;
+      const t=Math.max(0,Math.min(1,((p.x-s.x1)*dx+(p.y-s.y1)*dy)/(len*len)));
+      return Math.hypot(p.x-s.x1-t*dx,p.y-s.y1-t*dy)<10;
+    }
     return false;
   };
 
   const moveShape=(s,dx,dy)=>{
-    if(s.type==="text") return {...s,x:snap(s.x+dx),y:snap(s.y+dy)};
-    if(s.type==="perf"||s.type==="bisagra") return {...s,cx:snap(s.cx+dx),cy:snap(s.cy+dy)};
-    return {...s,x1:snap(s.x1+dx),y1:snap(s.y1+dy),x2:snap(s.x2+dx),y2:snap(s.y2+dy)};
+    if(s.type==="text"||s.type==="nota") return{...s,x:snap(s.x+dx),y:snap(s.y+dy)};
+    if(s.cx!=null) return{...s,cx:snap(s.cx+dx),cy:snap(s.cy+dy)};
+    return{...s,x1:snap(s.x1+dx),y1:snap(s.y1+dy),x2:snap(s.x2+dx),y2:snap(s.y2+dy)};
   };
 
   const onDown=(e)=>{
@@ -411,14 +427,22 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
       else setSelId(null);
       return;
     }
-    if(tool==="bisagra"){commit([...shapes,{id:uid(),type:"bisagra",cx:p.x,cy:p.y,rw:14,h:50}]);return;}
-    if(tool==="perf"){commit([...shapes,{id:uid(),type:"perf",cx:p.x,cy:p.y,r:15}]);return;}
-    if(tool==="text"){const t=window.prompt("Anotación:");if(t)commit([...shapes,{id:uid(),type:"text",x:p.x,y:p.y,text:t}]);return;}
-    setDrawing({id:uid(),type:tool,x1:p.x,y1:p.y,x2:p.x,y2:p.y,cornerTL:0,cornerTR:0,cornerBR:0,cornerBL:0,satinado:false});
+    // Click-place tools
+    if(tool==="bisagra"){commit([...shapes,{id:uid(),type:"bisagra",cx:p.x,cy:p.y,rw:12,h:46}]);return;}
+    if(tool==="perf"){const d=window.prompt("Diámetro (mm)","30");if(d){commit([...shapes,{id:uid(),type:"perf",cx:p.x,cy:p.y,r:Math.max(4,+d/2)||15}]);}return;}
+    if(tool==="text"){const t=window.prompt("Texto:");if(t)commit([...shapes,{id:uid(),type:"text",x:p.x,y:p.y,text:t,size:11}]);return;}
+    if(tool==="nota"){const t=window.prompt("Anotación:");if(t)commit([...shapes,{id:uid(),type:"nota",x:p.x,y:p.y,text:t}]);return;}
+    // Drag-draw tools
+    setDrawing({id:uid(),type:tool,x1:p.x,y1:p.y,x2:p.x,y2:p.y,
+      ...(tool==="vidrio"?{cornerTL:0,cornerTR:0,cornerBR:0,cornerBL:0,satinado:false,labelT:"",labelB:"",labelL:"",labelR:""}:{}),
+      ...(tool==="cota"?{label:"",offset:18}:{}),
+      ...(tool==="linea_punteada"?{label:"",dash:"6 4"}:{}),
+      ...(tool==="arco"?{}:{}),
+    });
   };
 
   const onMove=(e)=>{
-    if(!drawing&&!drag) return;
+    if(!drawing&&!drag)return;
     e.preventDefault();
     const p=getPos(e);
     if(drawing){setDrawing(d=>({...d,x2:p.x,y2:p.y}));return;}
@@ -429,229 +453,427 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
   };
 
   const onUp=()=>{
-    if(drawing){if(Math.abs(drawing.x2-drawing.x1)>6||Math.abs(drawing.y2-drawing.y1)>6)commit([...shapes,drawing]);setDrawing(null);}
+    if(drawing){
+      const min=tool==="perf"?0:8;
+      if(Math.abs(drawing.x2-drawing.x1)>min||Math.abs(drawing.y2-drawing.y1)>min)commit([...shapes,drawing]);
+      setDrawing(null);
+    }
     setDrag(null);
   };
 
   const selShape=shapes.find(s=>s.id===selId);
   const updateSel=(k,v)=>commit(shapes.map(s=>s.id===selId?{...s,[k]:v}:s));
 
-  // ── RENDER ────────────────────────────────────────────────────────────────
+  // ── COLORS ─────────────────────────────────────────────────────────────────
+  const C={
+    glass:"#4dd0e1",      // cyan for glass outlines
+    dim:"#ffd740",        // yellow for dimensions/cotas
+    ref:"#6a9fb5",        // blue-grey for reference lines
+    note:"#a5d6a7",       // green for notes
+    bisagra:"#80cbc4",    // teal for bisagras
+    perf:"#ef9a9a",       // red for perforations
+    sel:"#ff9500",        // orange for selected
+    ghost:"#00bfff",      // light blue for drawing preview
+    sat:"rgba(77,208,225,0.18)",
+  };
+
+  // ── RENDER ─────────────────────────────────────────────────────────────────
   const renderShape=(s,ghost)=>{
     const sel=!ghost&&selId===s.id;
-    const sc=ghost?"#00bfff":sel?"#ff9500":"#4dd0e1";
-    const sf=ghost?"rgba(0,191,255,0.05)":sel?"rgba(255,149,0,0.08)":"rgba(0,40,60,0.5)";
-    const sw=sel?2:1.5;
+    const sw=sel?2.2:1.6;
     const onClick=ghost?undefined:()=>{if(tool==="select")setSelId(sel?null:s.id);};
-    const cur=tool==="select"?"pointer":"default";
+    const cur=tool==="select"?"pointer":"crosshair";
+    const selBox=(x,y,w,h)=>sel?<rect x={x-4} y={y-4} width={w+8} height={h+8} fill="none" stroke={C.sel} strokeWidth="1" strokeDasharray="4 2" rx="2"/>:null;
 
+    // ── TEXT / NOTA ──────────────────────────────────────────────────────────
     if(s.type==="text") return(
-      <text key={s.id} x={s.x} y={s.y} fontSize="12" fill={sel?"#ff9500":"#ffd740"}
-        fontWeight="700" style={{cursor:cur,userSelect:"none"}} onClick={onClick}>{s.text}</text>
+      <text key={s.id} x={s.x} y={s.y} fontSize={s.size||11}
+        fill={sel?C.sel:C.dim} fontFamily="monospace" fontWeight="600"
+        style={{cursor:cur,userSelect:"none"}} onClick={onClick}>{s.text}</text>
     );
-
-    if(s.type==="perf") return(
-      <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-        <circle cx={s.cx} cy={s.cy} r={s.r} fill="white" stroke={sc} strokeWidth={sw}/>
-        <line x1={s.cx-s.r*0.6} y1={s.cy} x2={s.cx+s.r*0.6} y2={s.cy} stroke={sc} strokeWidth="1.2"/>
-        <line x1={s.cx} y1={s.cy-s.r*0.6} x2={s.cx} y2={s.cy+s.r*0.6} stroke={sc} strokeWidth="1.2"/>
-        <text x={s.cx} y={s.cy+s.r+11} textAnchor="middle" fontSize="9" fill="#ffd740" fontWeight="700">⌀{(s.r*2)}</text>
+    if(s.type==="nota") return(
+      <g key={s.id} onClick={onClick} style={{cursor:cur}}>
+        <text x={s.x} y={s.y} fontSize="10" fill={sel?C.sel:C.note} fontFamily="Arial" fontStyle="italic">{s.text}</text>
+        {sel&&<line x1={s.x-2} y1={s.y+2} x2={s.x+(s.text?.length||0)*6} y2={s.y+2} stroke={C.sel} strokeWidth="0.5"/>}
       </g>
     );
 
-    if(s.type==="bisagra"){
-      // Full bisagra shape: rectangle body with FULL semicircles at top and bottom
-      // Like the drawing: a vertical rectangle where top and bottom edges are replaced by semicircles
-      const rw=s.rw||14, hh=(s.h||50)/2, rh=rw; // semicircle radius = half width
-      // Path: start bottom-left, go up left side, semicircle top (outward), down right side, semicircle bottom (outward)
-      const path=[
-        `M ${s.cx-rw} ${s.cy-hh+rh}`,        // bottom of top curve, left
-        `L ${s.cx-rw} ${s.cy+hh-rh}`,          // up to top of bottom curve, left
-        `A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh}`, // bottom semicircle (outward = away from center)
-        `L ${s.cx+rw} ${s.cy-hh+rh}`,          // down right side
-        `A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh}`, // top semicircle (outward)
-        `Z`
-      ].join(" ");
+    // ── PERFORACIÓN ──────────────────────────────────────────────────────────
+    if(s.type==="perf"){
+      const r=s.r||15;
       return(
         <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-          <path d={path} fill="white" stroke={sc} strokeWidth={sw}/>
-          {sel&&<rect x={s.cx-rw-6} y={s.cy-hh-6} width={rw*2+12} height={s.h+12} fill="none" stroke="#FF8A65" strokeWidth="1" strokeDasharray="3 2" rx="2"/>}
+          <circle cx={s.cx} cy={s.cy} r={r} fill="none" stroke={sel?C.sel:C.perf} strokeWidth={sw}/>
+          {/* crosshairs */}
+          <line x1={s.cx-r-4} y1={s.cy} x2={s.cx+r+4} y2={s.cy} stroke={sel?C.sel:C.perf} strokeWidth="0.8" strokeDasharray="3 2"/>
+          <line x1={s.cx} y1={s.cy-r-4} x2={s.cx} y2={s.cy+r+4} stroke={sel?C.sel:C.perf} strokeWidth="0.8" strokeDasharray="3 2"/>
+          {/* diameter label */}
+          <text x={s.cx+r+6} y={s.cy-2} fontSize="9" fill={C.dim} fontFamily="monospace" fontWeight="700">⌀{r*2}</text>
         </g>
       );
     }
 
+    // ── BISAGRA ──────────────────────────────────────────────────────────────
+    if(s.type==="bisagra"){
+      const rw=s.rw||12,hh=(s.h||46)/2,rh=rw;
+      const path=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;
+      return(
+        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
+          <path d={path} fill="none" stroke={sel?C.sel:C.bisagra} strokeWidth={sw}/>
+          {/* center mark */}
+          <line x1={s.cx-4} y1={s.cy} x2={s.cx+4} y2={s.cy} stroke={sel?C.sel:C.bisagra} strokeWidth="0.8"/>
+          <line x1={s.cx} y1={s.cy-4} x2={s.cx} y2={s.cy+4} stroke={sel?C.sel:C.bisagra} strokeWidth="0.8"/>
+          {sel&&<rect x={s.cx-rw-5} y={s.cy-hh-5} width={rw*2+10} height={s.h+10} fill="none" stroke={C.sel} strokeWidth="1" strokeDasharray="3 2"/>}
+        </g>
+      );
+    }
+
+    // ── VIDRIO ───────────────────────────────────────────────────────────────
     if(s.type==="vidrio"){
       const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2);
       const w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
+      if(w<4||h<4) return null;
       const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;
       const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;
+      const fillC=s.satinado?`url(#sat${s.id})`:"rgba(0,40,60,0.45)";
+      const sc=sel?C.sel:C.glass;
+      // Side labels
+      const labels=[];
+      if(s.labelT) labels.push(<text key="lt" x={x+w/2} y={y-5} textAnchor="middle" fontSize="10" fill={C.dim} fontFamily="monospace">{s.labelT}</text>);
+      if(s.labelB) labels.push(<text key="lb" x={x+w/2} y={y+h+13} textAnchor="middle" fontSize="10" fill={C.dim} fontFamily="monospace">{s.labelB}</text>);
+      if(s.labelL) labels.push(<text key="ll" x={x-5} y={y+h/2} textAnchor="end" dominantBaseline="middle" fontSize="10" fill={C.dim} fontFamily="monospace">{s.labelL}</text>);
+      if(s.labelR) labels.push(<text key="lr" x={x+w+5} y={y+h/2} dominantBaseline="middle" fontSize="10" fill={C.dim} fontFamily="monospace">{s.labelR}</text>);
       return(
         <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-          {s.satinado&&<defs><pattern id={`sat${s.id}`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#4dd0e1" strokeWidth="1" opacity="0.4"/></pattern></defs>}
-          <path d={d} fill={s.satinado?`url(#sat${s.id})`:sf} stroke={sc} strokeWidth={sw}/>
-          {s.satinado&&<text x={x+w/2} y={y+h/2+5} textAnchor="middle" fontSize="9" fill="#4dd0e1" fontWeight="700" opacity="0.6">SAT</text>}
-          {sel&&<path d={d} fill="none" stroke="#FF8A65" strokeWidth="1" strokeDasharray="4 2"/>}
+          {s.satinado&&<defs><pattern id={`sat${s.id}`} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke={C.glass} strokeWidth="1" opacity="0.3"/></pattern></defs>}
+          <path d={d} fill={fillC} stroke={sc} strokeWidth={sw}/>
+          {/* diagonal hatch lines to indicate glass */}
+          <clipPath id={`cp${s.id}`}><path d={d}/></clipPath>
+          <line x1={x} y1={y} x2={x+w} y2={y+h} stroke={sc} strokeWidth="0.4" opacity="0.2" clipPath={`url(#cp${s.id})`}/>
+          <line x1={x+w} y1={y} x2={x} y2={y+h} stroke={sc} strokeWidth="0.4" opacity="0.2" clipPath={`url(#cp${s.id})`}/>
+          {s.satinado&&<text x={x+w/2} y={y+h/2+4} textAnchor="middle" fontSize="8" fill={C.glass} fontFamily="monospace" opacity="0.7">SAT</text>}
+          {labels}
         </g>
       );
     }
 
-    if(s.type==="line") return(
-      <line key={s.id} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2}
-        stroke={sc} strokeWidth={sw} strokeLinecap="round" style={{cursor:cur}} onClick={onClick}/>
-    );
+    // ── COTA (dimension line with arrows) ────────────────────────────────────
+    if(s.type==="cota"){
+      const off=s.offset||18;
+      const dx=s.x2-s.x1,dy=s.y2-s.y1;
+      const len=Math.hypot(dx,dy);
+      if(len<4) return null;
+      // perpendicular direction
+      const px=-dy/len,py=dx/len;
+      // offset points
+      const ox1=s.x1+px*off,oy1=s.y1+py*off;
+      const ox2=s.x2+px*off,oy2=s.y2+py*off;
+      // arrow size
+      const as=5;
+      const ux=dx/len,uy=dy/len;
+      const sc=sel?C.sel:C.dim;
+      const lbl=s.label||(Math.round(len)+"");
+      return(
+        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
+          {/* extension lines */}
+          <line x1={s.x1+px*3} y1={s.y1+py*3} x2={ox1+px*3} y2={oy1+py*3} stroke={sc} strokeWidth="0.8" strokeDasharray="2 2"/>
+          <line x1={s.x2+px*3} y1={s.y2+py*3} x2={ox2+px*3} y2={oy2+py*3} stroke={sc} strokeWidth="0.8" strokeDasharray="2 2"/>
+          {/* dimension line */}
+          <line x1={ox1} y1={oy1} x2={ox2} y2={oy2} stroke={sc} strokeWidth="1.2"/>
+          {/* arrowheads */}
+          <polygon points={`${ox1},${oy1} ${ox1+ux*as-uy*as*0.4},${oy1+uy*as+ux*as*0.4} ${ox1+ux*as+uy*as*0.4},${oy1+uy*as-ux*as*0.4}`} fill={sc}/>
+          <polygon points={`${ox2},${oy2} ${ox2-ux*as-uy*as*0.4},${oy2-uy*as+ux*as*0.4} ${ox2-ux*as+uy*as*0.4},${oy2-uy*as-ux*as*0.4}`} fill={sc}/>
+          {/* label */}
+          <text x={(ox1+ox2)/2} y={(oy1+oy2)/2-4} textAnchor="middle" fontSize="10" fill={sc} fontFamily="monospace" fontWeight="700"
+            transform={`rotate(${Math.atan2(dy,dx)*180/Math.PI},${(ox1+ox2)/2},${(oy1+oy2)/2})`}>{lbl}</text>
+        </g>
+      );
+    }
 
-    // generic rect (fallback / drawing preview)
-    const x=Math.min(s.x1||0,s.x2||0),y=Math.min(s.y1||0,s.y2||0);
-    const w=Math.abs((s.x2||0)-(s.x1||0)),h=Math.abs((s.y2||0)-(s.y1||0));
-    return <rect key={s.id} x={x} y={y} width={w} height={h} fill={sf} stroke={sc} strokeWidth={sw} style={{cursor:"crosshair"}} onClick={onClick}/>;
+    // ── LÍNEA RECTA ──────────────────────────────────────────────────────────
+    if(s.type==="linea"){
+      const sc=sel?C.sel:C.ref;
+      const dx=s.x2-s.x1,dy=s.y2-s.y1;
+      const mx=(s.x1+s.x2)/2,my=(s.y1+s.y2)/2;
+      return(
+        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
+          <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={sc} strokeWidth={sw} strokeLinecap="round"/>
+          {s.label&&<text x={mx} y={my-5} textAnchor="middle" fontSize="10" fill={C.dim} fontFamily="monospace"
+            transform={`rotate(${Math.atan2(dy,dx)*180/Math.PI},${mx},${my})`}>{s.label}</text>}
+        </g>
+      );
+    }
+
+    // ── LÍNEA PUNTEADA ───────────────────────────────────────────────────────
+    if(s.type==="linea_punteada"){
+      const sc=sel?C.sel:C.ref;
+      const dx=s.x2-s.x1,dy=s.y2-s.y1;
+      const mx=(s.x1+s.x2)/2,my=(s.y1+s.y2)/2;
+      const dash=s.dash||"6 4";
+      return(
+        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
+          <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={sc} strokeWidth={sw} strokeDasharray={dash} strokeLinecap="round"/>
+          {s.label&&<text x={mx} y={my-5} textAnchor="middle" fontSize="10" fill={C.dim} fontFamily="monospace"
+            transform={`rotate(${Math.atan2(dy,dx)*180/Math.PI},${mx},${my})`}>{s.label}</text>}
+        </g>
+      );
+    }
+
+    // ── ARCO ─────────────────────────────────────────────────────────────────
+    if(s.type==="arco"){
+      const sc=sel?C.sel:C.glass;
+      const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2;
+      const rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;
+      if(rx<2||ry<2) return null;
+      return(
+        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
+          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="rgba(0,40,60,0.3)" stroke={sc} strokeWidth={sw}/>
+          {/* center marks */}
+          <line x1={cx-4} y1={cy} x2={cx+4} y2={cy} stroke={sc} strokeWidth="0.6"/>
+          <line x1={cx} y1={cy-4} x2={cx} y2={cy+4} stroke={sc} strokeWidth="0.6"/>
+          <text x={cx+rx+5} y={cy} dominantBaseline="middle" fontSize="9" fill={C.dim} fontFamily="monospace">R{Math.round(ry)}</text>
+        </g>
+      );
+    }
+
+    // fallback
+    return null;
   };
 
-  // ── SVG → PDF string ──────────────────────────────────────────────────────
+  // ── PDF SVG STRING ──────────────────────────────────────────────────────────
   const shapeToStr=(s)=>{
-    if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="12" fill="#e65100" font-weight="700">${s.text}</text>`;
-    if(s.type==="perf") return `<circle cx="${s.cx}" cy="${s.cy}" r="${s.r}" fill="white" stroke="#1565C0" stroke-width="2"/><line x1="${s.cx-s.r*0.6}" y1="${s.cy}" x2="${s.cx+s.r*0.6}" y2="${s.cy}" stroke="#1565C0" stroke-width="1.5"/><line x1="${s.cx}" y1="${s.cy-s.r*0.6}" x2="${s.cx}" y2="${s.cy+s.r*0.6}" stroke="#1565C0" stroke-width="1.5"/><text x="${s.cx}" y="${s.cy+s.r+11}" text-anchor="middle" font-size="9" fill="#1565C0" font-weight="700">⌀${s.r*2}</text>`;
-    if(s.type==="bisagra"){
-      const rw=s.rw||14,hh=(s.h||50)/2,rh=rw;
-      const path=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;
-      return `<path d="${path}" fill="white" stroke="#1565C0" stroke-width="2.5"/>`; 
-    }
+    const DIM="#333",REF="#555",GLASS="#1a4a6e",NOTE="#2d6a2d";
+    if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="${s.size||11}" fill="${DIM}" font-family="monospace" font-weight="600">${s.text}</text>`;
+    if(s.type==="nota") return `<text x="${s.x}" y="${s.y}" font-size="10" fill="${NOTE}" font-family="Arial" font-style="italic">${s.text}</text>`;
+    if(s.type==="perf"){const r=s.r||15;return `<circle cx="${s.cx}" cy="${s.cy}" r="${r}" fill="none" stroke="#c62828" stroke-width="1.5"/><line x1="${s.cx-r-4}" y1="${s.cy}" x2="${s.cx+r+4}" y2="${s.cy}" stroke="#c62828" stroke-width="0.7" stroke-dasharray="3 2"/><line x1="${s.cx}" y1="${s.cy-r-4}" x2="${s.cx}" y2="${s.cy+r+4}" stroke="#c62828" stroke-width="0.7" stroke-dasharray="3 2"/><text x="${s.cx+r+6}" y="${s.cy-2}" font-size="9" fill="${DIM}" font-family="monospace" font-weight="700">⌀${r*2}</text>`;}
+    if(s.type==="bisagra"){const rw=s.rw||12,hh=(s.h||46)/2,rh=rw;const p=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;return `<path d="${p}" fill="none" stroke="#006064" stroke-width="1.8"/><line x1="${s.cx-4}" y1="${s.cy}" x2="${s.cx+4}" y2="${s.cy}" stroke="#006064" stroke-width="0.7"/><line x1="${s.cx}" y1="${s.cy-4}" x2="${s.cx}" y2="${s.cy+4}" stroke="#006064" stroke-width="0.7"/>`;}
     if(s.type==="vidrio"){
       const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
       const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;
       const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;
-      const satDef=s.satinado?`<defs><pattern id="sp" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#1565C0" stroke-width="1.2" opacity="0.28"/></pattern></defs>`:"";
-      return `${satDef}<path d="${d}" fill="${s.satinado?"url(#sp)":"#e8f4ff"}" stroke="#1565C0" stroke-width="2"/>${s.satinado?`<text x="${x+w/2}" y="${y+h/2+5}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700" opacity="0.6">SATINADO</text>`:""}`;
-    }
-    if(s.type==="line") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2.5" stroke-linecap="round"/>`;
+      const satDef=s.satinado?`<defs><pattern id="sp${x}${y}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="${GLASS}" stroke-width="1" opacity="0.4"/></pattern></defs>`:"";
+      const fill=s.satinado?`url(#sp${x}${y})`:"#e8f4ff";
+      const lT=s.labelT?`<text x="${x+w/2}" y="${y-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelT}</text>`:"";
+      const lB=s.labelB?`<text x="${x+w/2}" y="${y+h+13}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelB}</text>`:"";
+      const lL=s.labelL?`<text x="${x-5}" y="${y+h/2}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelL}</text>`:"";
+      const lR=s.labelR?`<text x="${x+w+5}" y="${y+h/2}" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelR}</text>`:"";
+      const diag1=`<line x1="${x}" y1="${y}" x2="${x+w}" y2="${y+h}" stroke="${GLASS}" stroke-width="0.5" opacity="0.25" clip-path="url(#cp${x}${y})"/>`;
+      const diag2=`<line x1="${x+w}" y1="${y}" x2="${x}" y2="${y+h}" stroke="${GLASS}" stroke-width="0.5" opacity="0.25" clip-path="url(#cp${x}${y})"/>`;
+      const cp=`<clipPath id="cp${x}${y}"><path d="${d}"/></clipPath>`;
+      return `${satDef}<defs>${cp}</defs><path d="${d}" fill="${fill}" stroke="${GLASS}" stroke-width="1.8"/>${diag1}${diag2}${s.satinado?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="8" fill="${GLASS}" font-weight="700" opacity="0.6">SAT</text>`:""}${lT}${lB}${lL}${lR}`;}
+    if(s.type==="cota"){
+      const off=s.offset||18;const dx=s.x2-s.x1,dy=s.y2-s.y1;const len=Math.hypot(dx,dy);if(!len)return"";
+      const px=-dy/len,py=dx/len;
+      const ox1=s.x1+px*off,oy1=s.y1+py*off,ox2=s.x2+px*off,oy2=s.y2+py*off;
+      const ux=dx/len,uy=dy/len,as=5;
+      const lbl=s.label||(Math.round(len)+"");
+      const ang=Math.atan2(dy,dx)*180/Math.PI;
+      const mx=(ox1+ox2)/2,my=(oy1+oy2)/2;
+      return `<line x1="${s.x1+px*3}" y1="${s.y1+py*3}" x2="${ox1+px*3}" y2="${oy1+py*3}" stroke="${DIM}" stroke-width="0.8" stroke-dasharray="2 2"/><line x1="${s.x2+px*3}" y1="${s.y2+py*3}" x2="${ox2+px*3}" y2="${oy2+py*3}" stroke="${DIM}" stroke-width="0.8" stroke-dasharray="2 2"/><line x1="${ox1}" y1="${oy1}" x2="${ox2}" y2="${oy2}" stroke="${DIM}" stroke-width="1.2"/><polygon points="${ox1},${oy1} ${ox1+ux*as-uy*as*0.4},${oy1+uy*as+ux*as*0.4} ${ox1+ux*as+uy*as*0.4},${oy1+uy*as-ux*as*0.4}" fill="${DIM}"/><polygon points="${ox2},${oy2} ${ox2-ux*as-uy*as*0.4},${oy2-uy*as+ux*as*0.4} ${ox2-ux*as+uy*as*0.4},${oy2-uy*as-ux*as*0.4}" fill="${DIM}"/><text x="${mx}" y="${my-4}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" font-weight="700" transform="rotate(${ang},${mx},${my})">${lbl}</text>`;}
+    if(s.type==="linea") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="${REF}" stroke-width="1.5" stroke-linecap="round"/>${s.label?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" transform="rotate(${Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI},${(s.x1+s.x2)/2},${(s.y1+s.y2)/2})">${s.label}</text>`:""}`;
+    if(s.type==="linea_punteada") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="${REF}" stroke-width="1.2" stroke-dasharray="${s.dash||"6 4"}" stroke-linecap="round"/>${s.label?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" transform="rotate(${Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI},${(s.x1+s.x2)/2},${(s.y1+s.y2)/2})">${s.label}</text>`:""}`;
+    if(s.type==="arco"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e8f4ff" stroke="${GLASS}" stroke-width="1.8"/><text x="${cx+rx+5}" y="${cy}" dominant-baseline="middle" font-size="9" fill="${DIM}" font-family="monospace">R${Math.round(ry)}</text>`;}
     return "";
   };
 
   const getSVGForPDF=()=>{
-    if(!shapes.length) return "";
+    if(!shapes.length)return"";
     const pts=shapes.flatMap(s=>{
-      if(s.cx!=null){const rw=s.rw||s.r||20,rh=(s.h||rw*2)/2;return[[s.cx-rw,s.cy-rh],[s.cx+rw,s.cy+rh]];}
-      if(s.x!=null&&s.w!=null) return [[s.x,s.y],[s.x+s.w,s.y+s.h]];
-      return [[s.x1||0,s.y1||0],[s.x2||0,s.y2||0]];
+      if(s.cx!=null){const rw=s.rw||s.r||20,rh=(s.h||rw*2)/2;return[[s.cx-rw-20,s.cy-rh-20],[s.cx+rw+20,s.cy+rh+20]];}
+      if(s.x!=null&&!s.x1!=null)return[[s.x-10,s.y-10],[s.x+100,s.y+10]];
+      return[[s.x1||0,s.y1||0],[s.x2||0,s.y2||0]];
     });
     const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
-    const mx=Math.min(...xs)-20,my=Math.min(...ys)-20,Mx=Math.max(...xs)+20,My=Math.max(...ys)+20;
-    return `<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:200px;border:1.5px solid #1565C0;border-radius:6px;background:#f8fbff;display:block">${shapes.map(shapeToStr).join("")}</svg>`;
+    if(!xs.length)return"";
+    const mx=Math.min(...xs)-30,my=Math.min(...ys)-30,Mx=Math.max(...xs)+30,My=Math.max(...ys)+30;
+    return `<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:220px;border:1.5px solid #1a4a6e;border-radius:4px;background:#f0f8ff;display:block">${shapes.map(shapeToStr).join("")}</svg>`;
   };
 
   const printPlano=()=>{
     if(!shapes.length){alert("El plano está vacío.");return;}
-    const svg=getSVGForPDF().replace('max-height:200px;border:1.5px solid #1565C0;border-radius:6px;background:#f8fbff;display:block','max-height:80vh;border:2px solid #1565C0;border-radius:8px;background:#f8fbff;display:block;width:100%');
-    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Plano</title><style>body{margin:20px;font-family:Arial}h2{color:#1565C0;margin-bottom:8px}p{color:#555;font-size:12px;margin-bottom:12px}@media print{body{-webkit-print-color-adjust:exact}@page{margin:8mm}}</style></head><body><h2>Plano Técnico — La Vidriería Rosario</h2><p>${label||""}</p>${svg}</body></html>`;
-    const w=window.open("","_blank","width=800,height=700");
+    const svgStr=getSVGForPDF().replace('style="max-height:220px;border:1.5px solid #1a4a6e;border-radius:4px;background:#f0f8ff;display:block"','style="max-height:80vh;border:2px solid #1a4a6e;border-radius:6px;background:#f0f8ff;display:block;width:100%"');
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Plano Técnico</title><style>body{margin:16px 20px;font-family:Arial,sans-serif}h2{color:#1a4a6e;margin-bottom:4px;font-size:15px;font-weight:700}p{color:#555;font-size:11px;margin-bottom:14px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:8mm}}</style></head><body><h2>Plano Técnico — La Vidriería Rosario</h2><p>${label||""}</p>${svgStr}</body></html>`;
+    const w=window.open("","_blank","width=860,height=720");
     if(w){w.document.write(html);w.document.close();w.onload=()=>{w.focus();w.print();};}
   };
 
-  const TOOLS=[
-    {id:"select",label:"↖ Mover"},
-    {id:"vidrio",label:"□ Vidrio"},
-    {id:"bisagra",label:"⊢ Bisagra"},
-    {id:"perf",label:"⊙ Perf."},
-    {id:"line",label:"╱ Línea"},
-    {id:"text",label:"T Nota"},
+  // ── TOOLS ──────────────────────────────────────────────────────────────────
+  const TOOL_GROUPS=[
+    {label:"SELECCIÓN",tools:[{id:"select",label:"↖",tip:"Seleccionar y mover"}]},
+    {label:"VIDRIO",tools:[
+      {id:"vidrio",label:"▭",tip:"Rectángulo de vidrio"},
+      {id:"arco",label:"◯",tip:"Arco / forma curva / círculo"},
+    ]},
+    {label:"ENTRANTES",tools:[
+      {id:"bisagra",label:"⊢",tip:"Bisagra (entrante con puntas semicirculares)"},
+      {id:"perf",label:"⊙",tip:"Perforación circular"},
+    ]},
+    {label:"COTAS",tools:[
+      {id:"cota",label:"↔",tip:"Cota con flechas y medida (mm)"},
+      {id:"linea",label:"—",tip:"Línea recta de referencia"},
+      {id:"linea_punteada",label:"╌",tip:"Línea punteada de referencia"},
+    ]},
+    {label:"TEXTO",tools:[
+      {id:"text",label:"123",tip:"Medida o número"},
+      {id:"nota",label:"abc",tip:"Nota o anotación"},
+    ]},
   ];
 
+  const btnS=(active)=>({
+    padding:"4px 8px",borderRadius:5,
+    border:`1px solid ${active?"#4dd0e1":"#21262d"}`,
+    background:active?"rgba(77,208,225,0.15)":"transparent",
+    color:active?"#4dd0e1":"#6a9fb5",
+    cursor:"pointer",fontSize:11,fontFamily:"monospace",fontWeight:active?700:400,
+    minWidth:28,textAlign:"center",
+  });
+
+  // ── PROPERTIES PANEL ───────────────────────────────────────────────────────
+  const PropsPanel=()=>{
+    if(!selShape)return null;
+    const inp=(k,opts={})=>(
+      <input type={opts.type||"text"} value={selShape[k]||""} onChange={e=>updateSel(k,opts.num?+e.target.value:e.target.value)}
+        placeholder={opts.ph||""}
+        style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 6px",fontSize:10,fontFamily:"monospace",width:opts.w||60}}/>
+    );
+    const rng=(k,min,max,lbl)=>(
+      <label style={{display:"flex",alignItems:"center",gap:4,color:"#6a9fb5",fontSize:10}}>
+        <span>{lbl}</span>
+        <input type="range" min={min} max={max} value={selShape[k]||min} onChange={e=>updateSel(k,+e.target.value)} style={{width:60,accentColor:"#4dd0e1"}}/>
+        <span style={{color:"#4dd0e1",minWidth:22}}>{selShape[k]||min}</span>
+      </label>
+    );
+    return(
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,padding:"6px 10px",background:"#161b22",borderRadius:7,marginBottom:6,alignItems:"center",fontSize:10,border:"1px solid #21262d"}}>
+        <span style={{color:"#ffd740",fontWeight:700,fontSize:9,textTransform:"uppercase",letterSpacing:1}}>{selShape.type}</span>
+
+        {selShape.type==="vidrio"&&<>
+          <span style={{color:"#6a9fb5"}}>mm por lado:</span>
+          {[["↑",  "labelT"],["↓","labelB"],["←","labelL"],["→","labelR"]].map(([ic,k])=>(
+            <label key={k} style={{display:"flex",alignItems:"center",gap:2,color:"#6a9fb5"}}>
+              <span style={{fontSize:10}}>{ic}</span>{inp(k,{w:48,ph:"mm"})}
+            </label>
+          ))}
+          <span style={{color:"#6a9fb5"}}>Esquinas:</span>
+          {[["↖","cornerTL"],["↗","cornerTR"],["↘","cornerBR"],["↙","cornerBL"]].map(([ic,k])=>(
+            <label key={k} style={{display:"flex",alignItems:"center",gap:2,color:"#6a9fb5"}}>
+              <span>{ic}</span>{inp(k,{type:"number",num:true,w:32,ph:"0"})}
+            </label>
+          ))}
+          <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:selShape.satinado?"#4dd0e1":"#6a9fb5"}}>
+            <input type="checkbox" checked={!!selShape.satinado} onChange={e=>updateSel("satinado",e.target.checked)} style={{accentColor:"#4dd0e1"}}/>
+            <span>Satinado</span>
+          </label>
+        </>}
+
+        {selShape.type==="bisagra"&&<>{rng("rw",6,30,"Ancho")}{rng("h",20,120,"Alto")}</>}
+        {selShape.type==="perf"&&<>{rng("r",4,60,"Radio")}<span style={{color:"#4dd0e1"}}>⌀{(selShape.r||15)*2}mm</span></>}
+
+        {(selShape.type==="cota")&&<>
+          <span style={{color:"#6a9fb5"}}>Medida:</span>{inp("label",{w:50,ph:"auto"})}
+          {rng("offset",8,50,"Offset")}
+        </>}
+        {(selShape.type==="linea"||selShape.type==="linea_punteada")&&<>
+          <span style={{color:"#6a9fb5"}}>Texto:</span>{inp("label",{w:70,ph:"(opcional)"})}
+          {selShape.type==="linea_punteada"&&<><span style={{color:"#6a9fb5"}}>Trazo:</span>
+            <select value={selShape.dash||"6 4"} onChange={e=>updateSel("dash",e.target.value)}
+              style={{background:"#0d1117",border:"1px solid #30363d",color:"#c8e0f8",borderRadius:4,fontSize:10,padding:"2px 4px"}}>
+              <option value="6 4">Normal — — —</option>
+              <option value="2 3">Fino ··· </option>
+              <option value="8 3 2 3">Mixto — · —</option>
+              <option value="1 4">Punteado · · ·</option>
+            </select>
+          </>}
+        </>}
+        {(selShape.type==="text")&&<>
+          <span style={{color:"#6a9fb5"}}>Texto:</span>
+          <input value={selShape.text||""} onChange={e=>updateSel("text",e.target.value)}
+            style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 6px",fontSize:10,fontFamily:"monospace",width:80}}/>
+          {rng("size",7,18,"Tamaño")}
+        </>}
+        {(selShape.type==="nota")&&<>
+          <span style={{color:"#6a9fb5"}}>Nota:</span>
+          <input value={selShape.text||""} onChange={e=>updateSel("text",e.target.value)}
+            style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#a5d6a7",padding:"2px 6px",fontSize:10,flex:1,minWidth:100}}/>
+        </>}
+
+        <button onClick={()=>{commit(shapes.filter(s=>s.id!==selId));setSelId(null);}}
+          style={{marginLeft:"auto",padding:"2px 8px",borderRadius:4,border:"1px solid #7f2020",background:"#1a0808",color:"#f48fb1",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>✕</button>
+      </div>
+    );
+  };
+
   if(!open) return(
-    <button onClick={()=>setOpen(true)} style={{width:"100%",marginTop:6,padding:"5px 0",background:"transparent",border:"1px dashed #1e3a5a",borderRadius:6,color:"#3a6a9a",cursor:"pointer",fontSize:11,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-      ✏️ {shapes.length>0?`Plano (${shapes.length} elem.)`:"Agregar plano técnico"}
+    <button onClick={()=>setOpen(true)} style={{width:"100%",marginTop:6,padding:"5px 0",background:"transparent",border:"1px dashed #21262d",borderRadius:6,color:"#4a6a7a",cursor:"pointer",fontSize:10,fontFamily:"monospace",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+      ✏ {shapes.length>0?`Plano técnico (${shapes.length})`:"+ Plano técnico"}
     </button>
   );
 
   return(
     <div style={{marginTop:8,background:"#0d1117",borderRadius:9,padding:10,border:"1px solid #21262d"}}>
-      {/* Toolbar */}
-      <div style={{display:"flex",gap:3,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
-        {TOOLS.map(t=>(
-          <button key={t.id} onClick={()=>setTool(t.id)}
-            style={{padding:"3px 8px",borderRadius:5,border:`1px solid ${tool===t.id?"#1565C0":"#1e3a5a"}`,
-              background:tool===t.id?"#1565C030":"transparent",
-              color:tool===t.id?"#64B5F6":"#3a6a9a",
-              cursor:"pointer",fontSize:10,fontFamily:"inherit",fontWeight:tool===t.id?700:400}}>
-            {t.label}
-          </button>
+      {/* TOOLBAR */}
+      <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
+        {TOOL_GROUPS.map(g=>(
+          <div key={g.label} style={{display:"flex",gap:2,alignItems:"center"}}>
+            <span style={{fontSize:8,color:"#30363d",marginRight:2,fontFamily:"monospace"}}>{g.label}</span>
+            {g.tools.map(t=>(
+              <button key={t.id} onClick={()=>setTool(t.id)} title={t.tip} style={btnS(tool===t.id)}>{t.label}</button>
+            ))}
+          </div>
         ))}
         <div style={{marginLeft:"auto",display:"flex",gap:3}}>
-          {selId&&<button onClick={()=>{commit(shapes.filter(s=>s.id!==selId));setSelId(null);}}
-            style={{padding:"3px 8px",borderRadius:5,border:"1px solid #7f2020",background:"#1a0808",color:"#f48fb1",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>✕ Borrar</button>}
-          {shapes.length>0&&<button onClick={()=>{if(window.confirm("¿Limpiar plano?"))commit([]);setSelId(null);}}
-            style={{padding:"3px 7px",borderRadius:5,border:"1px solid #1e3a5a",background:"transparent",color:"#3a6a9a",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>Limpiar</button>}
-          {shapes.length>0&&<button onClick={printPlano}
-            style={{padding:"3px 7px",borderRadius:5,border:"1px solid #26A69A",background:"#0a2a1a",color:"#26A69A",cursor:"pointer",fontSize:10,fontFamily:"inherit",fontWeight:700}}>🖨</button>}
-          <button onClick={()=>setOpen(false)}
-            style={{padding:"3px 7px",borderRadius:5,border:"1px solid #1e3a5a",background:"transparent",color:"#3a6a9a",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>▲</button>
+          {shapes.length>0&&<><button onClick={()=>{if(window.confirm("¿Limpiar?"))commit([]);setSelId(null);}} style={{...btnS(false),color:"#5a3a3a"}}>Limpiar</button>
+          <button onClick={printPlano} style={{...btnS(false),border:"1px solid #26A69A",color:"#26A69A",fontWeight:700}}>🖨</button></>}
+          <button onClick={()=>setOpen(false)} style={btnS(false)}>▲</button>
         </div>
       </div>
 
-      {/* Properties panel */}
-      {selShape&&<div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"6px 10px",background:"#161b22",borderRadius:7,marginBottom:6,alignItems:"center",fontSize:11}}>
-        <span style={{color:"#FFB74D",fontWeight:700,fontSize:10,textTransform:"uppercase"}}>{selShape.type}</span>
-        {selShape.type==="vidrio"&&<>
-          {[["↖","cornerTL"],["↗","cornerTR"],["↘","cornerBR"],["↙","cornerBL"]].map(([ic,k])=>(
-            <label key={k} style={{display:"flex",alignItems:"center",gap:3,color:"#5a8ab8"}}>
-              <span style={{fontSize:11}}>{ic}</span>
-              <input type="number" min="0" max="60" value={selShape[k]||0} onChange={e=>updateSel(k,+e.target.value)}
-                style={{width:36,background:"#071220",border:"1px solid #1e3a5a",borderRadius:4,color:"#c8e0f8",padding:"2px 4px",fontSize:11,textAlign:"center"}}/>
-            </label>
-          ))}
-          <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",color:selShape.satinado?"#64B5F6":"#3a6a9a"}}>
-            <input type="checkbox" checked={!!selShape.satinado} onChange={e=>updateSel("satinado",e.target.checked)} style={{accentColor:"#1565C0",width:13,height:13}}/>
-            <span>Satinado</span>
-          </label>
-        </>}
-        {selShape.type==="bisagra"&&<>
-          <span style={{color:"#3a6a9a"}}>Ancho:</span>
-          <input type="range" min="6" max="30" value={selShape.rw||14} onChange={e=>updateSel("rw",+e.target.value)} style={{width:70,accentColor:"#1565C0"}}/>
-          <span style={{color:"#64B5F6",minWidth:18}}>{selShape.rw||14}</span>
-          <span style={{color:"#3a6a9a"}}>Alto:</span>
-          <input type="range" min="20" max="120" value={selShape.h||50} onChange={e=>updateSel("h",+e.target.value)} style={{width:70,accentColor:"#1565C0"}}/>
-          <span style={{color:"#64B5F6",minWidth:18}}>{selShape.h||50}</span>
-        </>}
-        {selShape.type==="perf"&&<>
-          <span style={{color:"#3a6a9a"}}>Diámetro:</span>
-          <input type="range" min="6" max="50" value={selShape.r||15} onChange={e=>updateSel("r",+e.target.value)} style={{width:80,accentColor:"#1565C0"}}/>
-          <span style={{color:"#64B5F6"}}>⌀{(selShape.r||15)*2}mm</span>
-        </>}
-        {selShape.type==="text"&&
-          <input value={selShape.text} onChange={e=>updateSel("text",e.target.value)}
-            style={{flex:1,minWidth:120,background:"#071220",border:"1px solid #1e3a5a",borderRadius:4,color:"#c8e0f8",padding:"2px 6px",fontSize:11}}/>}
-        <button onClick={()=>{commit(shapes.filter(s=>s.id!==selId));setSelId(null);}}
-          style={{marginLeft:"auto",padding:"2px 8px",borderRadius:4,border:"1px solid #7f2020",background:"#1a0808",color:"#f48fb1",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>✕</button>
-      </div>}
+      {/* PROPS */}
+      <PropsPanel/>
 
-      {/* Canvas */}
+      {/* CANVAS */}
       <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${H}`}
-        style={{display:"block",background:"#071220",borderRadius:6,border:"1px solid #0f2035",
-          cursor:tool==="select"?"default":"crosshair",touchAction:"none",minHeight:150}}
+        style={{display:"block",background:"#0d1117",borderRadius:6,border:"1px solid #21262d",cursor:tool==="select"?"default":"crosshair",touchAction:"none",minHeight:200}}
         onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
         onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}>
         <defs>
-          <pattern id={`minor${itemIdx||0}`} width="10" height="10" patternUnits="userSpaceOnUse">
+          <pattern id={`mn${itemIdx||0}`} width="10" height="10" patternUnits="userSpaceOnUse">
             <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#161b22" strokeWidth="0.5"/>
           </pattern>
-          <pattern id={`major${itemIdx||0}`} width="50" height="50" patternUnits="userSpaceOnUse">
-            <rect width="50" height="50" fill={`url(#minor${itemIdx||0})`}/>
-            <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#1c2631" strokeWidth="1"/>
+          <pattern id={`mj${itemIdx||0}`} width="50" height="50" patternUnits="userSpaceOnUse">
+            <rect width="50" height="50" fill={`url(#mn${itemIdx||0})`}/>
+            <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#1c2631" strokeWidth="0.8"/>
           </pattern>
+          <marker id="arr" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#ffd740"/>
+          </marker>
         </defs>
-        <rect width={W} height={H} fill={`url(#major${itemIdx||0})`}/>
+        <rect width={W} height={H} fill={`url(#mj${itemIdx||0})`}/>
         {shapes.map(s=>renderShape(s,false))}
         {drawing&&renderShape(drawing,true)}
       </svg>
-      <div style={{fontSize:9,color:"#30363d",marginTop:3,textAlign:"right"}}>
-        {tool==="select"&&"Click para seleccionar · Arrastrá para mover"}
-        {tool==="vidrio"&&"Arrastrá para dibujar el vidrio"}
-        {tool==="bisagra"&&"Click para colocar bisagra · Seleccioná para ajustar"}
-        {tool==="perf"&&"Click para colocar perforación · Seleccioná para ajustar diámetro"}
-        {tool==="line"&&"Arrastrá para dibujar línea"}
-        {tool==="text"&&"Click para agregar texto"}
+
+      {/* HINT */}
+      <div style={{fontSize:9,color:"#30363d",marginTop:3,display:"flex",justifyContent:"space-between",fontFamily:"monospace"}}>
+        <span style={{color:"#21262d"}}>Ctrl = sin snap</span>
+        <span>
+          {tool==="select"&&"↖ Click selecciona · Arrastrá mueve"}
+          {tool==="vidrio"&&"▭ Arrastrá para dibujar el vidrio · Ctrl = libre"}
+          {tool==="arco"&&"◯ Arrastrá para dibujar arco/elipse"}
+          {tool==="bisagra"&&"⊢ Click para colocar bisagra"}
+          {tool==="perf"&&"⊙ Click para colocar perforación"}
+          {tool==="cota"&&"↔ Arrastrá para cotar una medida en mm"}
+          {tool==="linea"&&"— Arrastrá para trazar línea de referencia"}
+          {tool==="linea_punteada"&&"╌ Arrastrá para trazar línea de referencia punteada"}
+          {tool==="text"&&"123 Click para agregar número o medida"}
+          {tool==="nota"&&"abc Click para agregar anotación"}
+        </span>
       </div>
     </div>
   );
 };
+
+
 const MiniCanvas=({value,onChange})=><ItemCanvas value={value} onChange={onChange} label="Plano general" itemIdx={0}/>;
 
 const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,estados,onSave,onClose,onConvertir})=>{
