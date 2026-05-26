@@ -355,7 +355,7 @@ const buildSVGStr=(shapes)=>{
   const toStr=(s)=>{
     if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="12" fill="#e65100" font-weight="700">${s.text}</text>`;
     if(s.type==="perf") return `<circle cx="${s.cx}" cy="${s.cy}" r="${s.r}" fill="white" stroke="#1565C0" stroke-width="2"/><line x1="${s.cx-s.r*0.6}" y1="${s.cy}" x2="${s.cx+s.r*0.6}" y2="${s.cy}" stroke="#1565C0" stroke-width="1.5"/><line x1="${s.cx}" y1="${s.cy-s.r*0.6}" x2="${s.cx}" y2="${s.cy+s.r*0.6}" stroke="#1565C0" stroke-width="1.5"/><text x="${s.cx}" y="${s.cy+s.r+11}" text-anchor="middle" font-size="9" fill="#1565C0" font-weight="700">⌀${s.r*2}</text>`;
-    if(s.type==="bisagra"){const rw=s.rw||14,hh=(s.h||50)/2,rh=rw;const path=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;return `<path d="${path}" fill="white" stroke="#1565C0" stroke-width="2.5"/><text x="${s.cx}" y="${s.cy+4}" text-anchor="middle" font-size="8" fill="#1565C0" font-weight="700">BIS</text>`;}
+    if(s.type==="bisagra"){const rw=s.rw||14,hh=(s.h||50)/2,rh=rw;const path=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;return `<path d="${path}" fill="white" stroke="#1565C0" stroke-width="2.5"/>`; }
     if(s.type==="vidrio"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;const satDef=s.satinado?`<defs><pattern id="sp" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#1565C0" stroke-width="1.2" opacity="0.28"/></pattern></defs>`:"";return `${satDef}<path d="${d}" fill="${s.satinado?"url(#sp)":"#e8f4ff"}" stroke="#1565C0" stroke-width="2"/>${s.satinado?`<text x="${x+w/2}" y="${y+h/2+5}" text-anchor="middle" font-size="11" fill="#1565C0" font-weight="700" opacity="0.6">SATINADO</text>`:""}`;}
     if(s.type==="line") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1565C0" stroke-width="2.5" stroke-linecap="round"/>`;
     return "";
@@ -439,14 +439,14 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
   // ── RENDER ────────────────────────────────────────────────────────────────
   const renderShape=(s,ghost)=>{
     const sel=!ghost&&selId===s.id;
-    const sc=ghost?"#42A5F5":sel?"#FF8A65":"#1565C0";
-    const sf=ghost?"rgba(66,165,245,0.07)":sel?"rgba(255,138,101,0.1)":"rgba(21,101,192,0.06)";
-    const sw=sel?2.5:1.8;
+    const sc=ghost?"#00bfff":sel?"#ff9500":"#4dd0e1";
+    const sf=ghost?"rgba(0,191,255,0.05)":sel?"rgba(255,149,0,0.08)":"rgba(0,40,60,0.5)";
+    const sw=sel?2:1.5;
     const onClick=ghost?undefined:()=>{if(tool==="select")setSelId(sel?null:s.id);};
     const cur=tool==="select"?"pointer":"default";
 
     if(s.type==="text") return(
-      <text key={s.id} x={s.x} y={s.y} fontSize="12" fill={sel?"#FF8A65":"#FFB74D"}
+      <text key={s.id} x={s.x} y={s.y} fontSize="12" fill={sel?"#ff9500":"#ffd740"}
         fontWeight="700" style={{cursor:cur,userSelect:"none"}} onClick={onClick}>{s.text}</text>
     );
 
@@ -455,7 +455,7 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
         <circle cx={s.cx} cy={s.cy} r={s.r} fill="white" stroke={sc} strokeWidth={sw}/>
         <line x1={s.cx-s.r*0.6} y1={s.cy} x2={s.cx+s.r*0.6} y2={s.cy} stroke={sc} strokeWidth="1.2"/>
         <line x1={s.cx} y1={s.cy-s.r*0.6} x2={s.cx} y2={s.cy+s.r*0.6} stroke={sc} strokeWidth="1.2"/>
-        <text x={s.cx} y={s.cy+s.r+11} textAnchor="middle" fontSize="9" fill={sc} fontWeight="700">⌀{(s.r*2)}</text>
+        <text x={s.cx} y={s.cy+s.r+11} textAnchor="middle" fontSize="9" fill="#ffd740" fontWeight="700">⌀{(s.r*2)}</text>
       </g>
     );
 
@@ -475,7 +475,6 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
       return(
         <g key={s.id} style={{cursor:cur}} onClick={onClick}>
           <path d={path} fill="white" stroke={sc} strokeWidth={sw}/>
-          <text x={s.cx} y={s.cy+4} textAnchor="middle" fontSize="8" fill={sc} fontWeight="700">BIS</text>
           {sel&&<rect x={s.cx-rw-6} y={s.cy-hh-6} width={rw*2+12} height={s.h+12} fill="none" stroke="#FF8A65" strokeWidth="1" strokeDasharray="3 2" rx="2"/>}
         </g>
       );
@@ -488,9 +487,9 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
       const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;
       return(
         <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-          {s.satinado&&<defs><pattern id={`sat${s.id}`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#1565C0" strokeWidth="1.5" opacity="0.22"/></pattern></defs>}
+          {s.satinado&&<defs><pattern id={`sat${s.id}`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#4dd0e1" strokeWidth="1" opacity="0.4"/></pattern></defs>}
           <path d={d} fill={s.satinado?`url(#sat${s.id})`:sf} stroke={sc} strokeWidth={sw}/>
-          {s.satinado&&<text x={x+w/2} y={y+h/2+5} textAnchor="middle" fontSize="10" fill={sc} fontWeight="700" opacity="0.5">SAT</text>}
+          {s.satinado&&<text x={x+w/2} y={y+h/2+5} textAnchor="middle" fontSize="9" fill="#4dd0e1" fontWeight="700" opacity="0.6">SAT</text>}
           {sel&&<path d={d} fill="none" stroke="#FF8A65" strokeWidth="1" strokeDasharray="4 2"/>}
         </g>
       );
@@ -514,7 +513,7 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
     if(s.type==="bisagra"){
       const rw=s.rw||14,hh=(s.h||50)/2,rh=rw;
       const path=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;
-      return `<path d="${path}" fill="white" stroke="#1565C0" stroke-width="2.5"/><text x="${s.cx}" y="${s.cy+4}" text-anchor="middle" font-size="8" fill="#1565C0" font-weight="700">BIS</text>`;
+      return `<path d="${path}" fill="white" stroke="#1565C0" stroke-width="2.5"/>`; 
     }
     if(s.type==="vidrio"){
       const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
@@ -563,7 +562,7 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
   );
 
   return(
-    <div style={{marginTop:8,background:"#050e1a",borderRadius:9,padding:10,border:"1px solid #1565C030"}}>
+    <div style={{marginTop:8,background:"#0d1117",borderRadius:9,padding:10,border:"1px solid #21262d"}}>
       {/* Toolbar */}
       <div style={{display:"flex",gap:3,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
         {TOOLS.map(t=>(
@@ -588,7 +587,7 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
       </div>
 
       {/* Properties panel */}
-      {selShape&&<div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"6px 10px",background:"#0a1828",borderRadius:7,marginBottom:6,alignItems:"center",fontSize:11}}>
+      {selShape&&<div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"6px 10px",background:"#161b22",borderRadius:7,marginBottom:6,alignItems:"center",fontSize:11}}>
         <span style={{color:"#FFB74D",fontWeight:700,fontSize:10,textTransform:"uppercase"}}>{selShape.type}</span>
         {selShape.type==="vidrio"&&<>
           {[["↖","cornerTL"],["↗","cornerTR"],["↘","cornerBR"],["↙","cornerBL"]].map(([ic,k])=>(
@@ -630,15 +629,19 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
         onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
         onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}>
         <defs>
-          <pattern id={`grd${itemIdx||0}`} width="20" height="20" patternUnits="userSpaceOnUse">
-            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#0b1e35" strokeWidth="0.5"/>
+          <pattern id={`minor${itemIdx||0}`} width="10" height="10" patternUnits="userSpaceOnUse">
+            <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#161b22" strokeWidth="0.5"/>
+          </pattern>
+          <pattern id={`major${itemIdx||0}`} width="50" height="50" patternUnits="userSpaceOnUse">
+            <rect width="50" height="50" fill={`url(#minor${itemIdx||0})`}/>
+            <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#1c2631" strokeWidth="1"/>
           </pattern>
         </defs>
-        <rect width={W} height={H} fill={`url(#grd${itemIdx||0})`}/>
+        <rect width={W} height={H} fill={`url(#major${itemIdx||0})`}/>
         {shapes.map(s=>renderShape(s,false))}
         {drawing&&renderShape(drawing,true)}
       </svg>
-      <div style={{fontSize:9,color:"#1e3a5a",marginTop:3,textAlign:"right"}}>
+      <div style={{fontSize:9,color:"#30363d",marginTop:3,textAlign:"right"}}>
         {tool==="select"&&"Click para seleccionar · Arrastrá para mover"}
         {tool==="vidrio"&&"Arrastrá para dibujar el vidrio"}
         {tool==="bisagra"&&"Click para colocar bisagra · Seleccioná para ajustar"}
@@ -698,8 +701,9 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
   };
 
   const [newProc,setNewProc]=useState("");
-  const TABS_COT=[{id:"pedido",label:"📋 Pedido"},{id:"plano",label:"✏️ Plano"}];
-  const TABS_ORD=[{id:"pedido",label:"📋 Pedido"},{id:"plano",label:"✏️ Plano"},{id:"produccion",label:"🏭 Producción"},{id:"instalacion",label:"🚚 Instalación"},{id:"actividad",label:"🕐 Actividad"}];
+  const TABS_COT=[{id:"pedido",label:"📋 Pedido"},{id:"plano",label:"✏️ Plano general"}];
+  const hasItemPlanos2=(form.items||[]).some(it=>(it.plano||[]).length>0);
+  const TABS_ORD=[{id:"pedido",label:"📋 Pedido"},...(!hasItemPlanos2?[{id:"plano",label:"✏️ Plano general"}]:[]),{id:"produccion",label:"🏭 Producción"},{id:"instalacion",label:"🚚 Instalación"},{id:"actividad",label:"🕐 Actividad"}];
   const TABS=modo==="orden"?TABS_ORD:TABS_COT;
 
   const COLOCACION=[
@@ -723,7 +727,8 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
       </tr>
       ${itemSVG?`<tr><td colspan="6" style="padding:8px 12px;background:#f0f6ff">${itemSVG}</td></tr>`:""}`;
     }).join("");
-    const planoSVG=buildSVGStr(form.plano);
+    const hasItemPlanos=(form.items||[]).some(it=>(it.plano||[]).length>0);
+    const planoSVG=!hasItemPlanos?buildSVGStr(form.plano):"";
     const instBloque=form.inst_notas||form.inst_fecha||form.inst_direccion?`
       <div style="margin-top:16px;padding:12px 16px;background:#f8f9ff;border-left:3px solid #1565C0;border-radius:0 6px 6px 0;font-size:13px;line-height:1.8;color:#333">
         <strong style="color:#1565C0">Instalación:</strong><br/>
