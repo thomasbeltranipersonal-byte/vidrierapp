@@ -4,10 +4,12 @@ import { getFirestore, collection, doc, onSnapshot, setDoc, deleteDoc, getDoc } 
 
 // ─── USUARIOS ────────────────────────────────────────────────────────────────
 const USUARIOS = [
-  { usuario: "thomasb", clave: "beltrani07",  nombre: "Thomas",  rol: "admin",  color: "#64B5F6" },
-  { usuario: "Taller1", clave: "beltrani07",  nombre: "Taller",  rol: "taller", color: "#CE93D8" },
-  { usuario: "Local1",  clave: "virasoro2431",nombre: "Local 1", rol: "local",  color: "#A5D6A7" },
-  { usuario: "Local2",  clave: "virasoro2431",nombre: "Local 2", rol: "local",  color: "#80CBC4" },
+  { usuario: "thomasb",  clave: "beltrani07",   nombre: "Thomas",   rol: "admin",     color: "#64B5F6" },
+  { usuario: "Taller1",  clave: "beltrani07",   nombre: "Taller",   rol: "taller",    color: "#CE93D8" },
+  { usuario: "Local1",   clave: "virasoro2431", nombre: "Local 1",  rol: "local",     color: "#A5D6A7" },
+  { usuario: "Local2",   clave: "virasoro2431", nombre: "Local 2",  rol: "local",     color: "#80CBC4" },
+  { usuario: "EquipoA",  clave: "equipo2025",   nombre: "Equipo A", rol: "colocador", color: "#FFB74D", equipo:"A" },
+  { usuario: "EquipoB",  clave: "equipo2025",   nombre: "Equipo B", rol: "colocador", color: "#F48FB1", equipo:"B" },
 ];
 
 // ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
@@ -893,8 +895,8 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
     pagos_parciales:[],
     abonado_completo:false,pago_final_monto:"",pago_final_fecha:"",pago_final_metodo:"efectivo",
     comp_senia:[],comp_final:[],
-    plano:[],
-    procesos_taller:PROCESOS_TALLER_DEFAULT,
+    equipo_asignado:"",
+    incidencias:[],
     inst_notas:"",inst_fecha:"",inst_direccion:"",inst_responsable:"",inst_firmante:"",
     fotos_instalacion:[],
   };
@@ -1145,9 +1147,14 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
           {modo==="orden"&&<button onClick={pdfTaller} style={{padding:"6px 12px",borderRadius:7,border:"1px solid #26A69A40",background:"#0a1a10",color:"#26A69A",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:600}}>🔧 PDF Taller</button>}
           {modo==="cotizacion"&&onConvertir&&<button onClick={()=>onConvertir(form)} style={{padding:"6px 14px",borderRadius:7,border:"none",background:"#1b5e20",color:"#A5D6A7",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:700,display:"flex",alignItems:"center",gap:5}}>✅ → Orden</button>}
         </div>
+        {modo==="orden"&&<Field label="Equipo asignado">
+          <Sel value={form.equipo_asignado||""} onChange={e=>set("equipo_asignado",e.target.value)}>
+            <option value="">Sin asignar</option>
+            <option value="A">Equipo A</option>
+            <option value="B">Equipo B</option>
+          </Sel>
+        </Field>}
       </div>
-
-      {/* TABS */}
       <div style={{display:"flex",gap:2,marginBottom:14,background:"#050d18",borderRadius:8,padding:3}}>
         {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"7px 10px",borderRadius:6,border:"none",background:tab===t.id?"#0d1e35":"transparent",color:tab===t.id?"#e2f0ff":"#3a6a9a",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:tab===t.id?700:400}}>{t.label}</button>)}
       </div>
@@ -1550,6 +1557,27 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
 
       {/* TAB: ACTIVIDAD (solo en orden) */}
       {tab==="actividad"&&modo==="orden"&&<div>
+        {/* Incidencias */}
+        {(form.incidencias||[]).length>0&&<div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #FFB74D30",marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#FFB74D",textTransform:"uppercase",marginBottom:10}}>⚠ Problemas reportados</div>
+          {(form.incidencias||[]).map((inc,i)=>(
+            <div key={inc.id||i} style={{display:"flex",gap:10,padding:"8px 10px",borderRadius:8,background:inc.resuelto?"#0a2a0a":"#1a0800",border:`1px solid ${inc.resuelto?"#26A69A30":"#FFB74D30"}`,marginBottom:6,alignItems:"flex-start"}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:inc.resuelto?"#26A69A":"#FFB74D"}}>{inc.tipo}</div>
+                {inc.nota&&<div style={{fontSize:12,color:"#5a8ab8",marginTop:2}}>{inc.nota}</div>}
+                <div style={{fontSize:10,color:"#3a6a9a",marginTop:3}}>{inc.usuario} · {new Date(inc.fecha).toLocaleString("es-AR")}</div>
+              </div>
+              {!inc.resuelto&&<button onClick={()=>{
+                const arr=[...(form.incidencias||[])];
+                arr[i]={...arr[i],resuelto:true,resuelto_por:currentUser.nombre,resuelto_fecha:new Date().toISOString()};
+                set("incidencias",arr);
+              }} style={{padding:"4px 10px",borderRadius:6,border:"1px solid #26A69A",background:"#0a2a0a",color:"#26A69A",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:700,whiteSpace:"nowrap"}}>
+                ✓ Resolver
+              </button>}
+              {inc.resuelto&&<span style={{fontSize:10,color:"#26A69A",whiteSpace:"nowrap"}}>✅ Resuelto</span>}
+            </div>
+          ))}
+        </div>}
         <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a"}}>
           <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:12}}>🕐 Historial de Actividad</div>
           {(doc?.actividad||[]).length===0&&<div style={{color:"#2a4a6a",fontSize:13}}>Sin actividad registrada aún.</div>}
@@ -1842,6 +1870,20 @@ function AppInner({ currentUser, onLogout }) {
     </div>
   );
 
+  // ── COLOCADOR: vista simplificada ────────────────────────────────────────────
+  if(currentUser.rol==="colocador") return(
+    <div style={{minHeight:"100vh",background:"#050d18",padding:"12px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,padding:"8px 12px",background:"#071220",borderRadius:10,border:"1px solid #1e3a5a"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:currentUser.color}}/>
+          <span style={{fontSize:13,fontWeight:700,color:"#e2f0ff"}}>{currentUser.nombre}</span>
+        </div>
+        <button onClick={onLogout} style={{background:"none",border:"1px solid #1e3a5a",color:"#3a6a9a",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Salir</button>
+      </div>
+      <ColocadorView/>
+    </div>
+  );
+
   const navItems=[
     {id:"home",label:"Inicio",icon:"home"},
     {id:"cotizaciones",label:"Cotizaciones",icon:"pdf"},
@@ -1981,16 +2023,40 @@ function AppInner({ currentUser, onLogout }) {
   );};
 
   const Home=()=>{
-    const activas=ordenes.filter(o=>!["entregado","cobrado"].includes(o.estado));
-    const ingresos=ordenes.filter(o=>o.estado==="cobrado").reduce((s,o)=>s+(+o.monto||0),0);
+    const activas=ordenes.filter(o=>!["entregado","cobrado","cancelada"].includes(o.estado));
+    const ingresos=ordenes.filter(o=>o.estado==="cobrado").reduce((s,o)=>s+(+o.pago_total||0),0);
     const cotPendientes=cotizaciones.filter(c=>c.estado==="pendiente"||c.estado==="enviada");
     const stockBajo=stock.filter(i=>i.stock<=i.minimo);
+    const hoy=new Date().toISOString().split("T")[0];
+    const hoyInstalaciones=ordenes.filter(o=>o.inst_fecha===hoy&&!["entregado","cobrado","cancelada"].includes(o.estado));
+    const incidenciasPendientes=ordenes.filter(o=>(o.incidencias||[]).some(i=>!i.resuelto));
+    const sinCobrar=ordenes.filter(o=>!o.abonado_completo&&(+o.pago_total||0)>0&&!["cobrado","cancelada"].includes(o.estado));
     return(
       <div>
-        <div style={{marginBottom:26}}>
+        <div style={{marginBottom:20}}>
           <h1 style={{margin:"0 0 4px",fontFamily:"Georgia,serif",fontSize:26,fontWeight:700,color:"#e2f0ff"}}>Panel Central</h1>
           <p style={{margin:0,color:"#3a6a9a",fontSize:13}}>{new Date().toLocaleDateString("es-AR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</p>
         </div>
+
+        {/* ALERTAS URGENTES */}
+        {(incidenciasPendientes.length>0||hoyInstalaciones.length>0)&&(
+          <div style={{marginBottom:16,display:"flex",flexDirection:"column",gap:8}}>
+            {hoyInstalaciones.length>0&&<div onClick={()=>setNav("ordenes")} style={{background:"#0a2a1a",borderRadius:10,padding:"12px 16px",border:"1px solid #26A69A40",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:"#26A69A"}}>🚚 {hoyInstalaciones.length} instalación{hoyInstalaciones.length>1?"es":""} para HOY</div>
+                <div style={{fontSize:11,color:"#3a6a9a",marginTop:2}}>{hoyInstalaciones.map(o=>o.numero).join(" · ")}</div>
+              </div>
+              <div style={{color:"#26A69A",fontSize:16}}>→</div>
+            </div>}
+            {incidenciasPendientes.length>0&&<div onClick={()=>setNav("ordenes")} style={{background:"#1a0800",borderRadius:10,padding:"12px 16px",border:"1px solid #FFB74D40",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:"#FFB74D"}}>⚠ {incidenciasPendientes.length} problema{incidenciasPendientes.length>1?"s":""} sin resolver</div>
+                <div style={{fontSize:11,color:"#3a6a9a",marginTop:2}}>{incidenciasPendientes.map(o=>o.numero).join(" · ")}</div>
+              </div>
+              <div style={{color:"#FFB74D",fontSize:16}}>→</div>
+            </div>}
+          </div>
+        )}
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:14}}>
           {[
             {label:"Órdenes activas",val:activas.length,color:"#64B5F6",sub:"en proceso",click:()=>setNav("ordenes")},
@@ -2102,6 +2168,8 @@ function AppInner({ currentUser, onLogout }) {
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2,flexWrap:"wrap"}}>
                 <span style={{fontSize:14,fontWeight:600,color:"#e2f0ff"}}>{getNombre(o.cliente)||"Sin cliente"}</span>
+                {o.equipo_asignado&&<span style={{fontSize:10,fontWeight:700,padding:"1px 8px",borderRadius:99,background:o.equipo_asignado==="A"?"#FFB74D20":"#F48FB120",color:o.equipo_asignado==="A"?"#FFB74D":"#F48FB1",border:`1px solid ${o.equipo_asignado==="A"?"#FFB74D40":"#F48FB140"}`}}>Eq.{o.equipo_asignado}</span>}
+                {(o.incidencias||[]).filter(i=>!i.resuelto).length>0&&<span style={{fontSize:10,fontWeight:700,padding:"1px 8px",borderRadius:99,background:"#2a1000",color:"#FFB74D",border:"1px solid #FFB74D40"}}>⚠ {(o.incidencias||[]).filter(i=>!i.resuelto).length} problema{(o.incidencias||[]).filter(i=>!i.resuelto).length>1?"s":""}</span>}
                 {o.ref_cotizacion&&<span style={{fontSize:10,color:"#FFB74D",background:"#2a1a00",border:"1px solid #FFB74D30",padding:"1px 8px",borderRadius:99}}>ref. {o.ref_cotizacion}</span>}
               </div>
               {total>0&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
@@ -3003,6 +3071,185 @@ ${bizFooter()}`;
           <Btn variant="secondary" onClick={()=>setModal(null)}>Cancelar</Btn>
           <Btn onClick={guardar}>✓ Guardar lista ({lista.length} tipos)</Btn>
         </div>
+      </div>
+    );
+  };
+
+  // ── VISTA COLOCADOR ──────────────────────────────────────────────────────────
+  const ColocadorView=()=>{
+    const equipo=currentUser.equipo;
+    const misOrdenes=ordenes.filter(o=>
+      o.equipo_asignado===equipo &&
+      !["cobrado","cancelada"].includes(o.estado)
+    ).sort((a,b)=>(a.inst_fecha||"").localeCompare(b.inst_fecha||""));
+
+    const reportarProblema=async(orden)=>{
+      const tipos=["Medidas no coinciden","Cliente ausente","Material defectuoso","Vidrio roto en traslado","Acceso complicado","Otro"];
+      const tipo=window.prompt(`Tipo de problema para ${orden.numero}:\n${tipos.map((t,i)=>`${i+1}. ${t}`).join("\n")}\n\nEscribí el número:`);
+      if(!tipo)return;
+      const idx=parseInt(tipo)-1;
+      const tipoText=tipos[idx]||tipo;
+      const nota=window.prompt("Detalle adicional (opcional):")||"";
+      const incidencia={id:newId(),tipo:tipoText,nota,fecha:new Date().toISOString(),equipo,usuario:currentUser.nombre,resuelto:false};
+      const updated={...orden,incidencias:[...(orden.incidencias||[]),incidencia],estado:"pendiente"};
+      await saveOrden(updated);
+      alert("⚠ Problema reportado. El local fue notificado.");
+    };
+
+    const marcarInstalado=async(orden)=>{
+      if(!window.confirm(`¿Marcar ${orden.numero} como instalado?`))return;
+      const updated={...orden,estado:"entregado",inst_fecha_real:new Date().toISOString().split("T")[0]};
+      await saveOrden(updated);
+    };
+
+    const ESTADO_COLOR={pendiente:"#FFB74D",esp_materiales:"#64B5F6",taller:"#CE93D8",listo_entregar:"#A5D6A7",entregado:"#26A69A"};
+
+    return(
+      <div style={{maxWidth:600,margin:"0 auto",padding:"0 4px"}}>
+        {/* Header */}
+        <div style={{background:"linear-gradient(135deg,#0a1828,#071220)",borderRadius:12,padding:"16px 18px",marginBottom:16,border:"1px solid #1e3a5a"}}>
+          <div style={{fontSize:18,fontWeight:800,color:"#e2f0ff",marginBottom:2}}>
+            {currentUser.nombre} — Órdenes asignadas
+          </div>
+          <div style={{fontSize:12,color:"#3a6a9a"}}>{misOrdenes.length} orden{misOrdenes.length!==1?"es":""} pendiente{misOrdenes.length!==1?"s":""}</div>
+        </div>
+
+        {misOrdenes.length===0&&(
+          <div style={{textAlign:"center",padding:"60px 20px",color:"#2a4a6a"}}>
+            <div style={{fontSize:48,marginBottom:12}}>✅</div>
+            <div style={{fontSize:16,fontWeight:600,color:"#3a6a9a"}}>No tenés órdenes asignadas</div>
+            <div style={{fontSize:13,color:"#2a4a6a",marginTop:6}}>Cuando te asignen trabajo aparecerá acá</div>
+          </div>
+        )}
+
+        {misOrdenes.map(orden=>{
+          const total=+orden.pago_total||0;
+          const cobrado=(+orden.pago_senia||0)+(orden.pagos_parciales||[]).reduce((s,p)=>s+(+p.monto||0),0)+(+orden.pago_final_monto||0);
+          const saldo=Math.max(0,total-cobrado);
+          const estadoColor=ESTADO_COLOR[orden.estado]||"#5a8ab8";
+          const incPendientes=(orden.incidencias||[]).filter(i=>!i.resuelto).length;
+
+          return(
+            <div key={orden.id} style={{background:"#071220",borderRadius:12,padding:16,marginBottom:12,border:`1px solid ${incPendientes>0?"#FFB74D40":"#1e3a5a"}`}}>
+              {/* Orden header */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+                <div>
+                  <div style={{fontFamily:"monospace",fontSize:15,fontWeight:800,color:"#64B5F6"}}>{orden.numero}</div>
+                  <div style={{fontSize:13,fontWeight:600,color:"#e2f0ff",marginTop:2}}>{orden.contacto_nombre||getNombre(orden.cliente)||"Sin cliente"}</div>
+                  {orden.contacto_tel&&<div style={{fontSize:12,color:"#3a6a9a"}}>📞 {orden.contacto_tel}</div>}
+                  {orden.inst_fecha&&<div style={{fontSize:12,color:"#FFB74D",marginTop:2}}>📅 Instalación: {orden.inst_fecha}</div>}
+                  {orden.inst_direccion&&<div style={{fontSize:12,color:"#3a6a9a"}}>📍 {orden.inst_direccion}</div>}
+                </div>
+                <span style={{background:estadoColor+"20",color:estadoColor,border:`1px solid ${estadoColor}40`,padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+                  {estados.find(e=>e.id===orden.estado)?.label||orden.estado}
+                </span>
+              </div>
+
+              {/* Vidrios */}
+              {(orden.items||[]).length>0&&(
+                <div style={{background:"#0a1828",borderRadius:8,padding:10,marginBottom:10}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:6}}>Pedido</div>
+                  {orden.items.map((it,i)=>(
+                    <div key={i} style={{display:"flex",gap:8,padding:"5px 0",borderBottom:i<orden.items.length-1?"1px solid #0f2035":"none",alignItems:"center"}}>
+                      <div style={{background:"#1565C020",color:"#64B5F6",borderRadius:5,padding:"2px 8px",fontSize:13,fontWeight:700,flexShrink:0}}>{it.cant||1}×</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,color:"#c8e0f8",fontWeight:600}}>{it.tipo_vidrio||"—"}</div>
+                        {(it.ancho||it.alto)&&<div style={{fontSize:11,color:"#3a6a9a"}}>{it.ancho}×{it.alto} mm</div>}
+                        {(it.obs||[]).length>0&&<div style={{fontSize:11,color:"#5a8ab8"}}>{it.obs.join(", ")}</div>}
+                      </div>
+                      {it.plano?.length>0&&<div style={{fontSize:10,color:"#26A69A"}}>✏ Plano</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Notas de instalación */}
+              {orden.inst_notas&&(
+                <div style={{background:"#0a1020",borderRadius:8,padding:10,marginBottom:10,border:"1px solid #1565C020"}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#5a8ab8",marginBottom:4}}>📋 NOTAS</div>
+                  <div style={{fontSize:13,color:"#c8e0f8",lineHeight:1.5}}>{orden.inst_notas}</div>
+                </div>
+              )}
+
+              {/* Fotos del lugar */}
+              {(orden.fotos_instalacion||[]).length>0&&(
+                <div style={{marginBottom:10}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#CE93D8",marginBottom:6}}>📷 FOTOS DEL LUGAR</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {orden.fotos_instalacion.map((f,i)=>(
+                      <img key={i} src={f.data} alt="" style={{width:80,height:80,objectFit:"cover",borderRadius:7,cursor:"pointer",border:"1px solid #CE93D820"}} onClick={()=>window.open(f.data,"_blank")}/>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Precios */}
+              <div style={{background:"#0a1020",borderRadius:8,padding:10,marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:10,color:"#3a6a9a",fontWeight:700,textTransform:"uppercase"}}>Total</div>
+                  <div style={{fontSize:18,fontWeight:800,color:"#e2f0ff"}}>${total.toLocaleString("es-AR")}</div>
+                </div>
+                {cobrado>0&&<div style={{textAlign:"center"}}>
+                  <div style={{fontSize:10,color:"#3a6a9a",fontWeight:700}}>Cobrado</div>
+                  <div style={{fontSize:15,fontWeight:700,color:"#A5D6A7"}}>${cobrado.toLocaleString("es-AR")}</div>
+                </div>}
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:saldo>0?"#FFB74D":"#26A69A"}}>
+                    {saldo>0?"Saldo a cobrar":"✅ Pagado"}
+                  </div>
+                  {saldo>0&&<div style={{fontSize:18,fontWeight:800,color:"#FFB74D"}}>${saldo.toLocaleString("es-AR")}</div>}
+                </div>
+              </div>
+
+              {/* Incidencias pendientes */}
+              {incPendientes>0&&(
+                <div style={{background:"#2a1000",borderRadius:8,padding:10,marginBottom:10,border:"1px solid #FFB74D40"}}>
+                  <div style={{fontSize:12,fontWeight:700,color:"#FFB74D"}}>⚠ {incPendientes} problema{incPendientes>1?"s":""} reportado{incPendientes>1?"s":""}</div>
+                  {(orden.incidencias||[]).filter(i=>!i.resuelto).map((inc,i)=>(
+                    <div key={i} style={{fontSize:11,color:"#FFB74D",opacity:0.8,marginTop:3}}>• {inc.tipo}{inc.nota?` — ${inc.nota}`:""}</div>
+                  ))}
+                </div>
+              )}
+
+              {/* Fotos del trabajo — subir desde campo */}
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:10,fontWeight:700,color:"#5a8ab8",marginBottom:6}}>📸 FOTOS DEL TRABAJO</div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {(orden.fotos_trabajo||[]).map((f,i)=>(
+                    <div key={i} style={{position:"relative"}}>
+                      <img src={f.data} alt="" style={{width:70,height:70,objectFit:"cover",borderRadius:7,border:"1px solid #1e3a5a"}} onClick={()=>window.open(f.data,"_blank")}/>
+                    </div>
+                  ))}
+                  <label style={{width:70,height:70,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,background:"#0a1020",borderRadius:7,border:"2px dashed #1e3a5a",cursor:"pointer"}}>
+                    <span style={{fontSize:20}}>📷</span>
+                    <span style={{fontSize:8,color:"#3a6a9a",textAlign:"center"}}>Agregar</span>
+                    <input type="file" accept="image/*" capture="environment" multiple style={{display:"none"}} onChange={e=>{
+                      Array.from(e.target.files).forEach(f=>{
+                        if(f.size>5*1024*1024){alert("Máx 5MB");return;}
+                        const r=new FileReader();
+                        r.onload=ev=>saveOrden({...orden,fotos_trabajo:[...(orden.fotos_trabajo||[]),{data:ev.target.result,nombre:f.name,fecha:new Date().toISOString()}]});
+                        r.readAsDataURL(f);
+                      });
+                    }}/>
+                  </label>
+                </div>
+              </div>
+
+              {/* Botones de acción */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <button onClick={()=>reportarProblema(orden)}
+                  style={{padding:"10px",borderRadius:9,border:"1px solid #FFB74D40",background:"#1a0800",color:"#FFB74D",cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:700}}>
+                  ⚠ Reportar problema
+                </button>
+                <button onClick={()=>marcarInstalado(orden)}
+                  disabled={orden.estado==="entregado"}
+                  style={{padding:"10px",borderRadius:9,border:"none",background:orden.estado==="entregado"?"#0a2a1a":"#26A69A",color:orden.estado==="entregado"?"#26A69A":"#fff",cursor:orden.estado==="entregado"?"default":"pointer",fontSize:13,fontFamily:"inherit",fontWeight:700,opacity:orden.estado==="entregado"?0.7:1}}>
+                  {orden.estado==="entregado"?"✅ Instalado":"✅ Marcar instalado"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   };
