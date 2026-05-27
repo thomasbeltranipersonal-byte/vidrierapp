@@ -338,7 +338,7 @@ const newOrderNum = (list) => {
 const PLANTILLAS_DEFAULT = [];
 
 // ─── OBSERVACIONES DEFAULT ──────────────────────────────────────────────────
-const OBS_DEFAULT = ["Con forma","Con perforación","En altura","Con bisel","Con pulido","Espejo"];
+const OBS_DEFAULT = ["Con forma","Con perforación","En altura","Con bisel","Con pulido","Espejo","Con luz LED","Con marco","Con burletes","Satinado","Con film","Doble vidriado"];
 const SERVICIOS_DEFAULT = ["Service de mampara","Service de puerta templada","Instalación estándar","Solo medición","Reparación"];
 const PROCESOS_TALLER_DEFAULT = ["Corte","Pulido de borde","Perforación","Templado","Arenado","Biselado","Limpieza","Control de calidad","Embalaje"];
 
@@ -972,7 +972,7 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
     const procesoRows = form.items.map((it,i)=>`
       <tr style="background:${i%2===0?"#fff":"#f8fbff"}">
         <td style="padding:8px 10px;text-align:center;font-weight:900;font-size:16px;border:1px solid #dde8ff;width:40px">${it.cant||1}</td>
-        <td style="padding:8px 10px;font-weight:700;font-size:13px;border:1px solid #dde8ff">${it.tipo_vidrio||"—"}</td>
+        <td style="padding:8px 10px;font-weight:700;font-size:13px;border:1px solid #dde8ff">${it.tipo_vidrio||"—"}${it.nombre?`<br/><span style="font-size:11px;color:#1565C0;font-weight:400">${it.nombre}</span>`:""}</td>
         <td style="padding:8px 10px;text-align:center;font-size:13px;border:1px solid #dde8ff;white-space:nowrap">${it.ancho&&it.alto?`${it.ancho}×${it.alto}`:"—"}</td>
         <td style="padding:8px 10px;font-size:12px;border:1px solid #dde8ff;color:#555">${(it.obs||[]).join(", ")||""}</td>
         ${procesos.map(()=>`<td style="padding:8px;text-align:center;border:1px solid #dde8ff"><div style="width:18px;height:18px;border:1.5px solid #1565C0;border-radius:3px;margin:0 auto;background:#fff"></div></td>`).join("")}
@@ -1038,7 +1038,7 @@ table{width:100%;border-collapse:collapse}
     const rows=form.items.map((it,i)=>`
       <tr style="background:${i%2===0?"#f8fbff":"#fff"}">
         <td style="padding:8px 12px;text-align:center;font-weight:700">${it.cant||1}</td>
-        <td style="padding:8px 12px;font-weight:600">${it.tipo_vidrio||"—"}</td>
+        <td style="padding:8px 12px;font-weight:600">${it.tipo_vidrio||"—"}${it.nombre?`<br/><span style="font-size:11px;color:#1565C0;font-weight:400">${it.nombre}</span>`:""}</td>
         <td style="padding:8px 12px;text-align:center">${it.ancho&&it.alto?`${it.ancho} × ${it.alto} mm`:"—"}</td>
         <td style="padding:8px 12px">${(it.obs||[]).join(", ")||"—"}</td>
         <td style="padding:8px 12px">${it.servicio||"—"}</td>
@@ -1050,6 +1050,7 @@ table{width:100%;border-collapse:collapse}
     const saldo=+form.pago_saldo||0;
     const total=+form.pago_total||totalCalc||0;
     const fotosHTML=(form.fotos_instalacion||[]).map(f=>`<img src="${f.data}" style="width:150px;height:115px;object-fit:cover;border-radius:7px;border:1px solid #e0ecff;"/>`).join("");
+    const fotosTrabHTML=(form.fotos_trabajo||[]).map(f=>`<img src="${f.data}" style="width:150px;height:115px;object-fit:cover;border-radius:7px;border:1px solid #a5d6a7;"/>`).join("");
     const instBloque=form.inst_notas||form.inst_fecha||form.inst_direccion?`
       <div class="st">Instalación / Entrega</div>
       <div class="g2">
@@ -1113,7 +1114,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
   ${form.condiciones?`<div style="margin-top:12px;padding:10px 14px;background:#f8f9ff;border-left:3px solid #1565C0;border-radius:0 6px 6px 0;font-size:12px;color:#555;line-height:1.6">${form.condiciones}</div>`:""}
   ${instBloque}
   ${planoSVG?`<div class="st">Plano Técnico</div><div style="margin-top:8px">${planoSVG}</div>`:""}
-  ${fotosHTML?`<div class="st">Fotos de Instalación</div><div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">${fotosHTML}</div>`:""}
+  ${fotosHTML?`<div class="st">Fotos del Lugar</div><div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">${fotosHTML}</div>`:""}
+  ${fotosTrabHTML?`<div class="st" style="color:#2e7d32;border-color:#2e7d32">Fotos del Trabajo Terminado</div><div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">${fotosTrabHTML}</div>`:""}
   <div class="sign-grid">
     <div class="sign-line"><div class="sign-label">Firma del colocador</div><div style="height:34px"></div><div class="sign-name">La Vidriería Rosario</div></div>
     <div class="sign-line"><div class="sign-label">Conformidad del cliente</div><div style="height:34px"></div><div style="font-size:12px;color:#555">${form.contacto_nombre||"________________________"}</div></div>
@@ -1185,7 +1187,19 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
           </div>
 
           {form.items.map((item,i)=>(
-            <div key={item.id||i} style={{background:"#0a1828",borderRadius:9,padding:12,marginBottom:10,border:"1px solid #0f2035"}}>
+            <div key={item.id||i} style={{background:"#0a1828",borderRadius:9,padding:12,marginBottom:10,border:`1px solid ${item.medida_confirmada?"#26A69A30":"#0f2035"}`}}>
+              {/* Badge medida confirmada */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <Field label="Nombre / Referencia" style={{flex:1,marginRight:10}}>
+                  <Input value={item.nombre||""} onChange={e=>setItem(i,"nombre",e.target.value)} placeholder='Ej: Baño planta alta, Ventana living...'/>
+                </Field>
+                <div style={{paddingTop:18}}>
+                  {item.medida_confirmada
+                    ?<span style={{fontSize:10,fontWeight:700,color:"#26A69A",background:"#0a2a0a",border:"1px solid #26A69A40",padding:"2px 8px",borderRadius:99,whiteSpace:"nowrap"}}>✓ Medida confirmada</span>
+                    :(item.ancho||item.alto)&&<span style={{fontSize:10,color:"#5a8ab8",background:"#0a1020",border:"1px solid #1e3a5a",padding:"2px 8px",borderRadius:99,whiteSpace:"nowrap"}}>⏳ Sin confirmar</span>
+                  }
+                </div>
+              </div>
               {/* Fila 1: cant, tipo, medidas */}
               <div style={{display:"grid",gridTemplateColumns:"60px 1fr 100px 100px 28px",gap:8,alignItems:"end",marginBottom:8}}>
                 <Field label="Cant."><Input type="number" min="1" value={item.cant} onChange={e=>setItem(i,"cant",e.target.value)} style={{textAlign:"center"}}/></Field>
@@ -3188,6 +3202,7 @@ ${bizFooter()}`;
                         <div style={{background:"#1565C020",color:"#64B5F6",borderRadius:5,padding:"2px 8px",fontSize:13,fontWeight:700,flexShrink:0}}>{it.cant||1}×</div>
                         <div style={{flex:1}}>
                           <div style={{fontSize:13,color:"#c8e0f8",fontWeight:600}}>{it.tipo_vidrio||"—"}</div>
+                          {it.nombre&&<div style={{fontSize:12,color:"#FFB74D",fontWeight:700,marginTop:1}}>📍 {it.nombre}</div>}
                           {(it.ancho||it.alto)&&<div style={{fontSize:12,color:it.medida_confirmada?"#26A69A":"#3a6a9a",fontWeight:it.medida_confirmada?700:400}}>
                             {it.ancho}×{it.alto} mm{it.medida_confirmada?" ✓":""}
                           </div>}
@@ -3275,7 +3290,29 @@ ${bizFooter()}`;
                 </div>
               )}
 
-              {/* Fotos del lugar */}
+              {/* Fotos del trabajo (subidas por el colocador) */}
+        {(form.fotos_trabajo||[]).length>0&&(
+          <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #26A69A30",marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#26A69A",textTransform:"uppercase",marginBottom:8}}>
+              📸 Fotos del trabajo — subidas por el colocador
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {(form.fotos_trabajo||[]).map((f,i)=>(
+                <div key={i} style={{position:"relative"}}>
+                  <img src={f.data} alt="" style={{width:100,height:100,objectFit:"cover",borderRadius:8,border:"1px solid #26A69A40",cursor:"pointer"}} onClick={()=>window.open(f.data,"_blank")}/>
+                  <div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.6)",borderRadius:"0 0 8px 8px",padding:"2px 4px",fontSize:8,color:"#aaa",textAlign:"center"}}>
+                    {f.fecha?new Date(f.fecha).toLocaleDateString("es-AR"):""}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:11,color:"#2a4a6a",marginTop:6}}>
+              {(form.fotos_trabajo||[]).length} foto{(form.fotos_trabajo||[]).length!==1?"s":""} · Tocá para ver en grande
+            </div>
+          </div>
+        )}
+
+        {/* Fotos del lugar */}
               {(orden.fotos_instalacion||[]).length>0&&(
                 <div style={{marginBottom:10}}>
                   <div style={{fontSize:10,fontWeight:700,color:"#CE93D8",marginBottom:6}}>📷 FOTOS DEL LUGAR</div>
