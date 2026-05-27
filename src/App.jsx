@@ -888,7 +888,11 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
     fecha:hoy,estado:"presupuesto",
     items:[emptyItem()],
     condiciones:"50% al confirmar, saldo contra entrega.",
-    pago_senia:"",pago_saldo:"",pago_total:"",
+    pago_senia:"",pago_senia_fecha:"",pago_senia_metodo:"efectivo",
+    pago_saldo:"",pago_total:"",
+    pagos_parciales:[],
+    abonado_completo:false,pago_final_monto:"",pago_final_fecha:"",pago_final_metodo:"efectivo",
+    comp_senia:[],comp_final:[],
     plano:[],
     procesos_taller:PROCESOS_TALLER_DEFAULT,
     inst_notas:"",inst_fecha:"",inst_direccion:"",inst_responsable:"",inst_firmante:"",
@@ -1251,16 +1255,189 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
 
         {/* Pagos */}
         <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:10}}>
-            {modo==="orden"?"💳 Pagos":"💰 Total"}
+          <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:12}}>
+            {modo==="orden"?"💳 Pagos y Comprobantes":"💰 Total"}
           </div>
-          {modo==="orden"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
-            <Field label="Seña"><Input type="number" value={form.pago_senia} onChange={e=>set("pago_senia",e.target.value)} placeholder="$0"/></Field>
-            <Field label="Saldo"><Input type="number" value={form.pago_saldo} onChange={e=>set("pago_saldo",e.target.value)} placeholder="$0"/></Field>
-            <Field label="Total"><Input type="number" value={form.pago_total} onChange={e=>set("pago_total",e.target.value)} placeholder="$0"/></Field>
-          </div>}
-          {modo==="cotizacion"&&<Field label="Total"><Input type="number" value={form.pago_total||totalCalc} onChange={e=>set("pago_total",e.target.value)} placeholder="$0"/></Field>}
-          <Field label="Condiciones de pago"><Textarea value={form.condiciones} onChange={e=>set("condiciones",e.target.value)}/></Field>
+
+          {modo==="orden"&&<>
+            {/* ── TOTAL ── */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+              <Field label="💰 Total de la orden $">
+                <Input type="number" value={form.pago_total} onChange={e=>set("pago_total",e.target.value)} placeholder="0"/>
+              </Field>
+              <Field label="Condiciones">
+                <Input value={form.condiciones} onChange={e=>set("condiciones",e.target.value)} placeholder="50% inicio, 50% entrega..."/>
+              </Field>
+            </div>
+
+            {/* ── SEÑA ── */}
+            <div style={{background:"#0a1828",borderRadius:9,padding:12,marginBottom:10,border:"1px solid #1e3a5a"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#FFB74D",marginBottom:10}}>🤝 Seña</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}}>
+                <Field label="Monto $"><Input type="number" value={form.pago_senia} onChange={e=>set("pago_senia",e.target.value)} placeholder="0"/></Field>
+                <Field label="Fecha"><Input type="date" value={form.pago_senia_fecha||""} onChange={e=>set("pago_senia_fecha",e.target.value)}/></Field>
+                <Field label="Método">
+                  <Sel value={form.pago_senia_metodo||"efectivo"} onChange={e=>set("pago_senia_metodo",e.target.value)}>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="tarjeta">Tarjeta</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="mercadopago">Mercado Pago</option>
+                  </Sel>
+                </Field>
+              </div>
+              {/* Comprobante seña */}
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                <span style={{fontSize:11,color:"#3a6a9a"}}>Comprobante:</span>
+                {(form.comp_senia||[]).map((f,i)=>(
+                  <div key={i} style={{position:"relative"}}>
+                    <img src={f.data} alt="" style={{width:60,height:60,objectFit:"cover",borderRadius:6,border:"1px solid #FFB74D40",cursor:"pointer"}} onClick={()=>window.open(f.data,"_blank")}/>
+                    <button onClick={()=>setForm(fr=>({...fr,comp_senia:(fr.comp_senia||[]).filter((_,idx)=>idx!==i)}))}
+                      style={{position:"absolute",top:-5,right:-5,width:16,height:16,borderRadius:"50%",background:"#7f2020",border:"none",color:"#fff",cursor:"pointer",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                  </div>
+                ))}
+                <label style={{width:60,height:60,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#0a1020",borderRadius:6,border:"1px dashed #FFB74D40",cursor:"pointer"}}>
+                  <span style={{fontSize:18}}>📎</span>
+                  <span style={{fontSize:8,color:"#3a6a9a"}}>Subir</span>
+                  <input type="file" accept="image/*,application/pdf" multiple style={{display:"none"}} onChange={e=>{
+                    Array.from(e.target.files).forEach(f=>{
+                      if(f.size>5*1024*1024){alert("Máx 5MB");return;}
+                      const r=new FileReader();
+                      r.onload=ev=>setForm(fr=>({...fr,comp_senia:[...(fr.comp_senia||[]),{data:ev.target.result,nombre:f.name,tipo:f.type}]}));
+                      r.readAsDataURL(f);
+                    });
+                  }}/>
+                </label>
+              </div>
+            </div>
+
+            {/* ── HISTORIAL DE PAGOS PARCIALES ── */}
+            <div style={{background:"#0a1828",borderRadius:9,padding:12,marginBottom:10,border:"1px solid #1e3a5a"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#64B5F6"}}>📋 Pagos parciales</div>
+                <Btn small onClick={()=>{
+                  const monto=window.prompt("Monto $:");
+                  if(!monto||!+monto) return;
+                  const nuevo={id:Math.random().toString(36).slice(2,8),monto:+monto,fecha:new Date().toISOString().split("T")[0],metodo:"efectivo",nota:"",comp:[]};
+                  set("pagos_parciales",[...(form.pagos_parciales||[]),nuevo]);
+                }}><Icon name="plus" size={13}/> Agregar pago</Btn>
+              </div>
+              {(form.pagos_parciales||[]).length===0&&<div style={{fontSize:12,color:"#2a4a6a"}}>Sin pagos parciales registrados</div>}
+              {(form.pagos_parciales||[]).map((p,i)=>(
+                <div key={p.id||i} style={{display:"grid",gridTemplateColumns:"100px 90px 1fr auto",gap:8,alignItems:"center",padding:"6px 0",borderBottom:"1px solid #0f2035"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#A5D6A7"}}>${(+p.monto).toLocaleString("es-AR")}</div>
+                  <div style={{fontSize:11,color:"#3a6a9a"}}>{p.fecha}</div>
+                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    <Sel value={p.metodo||"efectivo"} onChange={e=>{const arr=[...(form.pagos_parciales||[])];arr[i]={...arr[i],metodo:e.target.value};set("pagos_parciales",arr);}} style={{fontSize:11,padding:"2px 6px"}}>
+                      <option value="efectivo">Efectivo</option>
+                      <option value="transferencia">Transferencia</option>
+                      <option value="tarjeta">Tarjeta</option>
+                      <option value="mercadopago">MP</option>
+                    </Sel>
+                    {/* comprobante del pago parcial */}
+                    {(p.comp||[]).map((c,ci)=>(
+                      <img key={ci} src={c.data} alt="" style={{width:32,height:32,objectFit:"cover",borderRadius:4,cursor:"pointer",border:"1px solid #64B5F640"}} onClick={()=>window.open(c.data,"_blank")}/>
+                    ))}
+                    <label style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",background:"#071220",borderRadius:4,border:"1px dashed #1e3a5a",cursor:"pointer",flexShrink:0}}>
+                      <span style={{fontSize:14}}>📎</span>
+                      <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
+                        const f=e.target.files[0];if(!f)return;
+                        const r=new FileReader();
+                        r.onload=ev=>{const arr=[...(form.pagos_parciales||[])];arr[i]={...arr[i],comp:[...(arr[i].comp||[]),{data:ev.target.result,nombre:f.name}]};set("pagos_parciales",arr);};
+                        r.readAsDataURL(f);
+                      }}/>
+                    </label>
+                  </div>
+                  <button onClick={()=>set("pagos_parciales",(form.pagos_parciales||[]).filter((_,idx)=>idx!==i))}
+                    style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,display:"flex"}}><Icon name="trash" size={13}/></button>
+                </div>
+              ))}
+              {(form.pagos_parciales||[]).length>0&&<div style={{marginTop:8,fontSize:12,color:"#64B5F6",fontWeight:700}}>
+                Subtotal parciales: ${(form.pagos_parciales||[]).reduce((s,p)=>s+(+p.monto||0),0).toLocaleString("es-AR")}
+              </div>}
+            </div>
+
+            {/* ── PAGO FINAL / ABONADO COMPLETO ── */}
+            <div style={{background:"#0a1828",borderRadius:9,padding:12,border:`1px solid ${form.abonado_completo?"#26A69A40":"#1e3a5a"}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:form.abonado_completo?10:0}}>
+                <div style={{fontSize:11,fontWeight:700,color:form.abonado_completo?"#26A69A":"#5a8ab8"}}>
+                  {form.abonado_completo?"✅ ABONADO COMPLETO":"💳 Pago final / saldo"}
+                </div>
+                <button onClick={()=>{
+                  if(form.abonado_completo){set("abonado_completo",false);}
+                  else{set("abonado_completo",true);set("pago_final_fecha",new Date().toISOString().split("T")[0]);}
+                }} style={{padding:"5px 12px",borderRadius:7,border:`1px solid ${form.abonado_completo?"#26A69A":"#1565C0"}`,
+                  background:form.abonado_completo?"#0a2a1a":"#0a1828",
+                  color:form.abonado_completo?"#26A69A":"#64B5F6",
+                  cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:700}}>
+                  {form.abonado_completo?"↩ Revertir":"✅ Marcar como abonado"}
+                </button>
+              </div>
+              {form.abonado_completo&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}}>
+                <Field label="Monto final $"><Input type="number" value={form.pago_final_monto||""} onChange={e=>set("pago_final_monto",e.target.value)} placeholder="0"/></Field>
+                <Field label="Fecha"><Input type="date" value={form.pago_final_fecha||""} onChange={e=>set("pago_final_fecha",e.target.value)}/></Field>
+                <Field label="Método">
+                  <Sel value={form.pago_final_metodo||"efectivo"} onChange={e=>set("pago_final_metodo",e.target.value)}>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="tarjeta">Tarjeta</option>
+                    <option value="mercadopago">Mercado Pago</option>
+                  </Sel>
+                </Field>
+              </div>}
+              {form.abonado_completo&&<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                <span style={{fontSize:11,color:"#3a6a9a"}}>Comprobante:</span>
+                {(form.comp_final||[]).map((f,i)=>(
+                  <div key={i} style={{position:"relative"}}>
+                    <img src={f.data} alt="" style={{width:60,height:60,objectFit:"cover",borderRadius:6,border:"1px solid #26A69A40",cursor:"pointer"}} onClick={()=>window.open(f.data,"_blank")}/>
+                    <button onClick={()=>setForm(fr=>({...fr,comp_final:(fr.comp_final||[]).filter((_,idx)=>idx!==i)}))}
+                      style={{position:"absolute",top:-5,right:-5,width:16,height:16,borderRadius:"50%",background:"#7f2020",border:"none",color:"#fff",cursor:"pointer",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                  </div>
+                ))}
+                <label style={{width:60,height:60,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#0a1020",borderRadius:6,border:"1px dashed #26A69A40",cursor:"pointer"}}>
+                  <span style={{fontSize:18}}>📎</span>
+                  <span style={{fontSize:8,color:"#3a6a9a"}}>Subir</span>
+                  <input type="file" accept="image/*,application/pdf" multiple style={{display:"none"}} onChange={e=>{
+                    Array.from(e.target.files).forEach(f=>{
+                      if(f.size>5*1024*1024){alert("Máx 5MB");return;}
+                      const r=new FileReader();
+                      r.onload=ev=>setForm(fr=>({...fr,comp_final:[...(fr.comp_final||[]),{data:ev.target.result,nombre:f.name}]}));
+                      r.readAsDataURL(f);
+                    });
+                  }}/>
+                </label>
+              </div>}
+
+              {/* Resumen financiero */}
+              {(+form.pago_total||0)>0&&<div style={{marginTop:10,padding:"8px 0",borderTop:"1px solid #1e3a5a"}}>
+                {(()=>{
+                  const total=+form.pago_total||0;
+                  const senia=+form.pago_senia||0;
+                  const parciales=(form.pagos_parciales||[]).reduce((s,p)=>s+(+p.monto||0),0);
+                  const final=+form.pago_final_monto||0;
+                  const cobrado=senia+parciales+final;
+                  const resta=Math.max(0,total-cobrado);
+                  return<>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#5a8ab8",marginBottom:3}}>
+                      <span>Total: ${total.toLocaleString("es-AR")}</span>
+                      <span>Cobrado: ${cobrado.toLocaleString("es-AR")}</span>
+                    </div>
+                    <div style={{height:6,background:"#0f2035",borderRadius:3,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${Math.min(100,total>0?cobrado/total*100:0)}%`,background:resta===0?"#26A69A":"#FFB74D",borderRadius:3,transition:"width 0.3s"}}/>
+                    </div>
+                    <div style={{fontSize:12,fontWeight:700,color:resta===0?"#26A69A":"#FFB74D",marginTop:4,textAlign:"right"}}>
+                      {resta===0?"✅ Pagado completo":`Saldo: $${resta.toLocaleString("es-AR")}`}
+                    </div>
+                  </>;
+                })()}
+              </div>}
+            </div>
+          </>}
+
+          {modo==="cotizacion"&&<>
+            <Field label="Total"><Input type="number" value={form.pago_total||totalCalc} onChange={e=>set("pago_total",e.target.value)} placeholder="$0"/></Field>
+            <Field label="Condiciones de pago" style={{marginTop:10}}><Textarea value={form.condiciones} onChange={e=>set("condiciones",e.target.value)}/></Field>
+          </>}
         </div>
       </div>}
 
@@ -1906,7 +2083,17 @@ function AppInner({ currentUser, onLogout }) {
         </Sel>
       </div>
       <div style={{display:"grid",gap:7}}>
-        {filtered.map(o=>(
+        {filtered.map(o=>{
+          const total=+o.pago_total||0;
+          const senia=+o.pago_senia||0;
+          const parciales=(o.pagos_parciales||[]).reduce((s,p)=>s+(+p.monto||0),0);
+          const final=+o.pago_final_monto||0;
+          const cobrado=senia+parciales+final;
+          const resta=Math.max(0,total-cobrado);
+          const pagoEstado=o.abonado_completo||resta===0&&total>0?"completo":cobrado>0?"parcial":"sinpagar";
+          const pagoColor=pagoEstado==="completo"?"#26A69A":pagoEstado==="parcial"?"#FFB74D":"#5a8ab8";
+          const pagoIcon=pagoEstado==="completo"?"✅":pagoEstado==="parcial"?"🟡":"🔴";
+          return(
           <div key={o.id} style={{background:"#071220",borderRadius:11,padding:"12px 14px",border:`1px solid ${o.estado==="cancelada"?"#EF535020":"#0f2035"}`,display:"flex",alignItems:"center",gap:12,opacity:o.estado==="cancelada"?0.6:1}}>
             <div style={{background:"#0a1828",border:"1px solid #1565C025",borderRadius:7,padding:"4px 10px",minWidth:95,textAlign:"center",flexShrink:0}}>
               <div style={{fontSize:11,fontWeight:800,color:"#1565C0",fontFamily:"monospace",letterSpacing:"0.5px"}}>{o.numero||"—"}</div>
@@ -1914,33 +2101,26 @@ function AppInner({ currentUser, onLogout }) {
             </div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2,flexWrap:"wrap"}}>
-                <span style={{fontSize:14,fontWeight:600,color:"#e2f0ff"}}>{o.numero||"Sin número"}</span>
-                {o.tipo&&<span style={{fontSize:11,color:"#3a6a9a",background:"#0f2035",padding:"1px 7px",borderRadius:99}}>{o.tipo}</span>}
+                <span style={{fontSize:14,fontWeight:600,color:"#e2f0ff"}}>{getNombre(o.cliente)||"Sin cliente"}</span>
                 {o.ref_cotizacion&&<span style={{fontSize:10,color:"#FFB74D",background:"#2a1a00",border:"1px solid #FFB74D30",padding:"1px 8px",borderRadius:99}}>ref. {o.ref_cotizacion}</span>}
               </div>
-              <div style={{fontSize:12,color:"#3a6a9a",marginBottom:+o.monto>0?5:0}}>{getNombre(o.cliente)}{o.monto?` · $${(+o.monto).toLocaleString("es-AR")}`:""}</div>
-              {+o.monto>0&&(()=>{
-                const pct=Math.min(100,Math.round(((+o.monto_abonado||0)/(+o.monto))*100));
-                const barColor=pct>=100?"linear-gradient(90deg,#26A69A,#4CAF50)":pct>0?"linear-gradient(90deg,#1565C0,#42A5F5)":"#1e3a5a";
-                const textColor=pct>=100?"#26A69A":pct>0?"#64B5F6":"#3a6a9a";
-                return(
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{flex:1,height:5,background:"#0a1828",borderRadius:99,overflow:"hidden"}}>
-                      <div style={{height:"100%",borderRadius:99,background:barColor,width:pct+"%"}}/>
-                    </div>
-                    <span style={{fontSize:10,fontWeight:700,color:textColor,whiteSpace:"nowrap",minWidth:28}}>{pct}%</span>
-                  </div>
-                );
-              })()}
+              {total>0&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                <div style={{flex:1,height:4,background:"#0a1828",borderRadius:99,overflow:"hidden"}}>
+                  <div style={{height:"100%",borderRadius:99,background:pagoEstado==="completo"?"#26A69A":pagoEstado==="parcial"?"#FFB74D":"#1e3a5a",width:`${Math.min(100,total>0?cobrado/total*100:0)}%`,transition:"width 0.3s"}}/>
+                </div>
+                <span style={{fontSize:10,fontWeight:700,color:pagoColor,whiteSpace:"nowrap"}}>
+                  {pagoIcon} {pagoEstado==="completo"?"Pagado":pagoEstado==="parcial"?`$${cobrado.toLocaleString("es-AR")} / $${total.toLocaleString("es-AR")}`:`$${total.toLocaleString("es-AR")}`}
+                </span>
+              </div>}
             </div>
             <Badge estado={o.estado} estados={estados}/>
             <div style={{display:"flex",gap:3}}>
-              <button title="Generar PDF" onClick={()=>printOrden(o,getNombre(o.cliente),plantillas.find(p=>p.id===o.plantilla_id),estados)} style={{background:"none",border:"none",color:"#26A69A",cursor:"pointer",padding:6,borderRadius:6,display:"flex"}}><Icon name="pdf" size={15}/></button>
               <button onClick={()=>setModal({type:"editar_orden",data:o})} style={{background:"none",border:"none",color:"#3a6a9a",cursor:"pointer",padding:6,borderRadius:6,display:"flex"}}><Icon name="edit" size={15}/></button>
               <button onClick={()=>deleteOrden(o.id)} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:6,borderRadius:6,display:"flex"}}><Icon name="trash" size={15}/></button>
             </div>
           </div>
-        ))}
+          );
+        })}
         {!filtered.length&&<div style={{textAlign:"center",padding:"44px 0",color:"#2a4a6a"}}><Icon name="orders" size={40}/><p style={{marginTop:12,fontSize:14}}>No hay órdenes que coincidan</p><Btn small onClick={()=>setModal({type:"nueva_orden"})} style={{marginTop:8}}><Icon name="plus" size={14}/> Crear primera orden</Btn></div>}
       </div>
     </div>
