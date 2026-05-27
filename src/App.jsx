@@ -3132,23 +3132,101 @@ ${bizFooter()}`;
                 </span>
               </div>
 
-              {/* Vidrios */}
-              {(orden.items||[]).length>0&&(
-                <div style={{background:"#0a1828",borderRadius:8,padding:10,marginBottom:10}}>
-                  <div style={{fontSize:10,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:6}}>Pedido</div>
-                  {orden.items.map((it,i)=>(
-                    <div key={i} style={{display:"flex",gap:8,padding:"5px 0",borderBottom:i<orden.items.length-1?"1px solid #0f2035":"none",alignItems:"center"}}>
-                      <div style={{background:"#1565C020",color:"#64B5F6",borderRadius:5,padding:"2px 8px",fontSize:13,fontWeight:700,flexShrink:0}}>{it.cant||1}×</div>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:13,color:"#c8e0f8",fontWeight:600}}>{it.tipo_vidrio||"—"}</div>
-                        {(it.ancho||it.alto)&&<div style={{fontSize:11,color:"#3a6a9a"}}>{it.ancho}×{it.alto} mm</div>}
-                        {(it.obs||[]).length>0&&<div style={{fontSize:11,color:"#5a8ab8"}}>{it.obs.join(", ")}</div>}
+              {/* Vidrios — EDITABLES */}
+              {(()=>{
+                const [editando, setEditando] = React.useState(false);
+                const [itemsEdit, setItemsEdit] = React.useState(null);
+                const nid2=()=>Math.random().toString(36).slice(2,8);
+
+                const iniciarEdicion=()=>{
+                  setItemsEdit((orden.items||[]).map(it=>({...it})));
+                  setEditando(true);
+                };
+                const guardarMedidas=async()=>{
+                  const log={id:nid2(),tipo:"Medidas actualizadas en campo",nota:`Por ${currentUser.nombre}`,fecha:new Date().toISOString(),equipo,usuario:currentUser.nombre,resuelto:true};
+                  await saveOrden({...orden,items:itemsEdit,incidencias:[...(orden.incidencias||[]),log]});
+                  setEditando(false);setItemsEdit(null);
+                };
+                const setItem2=(i,k,v)=>setItemsEdit(arr=>{const a=[...arr];a[i]={...a[i],[k]:v};return a;});
+                const addItem=()=>setItemsEdit(arr=>[...arr,{id:nid2(),cant:1,tipo_vidrio:"",ancho:"",alto:"",obs:[],servicio:"",colocacion:"con_colocacion",precio:"",plano:[]}]);
+                const removeItem=(i)=>setItemsEdit(arr=>arr.filter((_,idx)=>idx!==i));
+
+                const inpS={background:"#050d18",border:"1px solid #1e3a5a",borderRadius:5,color:"#c8e0f8",padding:"4px 7px",fontSize:12,fontFamily:"inherit",width:"100%"};
+
+                return(
+                  <div style={{background:"#0a1828",borderRadius:8,padding:10,marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <div style={{fontSize:10,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase"}}>
+                        📐 Medidas
+                        {(orden.items||[]).some(it=>it.medida_confirmada)&&<span style={{color:"#26A69A",marginLeft:6}}>✓ Confirmadas</span>}
                       </div>
-                      {it.plano?.length>0&&<div style={{fontSize:10,color:"#26A69A"}}>✏ Plano</div>}
+                      {!editando
+                        ?<button onClick={iniciarEdicion} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #1565C040",background:"#0a1828",color:"#64B5F6",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:700}}>✏ Editar medidas</button>
+                        :<div style={{display:"flex",gap:6}}>
+                          <button onClick={()=>{setEditando(false);setItemsEdit(null);}} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #1e3a5a",background:"transparent",color:"#5a8ab8",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Cancelar</button>
+                          <button onClick={guardarMedidas} style={{padding:"3px 10px",borderRadius:6,border:"none",background:"#1565C0",color:"#fff",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:700}}>✓ Guardar</button>
+                        </div>
+                      }
                     </div>
-                  ))}
-                </div>
-              )}
+
+                    {!editando&&(orden.items||[]).map((it,i)=>(
+                      <div key={i} style={{display:"flex",gap:8,padding:"6px 0",borderBottom:i<(orden.items||[]).length-1?"1px solid #0f2035":"none",alignItems:"center"}}>
+                        <div style={{background:"#1565C020",color:"#64B5F6",borderRadius:5,padding:"2px 8px",fontSize:13,fontWeight:700,flexShrink:0}}>{it.cant||1}×</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,color:"#c8e0f8",fontWeight:600}}>{it.tipo_vidrio||"—"}</div>
+                          {(it.ancho||it.alto)&&<div style={{fontSize:12,color:it.medida_confirmada?"#26A69A":"#3a6a9a",fontWeight:it.medida_confirmada?700:400}}>
+                            {it.ancho}×{it.alto} mm{it.medida_confirmada?" ✓":""}
+                          </div>}
+                          {(it.obs||[]).length>0&&<div style={{fontSize:11,color:"#5a8ab8"}}>{it.obs.join(", ")}</div>}
+                        </div>
+                        {it.plano?.length>0&&<div style={{fontSize:10,color:"#26A69A"}}>✏</div>}
+                      </div>
+                    ))}
+
+                    {editando&&itemsEdit&&<>
+                      {itemsEdit.map((it,i)=>(
+                        <div key={it.id||i} style={{background:"#071220",borderRadius:8,padding:10,marginBottom:8,border:"1px solid #1565C030"}}>
+                          <div style={{display:"grid",gridTemplateColumns:"50px 1fr 80px 80px 28px",gap:6,marginBottom:6,alignItems:"end"}}>
+                            <div>
+                              <div style={{fontSize:9,color:"#3a6a9a",marginBottom:2}}>CANT.</div>
+                              <input type="number" min="1" value={it.cant||1} onChange={e=>setItem2(i,"cant",e.target.value)} style={{...inpS,textAlign:"center"}}/>
+                            </div>
+                            <div>
+                              <div style={{fontSize:9,color:"#3a6a9a",marginBottom:2}}>TIPO DE VIDRIO</div>
+                              <select value={tiposVidrio.includes(it.tipo_vidrio)?it.tipo_vidrio:it.tipo_vidrio?"__otro__":""} onChange={e=>{if(e.target.value==="__otro__")setItem2(i,"tipo_vidrio","");else setItem2(i,"tipo_vidrio",e.target.value);}} style={{...inpS}}>
+                                <option value="">Seleccionar...</option>
+                                {tiposVidrio.map(t=><option key={t} value={t}>{t}</option>)}
+                                <option value="__otro__">✏ Otro...</option>
+                              </select>
+                              {!tiposVidrio.includes(it.tipo_vidrio)&&it.tipo_vidrio!==""&&
+                                <input value={it.tipo_vidrio} onChange={e=>setItem2(i,"tipo_vidrio",e.target.value)} placeholder="Tipo..." style={{...inpS,marginTop:4}}/>}
+                            </div>
+                            <div>
+                              <div style={{fontSize:9,color:"#FFB74D",marginBottom:2}}>ANCHO mm</div>
+                              <input type="number" value={it.ancho||""} onChange={e=>setItem2(i,"ancho",e.target.value)} placeholder="0" style={{...inpS}}/>
+                            </div>
+                            <div>
+                              <div style={{fontSize:9,color:"#FFB74D",marginBottom:2}}>ALTO mm</div>
+                              <input type="number" value={it.alto||""} onChange={e=>setItem2(i,"alto",e.target.value)} placeholder="0" style={{...inpS}}/>
+                            </div>
+                            <button onClick={()=>removeItem(i)} disabled={itemsEdit.length<=1} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,opacity:itemsEdit.length<=1?0.3:1,marginTop:14}}>✕</button>
+                          </div>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <input value={it.obs?.join(", ")||""} onChange={e=>setItem2(i,"obs",e.target.value?e.target.value.split(",").map(s=>s.trim()).filter(Boolean):[])} placeholder="Observaciones (con forma, perforación...)" style={{...inpS,flex:1,fontSize:11}}/>
+                            <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:it.medida_confirmada?"#26A69A":"#3a6a9a",fontSize:11,whiteSpace:"nowrap"}}>
+                              <input type="checkbox" checked={!!it.medida_confirmada} onChange={e=>setItem2(i,"medida_confirmada",e.target.checked)} style={{accentColor:"#26A69A"}}/>
+                              ✓ Medida ok
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                      <button onClick={addItem} style={{width:"100%",padding:"7px",borderRadius:7,border:"1px dashed #1565C040",background:"transparent",color:"#64B5F6",cursor:"pointer",fontSize:12,fontFamily:"inherit",marginTop:2}}>
+                        + Agregar vidrio
+                      </button>
+                    </>}
+                  </div>
+                );
+              })()}
 
               {/* Notas de instalación */}
               {orden.inst_notas&&(
