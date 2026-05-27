@@ -3143,8 +3143,22 @@ ${bizFooter()}`;
                   setEditando(true);
                 };
                 const guardarMedidas=async()=>{
+                  // Check if there are open measurement problems
+                  const problemaMedidas=(orden.incidencias||[]).filter(i=>!i.resuelto&&i.tipo==="Medidas no coinciden");
+                  let incidenciasActualizadas=[...(orden.incidencias||[])];
+
+                  if(problemaMedidas.length>0){
+                    const resolver=window.confirm("Hay un problema de 'Medidas no coinciden' abierto.\n¿Las nuevas medidas están correctas y resuelven el problema?");
+                    if(resolver){
+                      incidenciasActualizadas=incidenciasActualizadas.map(i=>
+                        (!i.resuelto&&i.tipo==="Medidas no coinciden")
+                          ?{...i,resuelto:true,resuelto_por:currentUser.nombre,resuelto_fecha:new Date().toISOString()}
+                          :i
+                      );
+                    }
+                  }
                   const log={id:nid2(),tipo:"Medidas actualizadas en campo",nota:`Por ${currentUser.nombre}`,fecha:new Date().toISOString(),equipo,usuario:currentUser.nombre,resuelto:true};
-                  await saveOrden({...orden,items:itemsEdit,incidencias:[...(orden.incidencias||[]),log]});
+                  await saveOrden({...orden,items:itemsEdit,incidencias:[...incidenciasActualizadas,log]});
                   setEditando(false);setItemsEdit(null);
                 };
                 const setItem2=(i,k,v)=>setItemsEdit(arr=>{const a=[...arr];a[i]={...a[i],[k]:v};return a;});
@@ -3227,6 +3241,31 @@ ${bizFooter()}`;
                   </div>
                 );
               })()}
+
+              {/* Incidencias — visibles y resolvibles por el colocador */}
+              {(orden.incidencias||[]).filter(i=>!i.resuelto).length>0&&(
+                <div style={{background:"#1a0800",borderRadius:8,padding:10,marginBottom:10,border:"1px solid #FFB74D40"}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#FFB74D",textTransform:"uppercase",marginBottom:8}}>⚠ Problemas abiertos</div>
+                  {(orden.incidencias||[]).filter(i=>!i.resuelto).map((inc,i)=>(
+                    <div key={inc.id||i} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"6px 0",borderBottom:i<(orden.incidencias||[]).filter(x=>!x.resuelto).length-1?"1px solid #2a1500":"none"}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#FFB74D"}}>{inc.tipo}</div>
+                        {inc.nota&&<div style={{fontSize:11,color:"#8a6a3a",marginTop:2}}>{inc.nota}</div>}
+                        <div style={{fontSize:10,color:"#5a4a2a",marginTop:2}}>{new Date(inc.fecha).toLocaleString("es-AR")}</div>
+                      </div>
+                      <button onClick={async()=>{
+                        if(!window.confirm(`¿Marcar "${inc.tipo}" como resuelto?`))return;
+                        const updated=(orden.incidencias||[]).map(x=>
+                          x.id===inc.id?{...x,resuelto:true,resuelto_por:currentUser.nombre,resuelto_fecha:new Date().toISOString()}:x
+                        );
+                        await saveOrden({...orden,incidencias:updated});
+                      }} style={{padding:"4px 10px",borderRadius:6,border:"1px solid #26A69A40",background:"#0a2a0a",color:"#26A69A",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
+                        ✓ Resolver
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Notas de instalación */}
               {orden.inst_notas&&(
