@@ -941,6 +941,80 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
   ];
 
   // ── PDF TALLER ────────────────────────────────────────────────────────────
+  // ── PDF ETIQUETAS 55×44mm ─────────────────────────────────────────────────
+  const pdfEtiquetas=()=>{
+    const items=form.items||[];
+    if(!items.length){alert("No hay ítems en esta orden.");return;}
+    const domicilio=form.inst_direccion||form.contacto_dom||"";
+    const cliente=form.contacto_nombre||"";
+    const numero=form.numero||"";
+
+    // Generate one label per item (repeated by quantity)
+    const etiquetas=items.flatMap(it=>{
+      const qty=+it.cant||1;
+      return Array(qty).fill(null).map((_,qi)=>({
+        numero,
+        nombre:it.nombre||"",
+        tipo:it.tipo_vidrio||"",
+        medidas:it.ancho&&it.alto?`${it.ancho} × ${it.alto} mm`:"",
+        obs:(it.obs||[]).join(", "),
+        domicilio,
+        cliente,
+        idx:qi+1,
+        total:qty,
+      }));
+    });
+
+    // 55mm × 44mm at 96dpi ≈ 208px × 166px
+    // We print 2 columns to fit on A4, but page size set to label size
+    const labelHTML=etiquetas.map((e,i)=>`
+      <div class="label">
+        <div class="orden">${e.numero}</div>
+        ${e.nombre?`<div class="nombre">${e.nombre}${e.total>1?` (${e.idx}/${e.total})`:""}</div>`:""}
+        <div class="medidas">${e.medidas||e.tipo}</div>
+        ${e.medidas?`<div class="tipo">${e.tipo}</div>`:""}
+        ${e.obs?`<div class="obs">${e.obs}</div>`:""}
+        <div class="domicilio">📍 ${e.domicilio||e.cliente||"—"}</div>
+      </div>`).join("");
+
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiquetas ${numero}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Helvetica Neue',Arial,sans-serif;background:#fff}
+  @page{size:55mm 44mm;margin:0}
+  .label{
+    width:55mm;height:44mm;
+    padding:2.5mm 3mm;
+    display:flex;flex-direction:column;justify-content:center;gap:0.8mm;
+    border:0.3mm solid #ccc;
+    page-break-after:always;
+    overflow:hidden;
+  }
+  .orden{font-size:7pt;color:#666;font-weight:600;letter-spacing:0.5px}
+  .nombre{font-size:9pt;font-weight:900;color:#000;line-height:1.1;text-transform:uppercase}
+  .medidas{font-size:13pt;font-weight:900;color:#000;letter-spacing:0.5px;line-height:1}
+  .tipo{font-size:7.5pt;color:#333;font-weight:600}
+  .obs{font-size:7pt;color:#555;font-style:italic}
+  .domicilio{font-size:7pt;color:#444;margin-top:1mm;border-top:0.2mm solid #eee;padding-top:1mm}
+  @media print{
+    body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    @page{size:55mm 44mm;margin:0}
+    .label{border:none;page-break-after:always}
+  }
+</style></head><body>${labelHTML}</body></html>`;
+
+    const w=window.open("","_blank","width=600,height=500");
+    if(w){
+      w.document.write(html);
+      w.document.close();
+      w.onload=()=>{
+        w.focus();
+        // Small delay to let browser render before print dialog
+        setTimeout(()=>w.print(),300);
+      };
+    }
+  };
+
   const pdfTaller=()=>{
     const rows=form.items.map((it,i)=>{
       const itemSVG=buildSVGStr(it.plano||[]);
@@ -969,14 +1043,15 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
     // Checklist compacto — casilleros por ítem y proceso
     const procesos = form.procesos_taller||PROCESOS_TALLER_DEFAULT;
     const procesoHeaders = procesos.map(p=>`<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.3px;border:1px solid #c8d8f0;min-width:52px;max-width:70px;color:#fff">${p}</th>`).join("");
-    const procesoRows = form.items.map((it,i)=>`
-      <tr style="background:${i%2===0?"#fff":"#f8fbff"}">
+    const procesoRows = (form.items||[]).map((it,i)=>{
+      return `<tr style="background:${i%2===0?"#fff":"#f8fbff"}">
         <td style="padding:8px 10px;text-align:center;font-weight:900;font-size:16px;border:1px solid #dde8ff;width:40px">${it.cant||1}</td>
         <td style="padding:8px 10px;font-weight:700;font-size:13px;border:1px solid #dde8ff">${it.tipo_vidrio||"—"}${it.nombre?`<br/><span style="font-size:11px;color:#1565C0;font-weight:400">${it.nombre}</span>`:""}</td>
-        <td style="padding:8px 10px;text-align:center;font-size:13px;border:1px solid #dde8ff;white-space:nowrap">${it.ancho&&it.alto?`${it.ancho}×${it.alto}`:"—"}</td>
+        <td style="padding:8px 10px;text-align:center;font-size:14px;font-weight:700;border:1px solid #dde8ff;white-space:nowrap;color:#0a2a5e">${it.ancho&&it.alto?`${it.ancho}×${it.alto} mm`:"—"}</td>
         <td style="padding:8px 10px;font-size:12px;border:1px solid #dde8ff;color:#555">${(it.obs||[]).join(", ")||""}</td>
-        ${procesos.map(()=>`<td style="padding:8px;text-align:center;border:1px solid #dde8ff"><div style="width:18px;height:18px;border:1.5px solid #1565C0;border-radius:3px;margin:0 auto;background:#fff"></div></td>`).join("")}
-      </tr>`).join("");
+        ${procesos.map(()=>`<td style="padding:8px;text-align:center;border:1px solid #dde8ff"><div style="width:20px;height:20px;border:2px solid #1565C0;border-radius:3px;margin:0 auto;background:#fff"></div></td>`).join("")}
+      </tr>`;
+    }).join("");
 
     const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Taller ${form.numero||""}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e}
@@ -1035,11 +1110,11 @@ table{width:100%;border-collapse:collapse}
 
   // ── PDF COMPLETO ──────────────────────────────────────────────────────────
   const pdfCompleto=()=>{
-    const rows=form.items.map((it,i)=>`
+    const rows=(form.items||[]).map((it,i)=>`
       <tr style="background:${i%2===0?"#f8fbff":"#fff"}">
         <td style="padding:8px 12px;text-align:center;font-weight:700">${it.cant||1}</td>
         <td style="padding:8px 12px;font-weight:600">${it.tipo_vidrio||"—"}${it.nombre?`<br/><span style="font-size:11px;color:#1565C0;font-weight:400">${it.nombre}</span>`:""}</td>
-        <td style="padding:8px 12px;text-align:center">${it.ancho&&it.alto?`${it.ancho} × ${it.alto} mm`:"—"}</td>
+        <td style="padding:8px 12px;text-align:center;font-weight:700;color:#0a2a5e">${it.ancho&&it.alto?`${it.ancho} × ${it.alto} mm`:"—"}</td>
         <td style="padding:8px 12px">${(it.obs||[]).join(", ")||"—"}</td>
         <td style="padding:8px 12px">${it.servicio||"—"}</td>
         <td style="padding:8px 12px">${COLOCACION.find(c=>c.id===it.colocacion)?.label||"—"}</td>
@@ -1147,6 +1222,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
             📄 PDF {modo==="orden"?"Completo":"Presupuesto"}
           </button>
           {modo==="orden"&&<button onClick={pdfTaller} style={{padding:"6px 12px",borderRadius:7,border:"1px solid #26A69A40",background:"#0a1a10",color:"#26A69A",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:600}}>🔧 PDF Taller</button>}
+          {modo==="orden"&&<button onClick={pdfEtiquetas} style={{padding:"6px 12px",borderRadius:7,border:"1px solid #FFB74D40",background:"#1a1000",color:"#FFB74D",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:600}}>🏷 Etiquetas</button>}
           {modo==="cotizacion"&&onConvertir&&<button onClick={()=>onConvertir(form)} style={{padding:"6px 14px",borderRadius:7,border:"none",background:"#1b5e20",color:"#A5D6A7",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:700,display:"flex",alignItems:"center",gap:5}}>✅ → Orden</button>}
         </div>
         {modo==="orden"&&<Field label="Equipo asignado">
@@ -1215,8 +1291,12 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
                 </Field>
                 <Field label="Ancho (mm)"><Input type="number" value={item.ancho} onChange={e=>setItem(i,"ancho",e.target.value)} placeholder="0"/></Field>
                 <Field label="Alto (mm)"><Input type="number" value={item.alto} onChange={e=>setItem(i,"alto",e.target.value)} placeholder="0"/></Field>
-                <div style={{paddingBottom:2}}>
-                  <button onClick={()=>removeItem(i)} disabled={form.items.length<=1} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,opacity:form.items.length<=1?0.3:1,marginTop:18,display:"flex"}}><Icon name="trash" size={14}/></button>
+                <div style={{paddingBottom:2,display:"flex",flexDirection:"column",gap:4}}>
+                  <button onClick={()=>{
+                    const copy={...form.items[i],id:Math.random().toString(36).slice(2,8),plano:[]};
+                    setForm(f=>{const arr=[...f.items];arr.splice(i+1,0,copy);return{...f,items:arr};});
+                  }} title="Duplicar ítem" style={{background:"none",border:"none",color:"#3a6a9a",cursor:"pointer",padding:4,marginTop:18,display:"flex",fontSize:13}}>⧉</button>
+                  <button onClick={()=>removeItem(i)} disabled={form.items.length<=1} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:4,opacity:form.items.length<=1?0.3:1,display:"flex"}}><Icon name="trash" size={14}/></button>
                 </div>
               </div>
 
