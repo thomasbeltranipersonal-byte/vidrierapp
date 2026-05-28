@@ -1948,7 +1948,7 @@ function AppInner({ currentUser, onLogout }) {
   });
 
   // ── LOADING SCREEN ────────────────────────────────────────────────────────
-  if(loading) return(
+  if(loading && currentUser.rol!=="colocador") return(
     <div style={{minHeight:"100vh",background:"#060f1a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
       <div style={{width:48,height:48,background:"linear-gradient(135deg,#1565C0,#0d47a1)",borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center"}}>
         <Icon name="glass" size={28} color="#fff"/>
