@@ -26,8 +26,10 @@ const LoginScreen = ({ onLogin }) => {
     setTimeout(() => {
       const user = USUARIOS.find(u => u.usuario === usuario && u.clave === clave);
       if (user) {
-        sessionStorage.setItem("vidrierapp_user", JSON.stringify(user));
-        onLogin(user);
+        // Always save the full current user object (including equipo field)
+        const freshUser = {...user};
+        sessionStorage.setItem("vidrierapp_user", JSON.stringify(freshUser));
+        onLogin(freshUser);
       } else {
         setError("Usuario o contraseña incorrectos");
         setLoading(false);
@@ -3240,7 +3242,9 @@ ${bizFooter()}`;
   };
 
   const ColocadorView=()=>{
-    const equipo=currentUser.equipo;
+    // Always get fresh user data from USUARIOS to handle old sessions
+    const userData = USUARIOS.find(u=>u.usuario===currentUser.usuario)||currentUser;
+    const equipo = userData.equipo || currentUser.equipo;
     const misOrdenes=ordenes.filter(o=>
       o.equipo_asignado===equipo &&
       !["cobrado","cancelada"].includes(o.estado)
@@ -3525,7 +3529,17 @@ ${bizFooter()}`;
 
 export default function App() {
   const [currentUser, setCurrentUser] = React.useState(() => {
-    try { return JSON.parse(sessionStorage.getItem("vidrierapp_user")); } catch { return null; }
+    try {
+      const stored = JSON.parse(sessionStorage.getItem("vidrierapp_user"));
+      if (!stored) return null;
+      // Always refresh from USUARIOS to get latest fields (like equipo)
+      const fresh = USUARIOS.find(u => u.usuario === stored.usuario && u.clave === stored.clave);
+      if (fresh) {
+        sessionStorage.setItem("vidrierapp_user", JSON.stringify(fresh));
+        return fresh;
+      }
+      return stored;
+    } catch { return null; }
   });
   const handleLogout = () => {
     sessionStorage.removeItem("vidrierapp_user");
