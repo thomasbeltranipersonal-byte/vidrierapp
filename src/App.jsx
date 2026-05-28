@@ -3461,7 +3461,16 @@ ${bizFooter()}`;
         </div>
         <button onClick={onLogout} style={{background:"none",border:"1px solid #1e3a5a",color:"#3a6a9a",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Salir</button>
       </div>
-      <ColocadorView/>
+      {loading
+        ? <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 0",gap:12}}>
+            <div style={{display:"flex",gap:6}}>
+              {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#1565C0",animation:`pulse 1.2s ease-in-out ${i*0.2}s infinite`}}/>)}
+            </div>
+            <div style={{color:"#3a6a9a",fontSize:13}}>Cargando órdenes...</div>
+            <style>{`@keyframes pulse{0%,100%{opacity:0.3;transform:scale(0.8)}50%{opacity:1;transform:scale(1.2)}}`}</style>
+          </div>
+        : <ColocadorView/>
+      }
     </div>
   );
 
