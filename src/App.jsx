@@ -3476,9 +3476,7 @@ ${bizFooter()}`;
     );
   };
 
-  const pages={home:<Home/>,ordenes:<OrdenesList/>,tablero:<Tablero/>,clientes:<Clientes/>,cotizaciones:<Cotizaciones/>,stock:<Stock/>,reportes:<Reportes/>,optimize:<Optimizer/>,ayuda:<Ayuda/>};
-
-  // ── COLOCADOR: vista simplificada (AFTER all components defined) ────────────
+  // ── COLOCADOR: vista simplificada ─────────────────────────────────────────
   if(currentUser.rol==="colocador") return(
     <div style={{minHeight:"100vh",background:"#050d18",padding:"12px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,padding:"8px 12px",background:"#071220",borderRadius:10,border:"1px solid #1e3a5a"}}>
@@ -3500,6 +3498,8 @@ ${bizFooter()}`;
       }
     </div>
   );
+
+  const pages={home:<Home/>,ordenes:<OrdenesList/>,tablero:<Tablero/>,clientes:<Clientes/>,cotizaciones:<Cotizaciones/>,stock:<Stock/>,reportes:<Reportes/>,optimize:<Optimizer/>,ayuda:<Ayuda/>};
 
   return(
     <div style={{minHeight:"100vh",background:"#060f1a",fontFamily:"'DM Sans','Segoe UI',sans-serif",color:"#c8e0f8",display:"flex"}}>
