@@ -3250,6 +3250,16 @@ ${bizFooter()}`;
       !["cobrado","cancelada"].includes(o.estado)
     ).sort((a,b)=>(a.inst_fecha||"").localeCompare(b.inst_fecha||""));
 
+    // DEBUG — remove after fixing
+    const debugInfo = {
+      usuario: currentUser.usuario,
+      equipo_detectado: equipo,
+      total_ordenes: ordenes.length,
+      ordenes_con_equipo: ordenes.filter(o=>o.equipo_asignado).length,
+      mis_ordenes: misOrdenes.length,
+      sample: ordenes.slice(0,3).map(o=>({num:o.numero,eq:o.equipo_asignado,est:o.estado})),
+    };
+
     const reportarProblema=async(orden)=>{
       const tipos=["Medidas no coinciden","Cliente ausente","Material defectuoso","Vidrio roto en traslado","Acceso complicado","Otro"];
       const tipo=window.prompt(`Tipo de problema para ${orden.numero}:\n${tipos.map((t,i)=>`${i+1}. ${t}`).join("\n")}\n\nEscribí el número:`);
@@ -3282,10 +3292,23 @@ ${bizFooter()}`;
         </div>
 
         {misOrdenes.length===0&&(
-          <div style={{textAlign:"center",padding:"60px 20px",color:"#2a4a6a"}}>
-            <div style={{fontSize:48,marginBottom:12}}>✅</div>
+          <div style={{textAlign:"center",padding:"40px 20px",color:"#2a4a6a"}}>
+            <div style={{fontSize:40,marginBottom:10}}>✅</div>
             <div style={{fontSize:16,fontWeight:600,color:"#3a6a9a"}}>No tenés órdenes asignadas</div>
             <div style={{fontSize:13,color:"#2a4a6a",marginTop:6}}>Cuando te asignen trabajo aparecerá acá</div>
+            {/* DEBUG PANEL */}
+            <div style={{marginTop:20,padding:12,background:"#0a1020",borderRadius:8,border:"1px solid #1e3a5a",textAlign:"left",fontSize:11,fontFamily:"monospace",color:"#64B5F6"}}>
+              <div style={{color:"#FFB74D",fontWeight:700,marginBottom:6}}>🔍 Debug (solo visible temporalmente)</div>
+              <div>Usuario: {debugInfo.usuario}</div>
+              <div>Equipo detectado: "{debugInfo.equipo_detectado}"</div>
+              <div>Total órdenes en Firebase: {debugInfo.total_ordenes}</div>
+              <div>Órdenes con equipo asignado: {debugInfo.ordenes_con_equipo}</div>
+              <div>Mis órdenes: {debugInfo.mis_ordenes}</div>
+              <div style={{marginTop:6,color:"#A5D6A7"}}>Últimas 3 órdenes:</div>
+              {debugInfo.sample.map((o,i)=>(
+                <div key={i} style={{color:"#c8e0f8"}}>  {o.num} → equipo="{o.eq}" estado={o.est}</div>
+              ))}
+            </div>
           </div>
         )}
 
