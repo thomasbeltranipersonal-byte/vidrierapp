@@ -3371,29 +3371,7 @@ ${bizFooter()}`;
                 </div>
               )}
 
-              {/* Fotos del trabajo (subidas por el colocador) */}
-        {(form.fotos_trabajo||[]).length>0&&(
-          <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #26A69A30",marginBottom:14}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#26A69A",textTransform:"uppercase",marginBottom:8}}>
-              📸 Fotos del trabajo — subidas por el colocador
-            </div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {(form.fotos_trabajo||[]).map((f,i)=>(
-                <div key={i} style={{position:"relative"}}>
-                  <img src={f.data} alt="" style={{width:100,height:100,objectFit:"cover",borderRadius:8,border:"1px solid #26A69A40",cursor:"pointer"}} onClick={()=>window.open(f.data,"_blank")}/>
-                  <div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.6)",borderRadius:"0 0 8px 8px",padding:"2px 4px",fontSize:8,color:"#aaa",textAlign:"center"}}>
-                    {f.fecha?new Date(f.fecha).toLocaleDateString("es-AR"):""}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{fontSize:11,color:"#2a4a6a",marginTop:6}}>
-              {(form.fotos_trabajo||[]).length} foto{(form.fotos_trabajo||[]).length!==1?"s":""} · Tocá para ver en grande
-            </div>
-          </div>
-        )}
-
-        {/* Fotos del lugar */}
+              {/* Fotos del lugar */}
               {(orden.fotos_instalacion||[]).length>0&&(
                 <div style={{marginBottom:10}}>
                   <div style={{fontSize:10,fontWeight:700,color:"#CE93D8",marginBottom:6}}>📷 FOTOS DEL LUGAR</div>
