@@ -218,7 +218,6 @@ const openPDF = (html) => {
 
 const mkHTML = (title, body) => `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>${BIZ_CSS}</style></head><body>${body}</body></html>`;
 
-
 // ─── UI PRIMITIVES ───────────────────────────────────────────────────────────
 const iS = {width:"100%",background:"#071220",border:"1px solid #1e3a5a",borderRadius:8,padding:"9px 12px",color:"#c8e0f8",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
 
@@ -305,7 +304,6 @@ const ESTADOS_DEFAULT = [
 // Estados que NO aparecen en el tablero Kanban
 const ESTADOS_OCULTOS_TABLERO = ["cancelada"];
 
-const TIPOS_TRABAJO = ["Mampara de Baño","Espejo","Vidrio Ventana/Puerta","Trabajo de Obra","Frente de Cocina","Vidrio Templado","Baranda","Cerramiento","Otro"];
 const TIPOS_VIDRIO_DEFAULT = ["Float 3mm","Float 4mm","Float 5mm","Float 6mm","Float 8mm","Float 10mm","Templado 6mm","Templado 8mm","Templado 10mm","Templado 12mm","Laminado 4+4","Laminado 6+6","Espejo 3mm","Espejo 4mm","Espejo 5mm","Satinado","Arenado","Reflectivo","DVH","Curvo"];
 const TIPOS_VIDRIO = TIPOS_VIDRIO_DEFAULT; // fallback — se sobreescribe con Firebase
 
@@ -329,14 +327,6 @@ const getNextNum = async (key, prefix) => {
   }
 };
 
-// Versión sincrónica de fallback (usada como inicial antes de que el async resuelva)
-const newOrderNum = (list) => {
-  const yr = new Date().getFullYear().toString().slice(-2);
-  const ex = (list||[]).filter(o => o.numero?.startsWith(`OT-${yr}`));
-  const max = ex.reduce((m,o) => { const n = parseInt(o.numero?.split("-")[2]||0); return n>m?n:m; }, 0);
-  return `OT-${yr}-${String(max+1).padStart(4,"0")}`;
-};
-
 const PLANTILLAS_DEFAULT = [];
 
 // ─── OBSERVACIONES DEFAULT ──────────────────────────────────────────────────
@@ -344,9 +334,7 @@ const OBS_DEFAULT = ["Con forma","Con perforación","En altura","Con bisel","Con
 const SERVICIOS_DEFAULT = ["Service de mampara","Service de puerta templada","Instalación estándar","Solo medición","Reparación"];
 const PROCESOS_TALLER_DEFAULT = ["Corte","Pulido de borde","Perforación","Templado","Arenado","Biselado","Limpieza","Control de calidad","Embalaje"];
 
-
-
-// buildSVGStr — renders shape array as SVG HTML string for PDFs
+// buildSVGStr — renders shapes for PDF
 const buildSVGStr=(shapes)=>{
   if(!shapes||!shapes.length) return "";
   const pts=shapes.flatMap(s=>{
@@ -374,19 +362,22 @@ const buildSVGStr=(shapes)=>{
   return `<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:260px;border:1.5px solid #1a4a6e;border-radius:4px;background:#f0f8ff;display:block">${shapes.map(toStr).join("")}</svg>`;
 };
 // ─── COTIZACION / ORDEN FORM ─────────────────────────────────────────────────
-// ─── ITEM CANVAS PRO ─────────────────────────────────────────────────────────
+// ─── ITEM CANVAS v3 ──────────────────────────────────────────────────────────
 const ItemCanvas=({value,onChange,label,itemIdx})=>{
   const svgRef=useRef(null);
   const [tool,setTool]=useState("select");
   const [shapes,setShapes]=useState(value||[]);
   const [drawing,setDrawing]=useState(null);
+  const [freePath,setFreePath]=useState([]);
   const [selId,setSelId]=useState(null);
   const [drag,setDrag]=useState(null);
   const [open,setOpen]=useState(!!(value&&value.length));
-  const [scale,setScale]=useState(1); // zoom
+  // Stroke options
+  const [strokeW,setStrokeW]=useState(2);
+  const [strokeDash,setStrokeDash]=useState("0");
   const uid=()=>Math.random().toString(36).slice(2,8);
-  const W=600,H=320,SNAP=5;
-  const snap=v=>Math.round(v/SNAP)*SNAP;
+  const W=600,H=320;
+  const snap=v=>Math.round(v/5)*5;
   const commit=(sh)=>{setShapes(sh);onChange(sh);};
 
   const getPos=(e)=>{
@@ -395,30 +386,24 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
     const sx=W/r.width,sy=H/r.height;
     const src=e.touches?e.touches[0]:e;
     const raw={x:(src.clientX-r.left)*sx,y:(src.clientY-r.top)*sy};
-    return e.ctrlKey?raw:{x:snap(raw.x),y:snap(raw.y)};
+    return e.shiftKey?raw:{x:snap(raw.x),y:snap(raw.y)};
   };
 
   const hitTest=(s,p)=>{
-    if(s.type==="text"||s.type==="nota") return Math.abs(p.x-s.x)<40&&Math.abs(p.y-s.y)<14;
-    if(s.type==="perf") return Math.hypot(p.x-s.cx,p.y-s.cy)<(s.r||15)+8;
-    if(s.type==="bisagra"){const hw=s.rw||14,hh=(s.h||50)/2;return p.x>=s.cx-hw-8&&p.x<=s.cx+hw+8&&p.y>=s.cy-hh-8&&p.y<=s.cy+hh+8;}
-    if(s.cx!=null) return Math.hypot(p.x-s.cx,p.y-s.cy)<20; // arc center
-    if(s.type==="vidrio"||s.type==="poligono"){
-      const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
-      return p.x>=x-5&&p.x<=x+w+5&&p.y>=y-5&&p.y<=y+h+5;
-    }
-    if(s.type==="cota"||s.type==="linea"||s.type==="linea_punteada"){
-      const dx=s.x2-s.x1,dy=s.y2-s.y1,len=Math.hypot(dx,dy);
-      if(!len)return false;
-      const t=Math.max(0,Math.min(1,((p.x-s.x1)*dx+(p.y-s.y1)*dy)/(len*len)));
-      return Math.hypot(p.x-s.x1-t*dx,p.y-s.y1-t*dy)<10;
+    if(s.type==="text"||s.type==="nota") return Math.abs(p.x-s.x)<50&&Math.abs(p.y-s.y)<16;
+    if(s.type==="perf") return Math.hypot(p.x-s.cx,p.y-s.cy)<(s.r||15)+10;
+    if(s.type==="bisagra"){const hw=s.rw||12,hh=(s.h||46)/2;return p.x>=s.cx-hw-8&&p.x<=s.cx+hw+8&&p.y>=s.cy-hh-8&&p.y<=s.cy+hh+8;}
+    if(s.type==="free"){if(!s.pts||s.pts.length<2)return false;for(let i=0;i<s.pts.length-1;i++){const dx=s.pts[i+1][0]-s.pts[i][0],dy=s.pts[i+1][1]-s.pts[i][1],len=Math.hypot(dx,dy);if(!len)continue;const t=Math.max(0,Math.min(1,((p.x-s.pts[i][0])*dx+(p.y-s.pts[i][1])*dy)/(len*len)));if(Math.hypot(p.x-s.pts[i][0]-t*dx,p.y-s.pts[i][1]-t*dy)<10)return true;}return false;}
+    if(s.type==="vidrio"||s.type==="cota"||s.type==="linea"||s.type==="linea_punteada"||s.type==="arco"){
+      if(s.x1!=null){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);if(s.type==="vidrio"||s.type==="arco")return p.x>=x-5&&p.x<=x+w+5&&p.y>=y-5&&p.y<=y+h+5;const dx=s.x2-s.x1,dy=s.y2-s.y1,len=Math.hypot(dx,dy);if(!len)return false;const t=Math.max(0,Math.min(1,((p.x-s.x1)*dx+(p.y-s.y1)*dy)/(len*len)));return Math.hypot(p.x-s.x1-t*dx,p.y-s.y1-t*dy)<10;}
     }
     return false;
   };
 
   const moveShape=(s,dx,dy)=>{
-    if(s.type==="text"||s.type==="nota") return{...s,x:snap(s.x+dx),y:snap(s.y+dy)};
-    if(s.cx!=null) return{...s,cx:snap(s.cx+dx),cy:snap(s.cy+dy)};
+    if(s.type==="text"||s.type==="nota")return{...s,x:snap(s.x+dx),y:snap(s.y+dy)};
+    if(s.cx!=null)return{...s,cx:snap(s.cx+dx),cy:snap(s.cy+dy)};
+    if(s.type==="free"&&s.pts)return{...s,pts:s.pts.map(([x,y])=>[snap(x+dx),snap(y+dy)])};
     return{...s,x1:snap(s.x1+dx),y1:snap(s.y1+dy),x2:snap(s.x2+dx),y2:snap(s.y2+dy)};
   };
 
@@ -431,24 +416,22 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
       else setSelId(null);
       return;
     }
-    // Click-place tools
-    if(tool==="bisagra"){commit([...shapes,{id:uid(),type:"bisagra",cx:p.x,cy:p.y,rw:12,h:46}]);return;}
-    if(tool==="perf"){const d=window.prompt("Diámetro (mm)","30");if(d){commit([...shapes,{id:uid(),type:"perf",cx:p.x,cy:p.y,r:Math.max(4,+d/2)||15}]);}return;}
+    if(tool==="bisagra"){commit([...shapes,{id:uid(),type:"bisagra",cx:p.x,cy:p.y,rw:12,h:46,sw:strokeW,dash:strokeDash}]);return;}
+    if(tool==="perf"){const d=window.prompt("Diámetro (mm):","30");if(d){commit([...shapes,{id:uid(),type:"perf",cx:p.x,cy:p.y,r:Math.max(4,+d/2)||15,sw:strokeW}]);}return;}
     if(tool==="text"){const t=window.prompt("Texto:");if(t)commit([...shapes,{id:uid(),type:"text",x:p.x,y:p.y,text:t,size:11}]);return;}
     if(tool==="nota"){const t=window.prompt("Anotación:");if(t)commit([...shapes,{id:uid(),type:"nota",x:p.x,y:p.y,text:t}]);return;}
-    // Drag-draw tools
-    setDrawing({id:uid(),type:tool,x1:p.x,y1:p.y,x2:p.x,y2:p.y,
-      ...(tool==="vidrio"?{cornerTL:0,cornerTR:0,cornerBR:0,cornerBL:0,satinado:false,labelT:"",labelB:"",labelL:"",labelR:""}:{}),
-      ...(tool==="cota"?{label:"",offset:18}:{}),
-      ...(tool==="linea_punteada"?{label:"",dash:"6 4"}:{}),
-      ...(tool==="arco"?{}:{}),
+    if(tool==="free"){setFreePath([[p.x,p.y]]);return;}
+    setDrawing({id:uid(),type:tool,x1:p.x,y1:p.y,x2:p.x,y2:p.y,sw:strokeW,dash:strokeDash,
+      ...(tool==="vidrio"?{cornerTL:0,cornerTR:0,cornerBR:0,cornerBL:0,satinado:false,esmerilado:false,labelT:"",labelB:"",labelL:"",labelR:""}:{}),
+      ...(tool==="cota"?{label:"",offset:20}:{}),
     });
   };
 
   const onMove=(e)=>{
-    if(!drawing&&!drag)return;
+    if(!drawing&&!drag&&tool!=="free")return;
     e.preventDefault();
     const p=getPos(e);
+    if(tool==="free"&&freePath.length>0){setFreePath(fp=>[...fp,[p.x,p.y]]);return;}
     if(drawing){setDrawing(d=>({...d,x2:p.x,y2:p.y}));return;}
     if(drag){
       const dx=p.x-drag.px,dy=p.y-drag.py;
@@ -456,10 +439,13 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
     }
   };
 
-  const onUp=()=>{
+  const onUp=(e)=>{
+    if(tool==="free"&&freePath.length>2){
+      commit([...shapes,{id:uid(),type:"free",pts:freePath,sw:strokeW,dash:strokeDash}]);
+      setFreePath([]);return;
+    }
     if(drawing){
-      const min=tool==="perf"?0:8;
-      if(Math.abs(drawing.x2-drawing.x1)>min||Math.abs(drawing.y2-drawing.y1)>min)commit([...shapes,drawing]);
+      if(Math.abs(drawing.x2-drawing.x1)>6||Math.abs(drawing.y2-drawing.y1)>6)commit([...shapes,drawing]);
       setDrawing(null);
     }
     setDrag(null);
@@ -468,413 +454,276 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
   const selShape=shapes.find(s=>s.id===selId);
   const updateSel=(k,v)=>commit(shapes.map(s=>s.id===selId?{...s,[k]:v}:s));
 
-  // ── COLORS ─────────────────────────────────────────────────────────────────
-  const C={
-    glass:"#4dd0e1",      // cyan for glass outlines
-    dim:"#ffd740",        // yellow for dimensions/cotas
-    ref:"#6a9fb5",        // blue-grey for reference lines
-    note:"#a5d6a7",       // green for notes
-    bisagra:"#80cbc4",    // teal for bisagras
-    perf:"#ef9a9a",       // red for perforations
-    sel:"#ff9500",        // orange for selected
-    ghost:"#00bfff",      // light blue for drawing preview
-    sat:"rgba(77,208,225,0.18)",
-  };
+  // ── COLORS ──────────────────────────────────────────────────────────────────
+  const C={glass:"#4dd0e1",dim:"#ffd740",ref:"#6a9fb5",note:"#a5d6a7",
+    bisagra:"#80cbc4",perf:"#ef9a9a",sel:"#ff9500",ghost:"#00bfff",
+    esm:"rgba(180,230,255,0.25)"};
 
-  // ── RENDER ─────────────────────────────────────────────────────────────────
+  // ── RENDER ──────────────────────────────────────────────────────────────────
   const renderShape=(s,ghost)=>{
     const sel=!ghost&&selId===s.id;
-    const sw=sel?2.2:1.6;
-    const onClick=ghost?undefined:()=>{if(tool==="select")setSelId(sel?null:s.id);};
+    const sc=ghost?C.ghost:sel?C.sel:s.type==="perf"?C.perf:s.type==="bisagra"?C.bisagra:s.type==="nota"?C.note:s.type==="dim"||s.type==="cota"?C.dim:C.glass;
+    const sw=s.sw||(s.type==="cota"||s.type==="dim"?1.2:1.8);
+    const dashArr=s.dash&&s.dash!=="0"?s.dash:"none";
     const cur=tool==="select"?"pointer":"crosshair";
-    const selBox=(x,y,w,h)=>sel?<rect x={x-4} y={y-4} width={w+8} height={h+8} fill="none" stroke={C.sel} strokeWidth="1" strokeDasharray="4 2" rx="2"/>:null;
+    const onClick=ghost?undefined:()=>{if(tool==="select")setSelId(sel?null:s.id);};
 
-    // ── TEXT / NOTA ──────────────────────────────────────────────────────────
-    if(s.type==="text") return(
-      <text key={s.id} x={s.x} y={s.y} fontSize={s.size||11}
-        fill={sel?C.sel:C.dim} fontFamily="monospace" fontWeight="600"
-        style={{cursor:cur,userSelect:"none"}} onClick={onClick}>{s.text}</text>
-    );
-    if(s.type==="nota") return(
-      <g key={s.id} onClick={onClick} style={{cursor:cur}}>
-        <text x={s.x} y={s.y} fontSize="10" fill={sel?C.sel:C.note} fontFamily="Arial" fontStyle="italic">{s.text}</text>
-        {sel&&<line x1={s.x-2} y1={s.y+2} x2={s.x+(s.text?.length||0)*6} y2={s.y+2} stroke={C.sel} strokeWidth="0.5"/>}
-      </g>
-    );
+    if(s.type==="text")return<text key={s.id} x={s.x} y={s.y} fontSize={s.size||11} fill={sel?C.sel:C.dim} fontFamily="monospace" fontWeight="600" style={{cursor:cur,userSelect:"none"}} onClick={onClick}>{s.text}</text>;
+    if(s.type==="nota")return<g key={s.id} onClick={onClick} style={{cursor:cur}}><text x={s.x} y={s.y} fontSize="10" fill={sel?C.sel:C.note} fontFamily="Arial" fontStyle="italic">{s.text}</text>{sel&&<line x1={s.x-2} y1={s.y+2} x2={s.x+(s.text?.length||0)*6} y2={s.y+2} stroke={C.sel} strokeWidth="0.5"/>}</g>;
 
-    // ── PERFORACIÓN ──────────────────────────────────────────────────────────
-    if(s.type==="perf"){
-      const r=s.r||15;
-      return(
-        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-          <circle cx={s.cx} cy={s.cy} r={r} fill="none" stroke={sel?C.sel:C.perf} strokeWidth={sw}/>
-          {/* crosshairs */}
-          <line x1={s.cx-r-4} y1={s.cy} x2={s.cx+r+4} y2={s.cy} stroke={sel?C.sel:C.perf} strokeWidth="0.8" strokeDasharray="3 2"/>
-          <line x1={s.cx} y1={s.cy-r-4} x2={s.cx} y2={s.cy+r+4} stroke={sel?C.sel:C.perf} strokeWidth="0.8" strokeDasharray="3 2"/>
-          {/* diameter label */}
-          <text x={s.cx+r+6} y={s.cy-2} fontSize="9" fill={C.dim} fontFamily="monospace" fontWeight="700">⌀{r*2}</text>
-        </g>
-      );
+    if(s.type==="free"&&s.pts&&s.pts.length>1){
+      const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ");
+      return<path key={s.id} d={d} fill="none" stroke={sel?C.sel:sc} strokeWidth={sw} strokeDasharray={dashArr} strokeLinecap="round" strokeLinejoin="round" style={{cursor:cur}} onClick={onClick}/>;
     }
 
-    // ── BISAGRA ──────────────────────────────────────────────────────────────
+    if(s.type==="perf"){
+      const r=s.r||15;
+      return<g key={s.id} style={{cursor:cur}} onClick={onClick}>
+        <circle cx={s.cx} cy={s.cy} r={r} fill="none" stroke={sel?C.sel:sc} strokeWidth={sw}/>
+        <line x1={s.cx-r-5} y1={s.cy} x2={s.cx+r+5} y2={s.cy} stroke={sel?C.sel:sc} strokeWidth="0.8" strokeDasharray="3 2"/>
+        <line x1={s.cx} y1={s.cy-r-5} x2={s.cx} y2={s.cy+r+5} stroke={sel?C.sel:sc} strokeWidth="0.8" strokeDasharray="3 2"/>
+        <text x={s.cx+r+7} y={s.cy-2} fontSize="9" fill={C.dim} fontFamily="monospace" fontWeight="700">⌀{r*2}</text>
+        {sel&&<circle cx={s.cx} cy={s.cy} r={r+5} fill="none" stroke={C.sel} strokeWidth="1" strokeDasharray="3 2"/>}
+      </g>;
+    }
+
     if(s.type==="bisagra"){
       const rw=s.rw||12,hh=(s.h||46)/2,rh=rw;
       const path=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;
-      return(
-        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-          <path d={path} fill="none" stroke={sel?C.sel:C.bisagra} strokeWidth={sw}/>
-          {/* center mark */}
-          <line x1={s.cx-4} y1={s.cy} x2={s.cx+4} y2={s.cy} stroke={sel?C.sel:C.bisagra} strokeWidth="0.8"/>
-          <line x1={s.cx} y1={s.cy-4} x2={s.cx} y2={s.cy+4} stroke={sel?C.sel:C.bisagra} strokeWidth="0.8"/>
-          {sel&&<rect x={s.cx-rw-5} y={s.cy-hh-5} width={rw*2+10} height={s.h+10} fill="none" stroke={C.sel} strokeWidth="1" strokeDasharray="3 2"/>}
-        </g>
-      );
+      return<g key={s.id} style={{cursor:cur}} onClick={onClick}>
+        <path d={path} fill="white" stroke={sel?C.sel:sc} strokeWidth={sw}/>
+        <line x1={s.cx-4} y1={s.cy} x2={s.cx+4} y2={s.cy} stroke={sel?C.sel:sc} strokeWidth="0.8"/>
+        <line x1={s.cx} y1={s.cy-4} x2={s.cx} y2={s.cy+4} stroke={sel?C.sel:sc} strokeWidth="0.8"/>
+        {sel&&<rect x={s.cx-rw-5} y={s.cy-hh-5} width={rw*2+10} height={s.h+10} fill="none" stroke={C.sel} strokeWidth="1" strokeDasharray="3 2"/>}
+      </g>;
     }
 
-    // ── VIDRIO ───────────────────────────────────────────────────────────────
     if(s.type==="vidrio"){
       const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2);
       const w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
-      if(w<4||h<4) return null;
+      if(w<4||h<4)return null;
       const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;
       const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;
-      const fillC=s.satinado?`url(#sat${s.id})`:"rgba(0,40,60,0.45)";
-      const sc=sel?C.sel:C.glass;
-      // Side labels
-      const labels=[];
-      if(s.labelT) labels.push(<text key="lt" x={x+w/2} y={y-5} textAnchor="middle" fontSize="10" fill={C.dim} fontFamily="monospace">{s.labelT}</text>);
-      if(s.labelB) labels.push(<text key="lb" x={x+w/2} y={y+h+13} textAnchor="middle" fontSize="10" fill={C.dim} fontFamily="monospace">{s.labelB}</text>);
-      if(s.labelL) labels.push(<text key="ll" x={x-5} y={y+h/2} textAnchor="end" dominantBaseline="middle" fontSize="10" fill={C.dim} fontFamily="monospace">{s.labelL}</text>);
-      if(s.labelR) labels.push(<text key="lr" x={x+w+5} y={y+h/2} dominantBaseline="middle" fontSize="10" fill={C.dim} fontFamily="monospace">{s.labelR}</text>);
-      return(
-        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-          {s.satinado&&<defs><pattern id={`sat${s.id}`} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke={C.glass} strokeWidth="1" opacity="0.3"/></pattern></defs>}
-          <path d={d} fill={fillC} stroke={sc} strokeWidth={sw}/>
-          {/* diagonal hatch lines to indicate glass */}
-          <clipPath id={`cp${s.id}`}><path d={d}/></clipPath>
-          <line x1={x} y1={y} x2={x+w} y2={y+h} stroke={sc} strokeWidth="0.4" opacity="0.2" clipPath={`url(#cp${s.id})`}/>
-          <line x1={x+w} y1={y} x2={x} y2={y+h} stroke={sc} strokeWidth="0.4" opacity="0.2" clipPath={`url(#cp${s.id})`}/>
-          {s.satinado&&<text x={x+w/2} y={y+h/2+4} textAnchor="middle" fontSize="8" fill={C.glass} fontFamily="monospace" opacity="0.7">SAT</text>}
-          {labels}
-        </g>
-      );
+      // Fill: esmerilado = hatch diagonal denso, satinado = hatch paralelo
+      let fillEl=null;
+      const pid=`pat${s.id||uid()}`;
+      if(s.esmerilado){
+        fillEl=<><defs><pattern id={pid} width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke={C.glass} strokeWidth="1" opacity="0.35"/><line x1="2" y1="0" x2="2" y2="4" stroke={C.glass} strokeWidth="0.5" opacity="0.2"/></pattern></defs></>;
+      } else if(s.satinado){
+        fillEl=<><defs><pattern id={pid} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><line x1="0" y1="0" x2="0" y2="5" stroke={C.glass} strokeWidth="1" opacity="0.3"/></pattern></defs></>;
+      }
+      const fillColor=s.esmerilado||s.satinado?`url(#${pid})`:"rgba(0,40,60,0.45)";
+      return<g key={s.id} style={{cursor:cur}} onClick={onClick}>
+        {fillEl}
+        <clipPath id={`cp${s.id}`}><path d={d}/></clipPath>
+        <path d={d} fill={fillColor} stroke={sel?C.sel:sc} strokeWidth={sw} strokeDasharray={dashArr}/>
+        <line x1={x} y1={y} x2={x+w} y2={y+h} stroke={sc} strokeWidth="0.4" opacity="0.18" clipPath={`url(#cp${s.id})`}/>
+        <line x1={x+w} y1={y} x2={x} y2={y+h} stroke={sc} strokeWidth="0.4" opacity="0.18" clipPath={`url(#cp${s.id})`}/>
+        {s.esmerilado&&<text x={x+w/2} y={y+h/2+4} textAnchor="middle" fontSize="8" fill={C.glass} fontFamily="monospace" opacity="0.6">ESM</text>}
+        {s.satinado&&!s.esmerilado&&<text x={x+w/2} y={y+h/2+4} textAnchor="middle" fontSize="8" fill={C.glass} fontFamily="monospace" opacity="0.6">SAT</text>}
+        {/* Side labels */}
+        {s.labelT&&<text x={x+w/2} y={y-6} textAnchor="middle" fontSize="10" fill={C.dim} fontFamily="monospace">{s.labelT}</text>}
+        {s.labelB&&<text x={x+w/2} y={y+h+14} textAnchor="middle" fontSize="10" fill={C.dim} fontFamily="monospace">{s.labelB}</text>}
+        {s.labelL&&<text x={x-6} y={y+h/2} textAnchor="end" dominantBaseline="middle" fontSize="10" fill={C.dim} fontFamily="monospace">{s.labelL}</text>}
+        {s.labelR&&<text x={x+w+6} y={y+h/2} dominantBaseline="middle" fontSize="10" fill={C.dim} fontFamily="monospace">{s.labelR}</text>}
+        {s.labelC&&<text x={x+w/2} y={y+h/2+4} textAnchor="middle" fontSize="11" fill={C.dim} fontFamily="monospace" fontWeight="700">{s.labelC}</text>}
+        {sel&&<path d={d} fill="none" stroke={C.sel} strokeWidth="1" strokeDasharray="4 2"/>}
+      </g>;
     }
 
-    // ── COTA (dimension line with arrows) ────────────────────────────────────
     if(s.type==="cota"){
-      const off=s.offset||18;
-      const dx=s.x2-s.x1,dy=s.y2-s.y1;
-      const len=Math.hypot(dx,dy);
-      if(len<4) return null;
-      // perpendicular direction
+      const off=s.offset||20;const dx=s.x2-s.x1,dy=s.y2-s.y1;const len=Math.hypot(dx,dy);if(len<4)return null;
       const px=-dy/len,py=dx/len;
-      // offset points
-      const ox1=s.x1+px*off,oy1=s.y1+py*off;
-      const ox2=s.x2+px*off,oy2=s.y2+py*off;
-      // arrow size
-      const as=5;
-      const ux=dx/len,uy=dy/len;
-      const sc=sel?C.sel:C.dim;
+      const ox1=s.x1+px*off,oy1=s.y1+py*off,ox2=s.x2+px*off,oy2=s.y2+py*off;
+      const ux=dx/len,uy=dy/len,as=6;
       const lbl=s.label||(Math.round(len)+"");
-      return(
-        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-          {/* extension lines */}
-          <line x1={s.x1+px*3} y1={s.y1+py*3} x2={ox1+px*3} y2={oy1+py*3} stroke={sc} strokeWidth="0.8" strokeDasharray="2 2"/>
-          <line x1={s.x2+px*3} y1={s.y2+py*3} x2={ox2+px*3} y2={oy2+py*3} stroke={sc} strokeWidth="0.8" strokeDasharray="2 2"/>
-          {/* dimension line */}
-          <line x1={ox1} y1={oy1} x2={ox2} y2={oy2} stroke={sc} strokeWidth="1.2"/>
-          {/* arrowheads */}
-          <polygon points={`${ox1},${oy1} ${ox1+ux*as-uy*as*0.4},${oy1+uy*as+ux*as*0.4} ${ox1+ux*as+uy*as*0.4},${oy1+uy*as-ux*as*0.4}`} fill={sc}/>
-          <polygon points={`${ox2},${oy2} ${ox2-ux*as-uy*as*0.4},${oy2-uy*as+ux*as*0.4} ${ox2-ux*as+uy*as*0.4},${oy2-uy*as-ux*as*0.4}`} fill={sc}/>
-          {/* label */}
-          <text x={(ox1+ox2)/2} y={(oy1+oy2)/2-4} textAnchor="middle" fontSize="10" fill={sc} fontFamily="monospace" fontWeight="700"
-            transform={`rotate(${Math.atan2(dy,dx)*180/Math.PI},${(ox1+ox2)/2},${(oy1+oy2)/2})`}>{lbl}</text>
-        </g>
-      );
+      const ang=Math.atan2(dy,dx)*180/Math.PI;
+      const mx=(ox1+ox2)/2,my=(oy1+oy2)/2;
+      const col=sel?C.sel:C.dim;
+      return<g key={s.id} style={{cursor:cur}} onClick={onClick}>
+        <line x1={s.x1+px*3} y1={s.y1+py*3} x2={ox1+px*4} y2={oy1+py*4} stroke={col} strokeWidth="0.8" strokeDasharray="2 2"/>
+        <line x1={s.x2+px*3} y1={s.y2+py*3} x2={ox2+px*4} y2={oy2+py*4} stroke={col} strokeWidth="0.8" strokeDasharray="2 2"/>
+        <line x1={ox1} y1={oy1} x2={ox2} y2={oy2} stroke={col} strokeWidth="1.2"/>
+        <polygon points={`${ox1},${oy1} ${ox1+ux*as-uy*as*0.4},${oy1+uy*as+ux*as*0.4} ${ox1+ux*as+uy*as*0.4},${oy1+uy*as-ux*as*0.4}`} fill={col}/>
+        <polygon points={`${ox2},${oy2} ${ox2-ux*as-uy*as*0.4},${oy2-uy*as+ux*as*0.4} ${ox2-ux*as+uy*as*0.4},${oy2-uy*as-ux*as*0.4}`} fill={col}/>
+        <rect x={mx-lbl.length*3.5-2} y={my-8} width={lbl.length*7+4} height={14} fill="#0d1117" rx="2"/>
+        <text x={mx} y={my+4} textAnchor="middle" fontSize="10" fill={col} fontFamily="monospace" fontWeight="700" transform={`rotate(${ang},${mx},${my})`}>{lbl}</text>
+      </g>;
     }
 
-    // ── LÍNEA RECTA ──────────────────────────────────────────────────────────
-    if(s.type==="linea"){
-      const sc=sel?C.sel:C.ref;
-      const dx=s.x2-s.x1,dy=s.y2-s.y1;
+    if(s.type==="linea"||s.type==="linea_punteada"||(!s.type&&s.x1!=null)){
+      const dArr=s.dash&&s.dash!=="0"?s.dash:s.type==="linea_punteada"?"6 4":"none";
       const mx=(s.x1+s.x2)/2,my=(s.y1+s.y2)/2;
-      return(
-        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-          <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={sc} strokeWidth={sw} strokeLinecap="round"/>
-          {s.label&&<text x={mx} y={my-5} textAnchor="middle" fontSize="10" fill={C.dim} fontFamily="monospace"
-            transform={`rotate(${Math.atan2(dy,dx)*180/Math.PI},${mx},${my})`}>{s.label}</text>}
-        </g>
-      );
+      const ang=Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI;
+      return<g key={s.id} style={{cursor:cur}} onClick={onClick}>
+        <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={sel?C.sel:C.ref} strokeWidth={sw} strokeDasharray={dArr} strokeLinecap="round"/>
+        {s.label&&<text x={mx} y={my-5} textAnchor="middle" fontSize="10" fill={C.dim} fontFamily="monospace" transform={`rotate(${ang},${mx},${my})`}>{s.label}</text>}
+      </g>;
     }
 
-    // ── LÍNEA PUNTEADA ───────────────────────────────────────────────────────
-    if(s.type==="linea_punteada"){
-      const sc=sel?C.sel:C.ref;
-      const dx=s.x2-s.x1,dy=s.y2-s.y1;
-      const mx=(s.x1+s.x2)/2,my=(s.y1+s.y2)/2;
-      const dash=s.dash||"6 4";
-      return(
-        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-          <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={sc} strokeWidth={sw} strokeDasharray={dash} strokeLinecap="round"/>
-          {s.label&&<text x={mx} y={my-5} textAnchor="middle" fontSize="10" fill={C.dim} fontFamily="monospace"
-            transform={`rotate(${Math.atan2(dy,dx)*180/Math.PI},${mx},${my})`}>{s.label}</text>}
-        </g>
-      );
-    }
-
-    // ── ARCO ─────────────────────────────────────────────────────────────────
     if(s.type==="arco"){
-      const sc=sel?C.sel:C.glass;
       const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2;
       const rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;
-      if(rx<2||ry<2) return null;
-      return(
-        <g key={s.id} style={{cursor:cur}} onClick={onClick}>
-          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="rgba(0,40,60,0.3)" stroke={sc} strokeWidth={sw}/>
-          {/* center marks */}
-          <line x1={cx-4} y1={cy} x2={cx+4} y2={cy} stroke={sc} strokeWidth="0.6"/>
-          <line x1={cx} y1={cy-4} x2={cx} y2={cy+4} stroke={sc} strokeWidth="0.6"/>
-          <text x={cx+rx+5} y={cy} dominantBaseline="middle" fontSize="9" fill={C.dim} fontFamily="monospace">R{Math.round(ry)}</text>
-        </g>
-      );
+      if(rx<2||ry<2)return null;
+      return<g key={s.id} style={{cursor:cur}} onClick={onClick}>
+        <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="rgba(0,40,60,0.3)" stroke={sel?C.sel:C.glass} strokeWidth={sw} strokeDasharray={dashArr}/>
+        <line x1={cx-4} y1={cy} x2={cx+4} y2={cy} stroke={sel?C.sel:C.glass} strokeWidth="0.7"/>
+        <line x1={cx} y1={cy-4} x2={cx} y2={cy+4} stroke={sel?C.sel:C.glass} strokeWidth="0.7"/>
+        <text x={cx+rx+6} y={cy} dominantBaseline="middle" fontSize="9" fill={C.dim} fontFamily="monospace">R{Math.round(Math.min(rx,ry))}</text>
+      </g>;
     }
-
-    // fallback
     return null;
   };
 
-  // ── PDF SVG STRING ──────────────────────────────────────────────────────────
+  // ── PDF string ───────────────────────────────────────────────────────────────
   const shapeToStr=(s)=>{
     const DIM="#333",REF="#555",GLASS="#1a4a6e",NOTE="#2d6a2d";
-    if(s.type==="text") return `<text x="${s.x}" y="${s.y}" font-size="${s.size||11}" fill="${DIM}" font-family="monospace" font-weight="600">${s.text}</text>`;
-    if(s.type==="nota") return `<text x="${s.x}" y="${s.y}" font-size="10" fill="${NOTE}" font-family="Arial" font-style="italic">${s.text}</text>`;
-    if(s.type==="perf"){const r=s.r||15;return `<circle cx="${s.cx}" cy="${s.cy}" r="${r}" fill="none" stroke="#c62828" stroke-width="1.5"/><line x1="${s.cx-r-4}" y1="${s.cy}" x2="${s.cx+r+4}" y2="${s.cy}" stroke="#c62828" stroke-width="0.7" stroke-dasharray="3 2"/><line x1="${s.cx}" y1="${s.cy-r-4}" x2="${s.cx}" y2="${s.cy+r+4}" stroke="#c62828" stroke-width="0.7" stroke-dasharray="3 2"/><text x="${s.cx+r+6}" y="${s.cy-2}" font-size="9" fill="${DIM}" font-family="monospace" font-weight="700">⌀${r*2}</text>`;}
-    if(s.type==="bisagra"){const rw=s.rw||12,hh=(s.h||46)/2,rh=rw;const p=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;return `<path d="${p}" fill="none" stroke="#006064" stroke-width="1.8"/><line x1="${s.cx-4}" y1="${s.cy}" x2="${s.cx+4}" y2="${s.cy}" stroke="#006064" stroke-width="0.7"/><line x1="${s.cx}" y1="${s.cy-4}" x2="${s.cx}" y2="${s.cy+4}" stroke="#006064" stroke-width="0.7"/>`;}
+    const sw=s.sw||1.8;const dash=s.dash&&s.dash!=="0"?s.dash:"none";
+    if(s.type==="text")return`<text x="${s.x}" y="${s.y}" font-size="${s.size||11}" fill="${DIM}" font-family="monospace" font-weight="600">${s.text||""}</text>`;
+    if(s.type==="nota")return`<text x="${s.x}" y="${s.y}" font-size="10" fill="${NOTE}" font-family="Arial" font-style="italic">${s.text||""}</text>`;
+    if(s.type==="free"&&s.pts&&s.pts.length>1){const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ");return`<path d="${d}" fill="none" stroke="${REF}" stroke-width="${sw}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round"/>`;}
+    if(s.type==="perf"){const r=s.r||15;return`<circle cx="${s.cx}" cy="${s.cy}" r="${r}" fill="none" stroke="#c62828" stroke-width="${sw}"/><line x1="${s.cx-r-5}" y1="${s.cy}" x2="${s.cx+r+5}" y2="${s.cy}" stroke="#c62828" stroke-width="0.8" stroke-dasharray="3 2"/><line x1="${s.cx}" y1="${s.cy-r-5}" x2="${s.cx}" y2="${s.cy+r+5}" stroke="#c62828" stroke-width="0.8" stroke-dasharray="3 2"/><text x="${s.cx+r+7}" y="${s.cy-2}" font-size="9" fill="${DIM}" font-family="monospace" font-weight="700">⌀${r*2}</text>`;}
+    if(s.type==="bisagra"){const rw=s.rw||12,hh=(s.h||46)/2,rh=rw;const p=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;return`<path d="${p}" fill="white" stroke="#006064" stroke-width="${sw}"/><line x1="${s.cx-4}" y1="${s.cy}" x2="${s.cx+4}" y2="${s.cy}" stroke="#006064" stroke-width="0.8"/><line x1="${s.cx}" y1="${s.cy-4}" x2="${s.cx}" y2="${s.cy+4}" stroke="#006064" stroke-width="0.8"/>`;}
     if(s.type==="vidrio"){
       const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
       const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;
       const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;
-      const satDef=s.satinado?`<defs><pattern id="sp${x}${y}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="${GLASS}" stroke-width="1" opacity="0.4"/></pattern></defs>`:"";
-      const fill=s.satinado?`url(#sp${x}${y})`:"#e8f4ff";
+      const pid=`p${x}${y}`;
+      const satDef=s.esmerilado?`<defs><pattern id="${pid}" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="${GLASS}" stroke-width="1" opacity="0.4"/><line x1="2" y1="0" x2="2" y2="4" stroke="${GLASS}" stroke-width="0.5" opacity="0.2"/></pattern></defs>`:s.satinado?`<defs><pattern id="${pid}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><line x1="0" y1="0" x2="0" y2="5" stroke="${GLASS}" stroke-width="1" opacity="0.3"/></pattern></defs>`:"";
+      const fill=s.esmerilado||s.satinado?`url(#${pid})`:"#e8f4ff";
       const lT=s.labelT?`<text x="${x+w/2}" y="${y-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelT}</text>`:"";
-      const lB=s.labelB?`<text x="${x+w/2}" y="${y+h+13}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelB}</text>`:"";
-      const lL=s.labelL?`<text x="${x-5}" y="${y+h/2}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelL}</text>`:"";
-      const lR=s.labelR?`<text x="${x+w+5}" y="${y+h/2}" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelR}</text>`:"";
-      const diag1=`<line x1="${x}" y1="${y}" x2="${x+w}" y2="${y+h}" stroke="${GLASS}" stroke-width="0.5" opacity="0.25" clip-path="url(#cp${x}${y})"/>`;
-      const diag2=`<line x1="${x+w}" y1="${y}" x2="${x}" y2="${y+h}" stroke="${GLASS}" stroke-width="0.5" opacity="0.25" clip-path="url(#cp${x}${y})"/>`;
-      const cp=`<clipPath id="cp${x}${y}"><path d="${d}"/></clipPath>`;
-      return `${satDef}<defs>${cp}</defs><path d="${d}" fill="${fill}" stroke="${GLASS}" stroke-width="1.8"/>${diag1}${diag2}${s.satinado?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="8" fill="${GLASS}" font-weight="700" opacity="0.6">SAT</text>`:""}${lT}${lB}${lL}${lR}`;}
+      const lB=s.labelB?`<text x="${x+w/2}" y="${y+h+14}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelB}</text>`:"";
+      const lL=s.labelL?`<text x="${x-6}" y="${y+h/2}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelL}</text>`:"";
+      const lR=s.labelR?`<text x="${x+w+6}" y="${y+h/2}" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelR}</text>`:"";
+      const lC=s.labelC?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="11" fill="${GLASS}" font-family="monospace" font-weight="700">${s.labelC}</text>`:"";
+      const esmLbl=s.esmerilado?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="9" fill="${GLASS}" opacity="0.6">ESM</text>`:s.satinado?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="9" fill="${GLASS}" opacity="0.6">SAT</text>`:"";
+      return`${satDef}<path d="${d}" fill="${fill}" stroke="${GLASS}" stroke-width="${sw}" stroke-dasharray="${dash}"/>${lT}${lB}${lL}${lR}${lC}${esmLbl}`;
+    }
     if(s.type==="cota"){
-      const off=s.offset||18;const dx=s.x2-s.x1,dy=s.y2-s.y1;const len=Math.hypot(dx,dy);if(!len)return"";
-      const px=-dy/len,py=dx/len;
-      const ox1=s.x1+px*off,oy1=s.y1+py*off,ox2=s.x2+px*off,oy2=s.y2+py*off;
-      const ux=dx/len,uy=dy/len,as=5;
-      const lbl=s.label||(Math.round(len)+"");
-      const ang=Math.atan2(dy,dx)*180/Math.PI;
-      const mx=(ox1+ox2)/2,my=(oy1+oy2)/2;
-      return `<line x1="${s.x1+px*3}" y1="${s.y1+py*3}" x2="${ox1+px*3}" y2="${oy1+py*3}" stroke="${DIM}" stroke-width="0.8" stroke-dasharray="2 2"/><line x1="${s.x2+px*3}" y1="${s.y2+py*3}" x2="${ox2+px*3}" y2="${oy2+py*3}" stroke="${DIM}" stroke-width="0.8" stroke-dasharray="2 2"/><line x1="${ox1}" y1="${oy1}" x2="${ox2}" y2="${oy2}" stroke="${DIM}" stroke-width="1.2"/><polygon points="${ox1},${oy1} ${ox1+ux*as-uy*as*0.4},${oy1+uy*as+ux*as*0.4} ${ox1+ux*as+uy*as*0.4},${oy1+uy*as-ux*as*0.4}" fill="${DIM}"/><polygon points="${ox2},${oy2} ${ox2-ux*as-uy*as*0.4},${oy2-uy*as+ux*as*0.4} ${ox2-ux*as+uy*as*0.4},${oy2-uy*as-ux*as*0.4}" fill="${DIM}"/><text x="${mx}" y="${my-4}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" font-weight="700" transform="rotate(${ang},${mx},${my})">${lbl}</text>`;}
-    if(s.type==="linea") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="${REF}" stroke-width="1.5" stroke-linecap="round"/>${s.label?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" transform="rotate(${Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI},${(s.x1+s.x2)/2},${(s.y1+s.y2)/2})">${s.label}</text>`:""}`;
-    if(s.type==="linea_punteada") return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="${REF}" stroke-width="1.2" stroke-dasharray="${s.dash||"6 4"}" stroke-linecap="round"/>${s.label?`<text x="${(s.x1+s.x2)/2}" y="${(s.y1+s.y2)/2-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" transform="rotate(${Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI},${(s.x1+s.x2)/2},${(s.y1+s.y2)/2})">${s.label}</text>`:""}`;
-    if(s.type==="arco"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e8f4ff" stroke="${GLASS}" stroke-width="1.8"/><text x="${cx+rx+5}" y="${cy}" dominant-baseline="middle" font-size="9" fill="${DIM}" font-family="monospace">R${Math.round(ry)}</text>`;}
-    return "";
+      const off=s.offset||20;const dx=s.x2-s.x1,dy=s.y2-s.y1;const len=Math.hypot(dx,dy);if(!len)return"";
+      const px=-dy/len,py=dx/len;const ox1=s.x1+px*off,oy1=s.y1+py*off,ox2=s.x2+px*off,oy2=s.y2+py*off;
+      const ux=dx/len,uy=dy/len,as=6;const lbl=s.label||(Math.round(len)+"");
+      const ang=Math.atan2(dy,dx)*180/Math.PI;const mx=(ox1+ox2)/2,my=(oy1+oy2)/2;
+      return`<line x1="${s.x1+px*3}" y1="${s.y1+py*3}" x2="${ox1+px*4}" y2="${oy1+py*4}" stroke="${DIM}" stroke-width="0.8" stroke-dasharray="2 2"/><line x1="${s.x2+px*3}" y1="${s.y2+py*3}" x2="${ox2+px*4}" y2="${oy2+py*4}" stroke="${DIM}" stroke-width="0.8" stroke-dasharray="2 2"/><line x1="${ox1}" y1="${oy1}" x2="${ox2}" y2="${oy2}" stroke="${DIM}" stroke-width="1.2"/><polygon points="${ox1},${oy1} ${ox1+ux*as-uy*as*0.4},${oy1+uy*as+ux*as*0.4} ${ox1+ux*as+uy*as*0.4},${oy1+uy*as-ux*as*0.4}" fill="${DIM}"/><polygon points="${ox2},${oy2} ${ox2-ux*as-uy*as*0.4},${oy2-uy*as+ux*as*0.4} ${ox2-ux*as+uy*as*0.4},${oy2-uy*as-ux*as*0.4}" fill="${DIM}"/><text x="${mx}" y="${my-4}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" font-weight="700" transform="rotate(${ang},${mx},${my})">${lbl}</text>`;
+    }
+    if(s.type==="linea"||s.type==="linea_punteada"){const dArr=s.dash&&s.dash!=="0"?s.dash:s.type==="linea_punteada"?"6 4":"none";const mx=(s.x1+s.x2)/2,my=(s.y1+s.y2)/2;const ang=Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI;return`<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="${REF}" stroke-width="${sw}" stroke-dasharray="${dArr}" stroke-linecap="round"/>${s.label?`<text x="${mx}" y="${my-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" transform="rotate(${ang},${mx},${my})">${s.label}</text>`:""}`;}
+    if(s.type==="arco"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e8f4ff" stroke="${GLASS}" stroke-width="${sw}"/><text x="${cx+rx+6}" y="${cy}" dominant-baseline="middle" font-size="9" fill="${DIM}" font-family="monospace">R${Math.round(Math.min(rx,ry))}</text>`;}
+    return"";
   };
 
   const getSVGForPDF=()=>{
     if(!shapes.length)return"";
     const pts=shapes.flatMap(s=>{
       if(s.cx!=null){const rw=s.rw||s.r||20,rh=(s.h||rw*2)/2;return[[s.cx-rw-20,s.cy-rh-20],[s.cx+rw+20,s.cy+rh+20]];}
-      if(s.x!=null&&!s.x1!=null)return[[s.x-10,s.y-10],[s.x+100,s.y+10]];
+      if(s.type==="free"&&s.pts)return s.pts.map(([x,y])=>[x,y]);
+      if(s.x!=null&&s.x1==null)return[[s.x-5,s.y-14],[s.x+120,s.y+5]];
       return[[s.x1||0,s.y1||0],[s.x2||0,s.y2||0]];
     });
     const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
     if(!xs.length)return"";
     const mx=Math.min(...xs)-30,my=Math.min(...ys)-30,Mx=Math.max(...xs)+30,My=Math.max(...ys)+30;
-    return `<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:220px;border:1.5px solid #1a4a6e;border-radius:4px;background:#f0f8ff;display:block">${shapes.map(shapeToStr).join("")}</svg>`;
+    return`<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:220px;border:1.5px solid #1a4a6e;border-radius:4px;background:#f0f8ff;display:block">${shapes.map(shapeToStr).join("")}</svg>`;
   };
 
   const printPlano=()=>{
     if(!shapes.length){alert("El plano está vacío.");return;}
-    const svgStr=getSVGForPDF().replace('style="max-height:220px;border:1.5px solid #1a4a6e;border-radius:4px;background:#f0f8ff;display:block"','style="max-height:80vh;border:2px solid #1a4a6e;border-radius:6px;background:#f0f8ff;display:block;width:100%"');
-    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Plano Técnico</title><style>body{margin:16px 20px;font-family:Arial,sans-serif}h2{color:#1a4a6e;margin-bottom:4px;font-size:15px;font-weight:700}p{color:#555;font-size:11px;margin-bottom:14px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:8mm}}</style></head><body><h2>Plano Técnico — La Vidriería Rosario</h2><p>${label||""}</p>${svgStr}</body></html>`;
+    const svg=getSVGForPDF().replace('max-height:220px;','max-height:80vh;').replace('display:block','display:block;width:100%');
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Plano Técnico</title><style>body{margin:16px 20px;font-family:Arial}h2{color:#1a4a6e;margin-bottom:4px;font-size:15px}p{color:#555;font-size:11px;margin-bottom:12px}@media print{body{-webkit-print-color-adjust:exact}@page{margin:8mm}}</style></head><body><h2>Plano Técnico — La Vidriería Rosario</h2><p>${label||""}</p>${svg}</body></html>`;
     const w=window.open("","_blank","width=860,height=720");
     if(w){w.document.write(html);w.document.close();w.onload=()=>{w.focus();w.print();};}
   };
 
   // ── TOOLS ──────────────────────────────────────────────────────────────────
-  const TOOL_GROUPS=[
-    {label:"SELECCIÓN",tools:[{id:"select",label:"↖",tip:"Seleccionar y mover"}]},
-    {label:"VIDRIO",tools:[
-      {id:"vidrio",label:"▭",tip:"Rectángulo de vidrio"},
-      {id:"arco",label:"◯",tip:"Arco / forma curva / círculo"},
-    ]},
-    {label:"ENTRANTES",tools:[
-      {id:"bisagra",label:"⊢",tip:"Bisagra (entrante con puntas semicirculares)"},
-      {id:"perf",label:"⊙",tip:"Perforación circular"},
-    ]},
-    {label:"COTAS",tools:[
-      {id:"cota",label:"↔",tip:"Cota con flechas y medida (mm)"},
-      {id:"linea",label:"—",tip:"Línea recta de referencia"},
-      {id:"linea_punteada",label:"╌",tip:"Línea punteada de referencia"},
-    ]},
-    {label:"TEXTO",tools:[
-      {id:"text",label:"123",tip:"Medida o número"},
-      {id:"nota",label:"abc",tip:"Nota o anotación"},
-    ]},
+  const TOOLS=[
+    {id:"select",label:"↖",tip:"Seleccionar / Mover"},
+    {id:"vidrio",label:"▭",tip:"Vidrio (rectángulo)"},
+    {id:"arco",label:"◯",tip:"Arco / Círculo"},
+    {id:"bisagra",label:"⊢",tip:"Bisagra"},
+    {id:"perf",label:"⊙",tip:"Perforación"},
+    {id:"cota",label:"↔",tip:"Cota con medida"},
+    {id:"linea",label:"—",tip:"Línea"},
+    {id:"linea_punteada",label:"╌",tip:"Línea punteada"},
+    {id:"free",label:"✏",tip:"Dibujo libre"},
+    {id:"text",label:"123",tip:"Número / Medida"},
+    {id:"nota",label:"abc",tip:"Anotación"},
   ];
 
-  const btnS=(active)=>({
-    padding:"4px 8px",borderRadius:5,
-    border:`1px solid ${active?"#4dd0e1":"#21262d"}`,
-    background:active?"rgba(77,208,225,0.15)":"transparent",
-    color:active?"#4dd0e1":"#6a9fb5",
-    cursor:"pointer",fontSize:11,fontFamily:"monospace",fontWeight:active?700:400,
-    minWidth:28,textAlign:"center",
-  });
+  const btnS=(active)=>({padding:"4px 8px",borderRadius:5,border:`1px solid ${active?"#4dd0e1":"#21262d"}`,background:active?"rgba(77,208,225,0.15)":"transparent",color:active?"#4dd0e1":"#6a9fb5",cursor:"pointer",fontSize:11,fontFamily:"monospace",fontWeight:active?700:400,minWidth:30,textAlign:"center"});
 
-  // ── PROPERTIES PANEL ───────────────────────────────────────────────────────
+  // ── PROPS PANEL ────────────────────────────────────────────────────────────
   const PropsPanel=()=>{
     if(!selShape)return null;
-    const inp=(k,opts={})=>(
-      <input type={opts.type||"text"} value={selShape[k]||""} onChange={e=>updateSel(k,opts.num?+e.target.value:e.target.value)}
-        placeholder={opts.ph||""}
-        style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 6px",fontSize:10,fontFamily:"monospace",width:opts.w||60}}/>
-    );
-    const rng=(k,min,max,lbl)=>(
-      <label style={{display:"flex",alignItems:"center",gap:4,color:"#6a9fb5",fontSize:10}}>
-        <span>{lbl}</span>
-        <input type="range" min={min} max={max} value={selShape[k]||min} onChange={e=>updateSel(k,+e.target.value)} style={{width:60,accentColor:"#4dd0e1"}}/>
-        <span style={{color:"#4dd0e1",minWidth:22}}>{selShape[k]||min}</span>
-      </label>
-    );
-    return(
-      <div style={{display:"flex",flexWrap:"wrap",gap:6,padding:"6px 10px",background:"#161b22",borderRadius:7,marginBottom:6,alignItems:"center",fontSize:10,border:"1px solid #21262d"}}>
-        <span style={{color:"#ffd740",fontWeight:700,fontSize:9,textTransform:"uppercase",letterSpacing:1}}>{selShape.type}</span>
-
-        {selShape.type==="vidrio"&&<>
-          <span style={{color:"#6a9fb5"}}>mm por lado:</span>
-          {[["↑",  "labelT"],["↓","labelB"],["←","labelL"],["→","labelR"]].map(([ic,k])=>(
-            <label key={k} style={{display:"flex",alignItems:"center",gap:2,color:"#6a9fb5"}}>
-              <span style={{fontSize:10}}>{ic}</span>{inp(k,{w:48,ph:"mm"})}
-            </label>
-          ))}
-          <span style={{color:"#6a9fb5"}}>Esquinas:</span>
-          {[["↖","cornerTL"],["↗","cornerTR"],["↘","cornerBR"],["↙","cornerBL"]].map(([ic,k])=>(
-            <label key={k} style={{display:"flex",alignItems:"center",gap:2,color:"#6a9fb5"}}>
-              <span>{ic}</span>{inp(k,{type:"number",num:true,w:32,ph:"0"})}
-            </label>
-          ))}
-          <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:selShape.satinado?"#4dd0e1":"#6a9fb5"}}>
-            <input type="checkbox" checked={!!selShape.satinado} onChange={e=>updateSel("satinado",e.target.checked)} style={{accentColor:"#4dd0e1"}}/>
-            <span>Satinado</span>
-          </label>
-        </>}
-
-        {selShape.type==="bisagra"&&<>{rng("rw",6,30,"Ancho")}{rng("h",20,120,"Alto")}</>}
-        {selShape.type==="perf"&&<>{rng("r",4,60,"Radio")}<span style={{color:"#4dd0e1"}}>⌀{(selShape.r||15)*2}mm</span></>}
-
-        {(selShape.type==="cota")&&<>
-          <span style={{color:"#6a9fb5"}}>Medida:</span>{inp("label",{w:50,ph:"auto"})}
-          {rng("offset",8,50,"Offset")}
-        </>}
-        {(selShape.type==="linea"||selShape.type==="linea_punteada")&&<>
-          <span style={{color:"#6a9fb5"}}>Texto:</span>{inp("label",{w:70,ph:"(opcional)"})}
-          {selShape.type==="linea_punteada"&&<><span style={{color:"#6a9fb5"}}>Trazo:</span>
-            <select value={selShape.dash||"6 4"} onChange={e=>updateSel("dash",e.target.value)}
-              style={{background:"#0d1117",border:"1px solid #30363d",color:"#c8e0f8",borderRadius:4,fontSize:10,padding:"2px 4px"}}>
-              <option value="6 4">Normal — — —</option>
-              <option value="2 3">Fino ··· </option>
-              <option value="8 3 2 3">Mixto — · —</option>
-              <option value="1 4">Punteado · · ·</option>
-            </select>
-          </>}
-        </>}
-        {(selShape.type==="text")&&<>
-          <span style={{color:"#6a9fb5"}}>Texto:</span>
-          <input value={selShape.text||""} onChange={e=>updateSel("text",e.target.value)}
-            style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 6px",fontSize:10,fontFamily:"monospace",width:80}}/>
-          {rng("size",7,18,"Tamaño")}
-        </>}
-        {(selShape.type==="nota")&&<>
-          <span style={{color:"#6a9fb5"}}>Nota:</span>
-          <input value={selShape.text||""} onChange={e=>updateSel("text",e.target.value)}
-            style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#a5d6a7",padding:"2px 6px",fontSize:10,flex:1,minWidth:100}}/>
-        </>}
-
-        <button onClick={()=>{commit(shapes.filter(s=>s.id!==selId));setSelId(null);}}
-          style={{marginLeft:"auto",padding:"2px 8px",borderRadius:4,border:"1px solid #7f2020",background:"#1a0808",color:"#f48fb1",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>✕</button>
-      </div>
-    );
+    const inp=(k,opts={})=><input type={opts.type||"text"} value={selShape[k]||""} onChange={e=>updateSel(k,opts.num?+e.target.value:e.target.value)} placeholder={opts.ph||""} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 5px",fontSize:10,fontFamily:"monospace",width:opts.w||55}}/>;
+    const rng=(k,mn,mx2,lbl)=><label style={{display:"flex",alignItems:"center",gap:4,color:"#6a9fb5",fontSize:10}}><span>{lbl}</span><input type="range" min={mn} max={mx2} value={selShape[k]||mn} onChange={e=>updateSel(k,+e.target.value)} style={{width:55,accentColor:"#4dd0e1"}}/><span style={{color:"#4dd0e1",minWidth:22}}>{selShape[k]||mn}</span></label>;
+    const chk=(k,lbl,col="#4dd0e1")=><label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:selShape[k]?col:"#6a9fb5",fontSize:10}}><input type="checkbox" checked={!!selShape[k]} onChange={e=>updateSel(k,e.target.checked)} style={{accentColor:col}}/><span>{lbl}</span></label>;
+    return<div style={{display:"flex",flexWrap:"wrap",gap:6,padding:"6px 10px",background:"#161b22",borderRadius:7,marginBottom:6,alignItems:"center",fontSize:10,border:"1px solid #21262d"}}>
+      <span style={{color:"#ffd740",fontWeight:700,fontSize:9,textTransform:"uppercase",letterSpacing:1,marginRight:4}}>{selShape.type}</span>
+      {/* Stroke width */}
+      {rng("sw",0.5,6,"Grosor")}
+      {/* Dash */}
+      {(selShape.type!=="vidrio"&&selShape.type!=="text"&&selShape.type!=="nota"&&selShape.type!=="bisagra")&&<label style={{display:"flex",alignItems:"center",gap:4,color:"#6a9fb5",fontSize:10}}><span>Trazo:</span>
+        <select value={selShape.dash||"0"} onChange={e=>updateSel("dash",e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",color:"#c8e0f8",borderRadius:4,fontSize:10,padding:"1px 3px"}}>
+          <option value="0">Sólido</option><option value="6 3">— — —</option><option value="2 3">· · ·</option><option value="8 3 2 3">— · —</option><option value="1 5">·  ·  ·</option>
+        </select>
+      </label>}
+      {/* Vidrio specific */}
+      {selShape.type==="vidrio"&&<>
+        <span style={{color:"#6a9fb5",marginLeft:4}}>Esquinas:</span>
+        {[["↖","cornerTL"],["↗","cornerTR"],["↘","cornerBR"],["↙","cornerBL"]].map(([ic,k])=><label key={k} style={{display:"flex",alignItems:"center",gap:2,color:"#6a9fb5",fontSize:10}}><span>{ic}</span>{inp(k,{type:"number",num:true,w:30,ph:"0"})}</label>)}
+        <span style={{color:"#6a9fb5",marginLeft:4}}>Medidas:</span>
+        {[["↑","labelT"],["↓","labelB"],["←","labelL"],["→","labelR"],["⊙","labelC"]].map(([ic,k])=><label key={k} style={{display:"flex",alignItems:"center",gap:2,color:"#6a9fb5"}}><span style={{fontSize:11}}>{ic}</span>{inp(k,{w:44,ph:"mm"})}</label>)}
+        {chk("satinado","Satinado")}
+        {chk("esmerilado","Esmerilado","#a5d6a7")}
+      </>}
+      {selShape.type==="bisagra"&&<>{rng("rw",6,30,"Ancho")}{rng("h",20,120,"Alto")}</>}
+      {selShape.type==="perf"&&<>{rng("r",4,60,"Radio")}<span style={{color:"#4dd0e1"}}>⌀{(selShape.r||15)*2}mm</span></>}
+      {selShape.type==="cota"&&<><span style={{color:"#6a9fb5"}}>Medida:</span>{inp("label",{w:50,ph:"auto"})}{rng("offset",8,50,"Offset")}</>}
+      {(selShape.type==="linea"||selShape.type==="linea_punteada")&&<><span style={{color:"#6a9fb5"}}>Texto:</span>{inp("label",{w:70,ph:"(opcional)"})}</>}
+      {selShape.type==="text"&&<><input value={selShape.text||""} onChange={e=>updateSel("text",e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 5px",fontSize:10,fontFamily:"monospace",width:80}}/>{rng("size",7,18,"Tamaño")}</>}
+      {selShape.type==="nota"&&<input value={selShape.text||""} onChange={e=>updateSel("text",e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#a5d6a7",padding:"2px 5px",fontSize:10,flex:1,minWidth:100}}/>}
+      <button onClick={()=>{commit(shapes.filter(s=>s.id!==selId));setSelId(null);}} style={{marginLeft:"auto",padding:"2px 8px",borderRadius:4,border:"1px solid #7f2020",background:"#1a0808",color:"#f48fb1",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>✕ Borrar</button>
+    </div>;
   };
 
-  if(!open) return(
-    <button onClick={()=>setOpen(true)} style={{width:"100%",marginTop:6,padding:"5px 0",background:"transparent",border:"1px dashed #21262d",borderRadius:6,color:"#4a6a7a",cursor:"pointer",fontSize:10,fontFamily:"monospace",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-      ✏ {shapes.length>0?`Plano técnico (${shapes.length})`:"+ Plano técnico"}
-    </button>
-  );
+  if(!open)return<button onClick={()=>setOpen(true)} style={{width:"100%",marginTop:6,padding:"5px 0",background:"transparent",border:"1px dashed #21262d",borderRadius:6,color:"#4a6a7a",cursor:"pointer",fontSize:10,fontFamily:"monospace",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>✏ {shapes.length>0?`Plano técnico (${shapes.length})`:"+ Plano técnico"}</button>;
 
-  return(
-    <div style={{marginTop:8,background:"#0d1117",borderRadius:9,padding:10,border:"1px solid #21262d"}}>
-      {/* TOOLBAR */}
-      <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
-        {TOOL_GROUPS.map(g=>(
-          <div key={g.label} style={{display:"flex",gap:2,alignItems:"center"}}>
-            <span style={{fontSize:8,color:"#30363d",marginRight:2,fontFamily:"monospace"}}>{g.label}</span>
-            {g.tools.map(t=>(
-              <button key={t.id} onClick={()=>setTool(t.id)} title={t.tip} style={btnS(tool===t.id)}>{t.label}</button>
-            ))}
-          </div>
-        ))}
-        <div style={{marginLeft:"auto",display:"flex",gap:3}}>
-          {shapes.length>0&&<><button onClick={()=>{if(window.confirm("¿Limpiar?"))commit([]);setSelId(null);}} style={{...btnS(false),color:"#5a3a3a"}}>Limpiar</button>
-          <button onClick={printPlano} style={{...btnS(false),border:"1px solid #26A69A",color:"#26A69A",fontWeight:700}}>🖨</button></>}
-          <button onClick={()=>setOpen(false)} style={btnS(false)}>▲</button>
-        </div>
-      </div>
-
-      {/* PROPS */}
-      <PropsPanel/>
-
-      {/* CANVAS */}
-      <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${H}`}
-        style={{display:"block",background:"#0d1117",borderRadius:6,border:"1px solid #21262d",cursor:tool==="select"?"default":"crosshair",touchAction:"none",minHeight:200}}
-        onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
-        onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}>
-        <defs>
-          <pattern id={`mn${itemIdx||0}`} width="10" height="10" patternUnits="userSpaceOnUse">
-            <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#161b22" strokeWidth="0.5"/>
-          </pattern>
-          <pattern id={`mj${itemIdx||0}`} width="50" height="50" patternUnits="userSpaceOnUse">
-            <rect width="50" height="50" fill={`url(#mn${itemIdx||0})`}/>
-            <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#1c2631" strokeWidth="0.8"/>
-          </pattern>
-          <marker id="arr" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
-            <path d="M0,0 L8,4 L0,8 Z" fill="#ffd740"/>
-          </marker>
-        </defs>
-        <rect width={W} height={H} fill={`url(#mj${itemIdx||0})`}/>
-        {shapes.map(s=>renderShape(s,false))}
-        {drawing&&renderShape(drawing,true)}
-      </svg>
-
-      {/* HINT */}
-      <div style={{fontSize:9,color:"#30363d",marginTop:3,display:"flex",justifyContent:"space-between",fontFamily:"monospace"}}>
-        <span style={{color:"#21262d"}}>Ctrl = sin snap</span>
-        <span>
-          {tool==="select"&&"↖ Click selecciona · Arrastrá mueve"}
-          {tool==="vidrio"&&"▭ Arrastrá para dibujar el vidrio · Ctrl = libre"}
-          {tool==="arco"&&"◯ Arrastrá para dibujar arco/elipse"}
-          {tool==="bisagra"&&"⊢ Click para colocar bisagra"}
-          {tool==="perf"&&"⊙ Click para colocar perforación"}
-          {tool==="cota"&&"↔ Arrastrá para cotar una medida en mm"}
-          {tool==="linea"&&"— Arrastrá para trazar línea de referencia"}
-          {tool==="linea_punteada"&&"╌ Arrastrá para trazar línea de referencia punteada"}
-          {tool==="text"&&"123 Click para agregar número o medida"}
-          {tool==="nota"&&"abc Click para agregar anotación"}
-        </span>
+  return<div style={{marginTop:8,background:"#0d1117",borderRadius:9,padding:10,border:"1px solid #21262d"}}>
+    {/* Toolbar */}
+    <div style={{display:"flex",gap:4,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
+      {TOOLS.map(t=><button key={t.id} onClick={()=>setTool(t.id)} title={t.tip} style={btnS(tool===t.id)}>{t.label}</button>)}
+      <div style={{marginLeft:"auto",display:"flex",gap:3,alignItems:"center"}}>
+        {/* Global stroke controls */}
+        <span style={{fontSize:9,color:"#30363d",fontFamily:"monospace"}}>Grosor:</span>
+        <input type="range" min="0.5" max="6" step="0.5" value={strokeW} onChange={e=>setStrokeW(+e.target.value)} style={{width:50,accentColor:"#4dd0e1"}}/>
+        <span style={{fontSize:9,color:"#4dd0e1",minWidth:16}}>{strokeW}</span>
+        <span style={{fontSize:9,color:"#30363d",fontFamily:"monospace",marginLeft:4}}>Trazo:</span>
+        <select value={strokeDash} onChange={e=>setStrokeDash(e.target.value)} style={{background:"#0d1117",border:"1px solid #21262d",color:"#6a9fb5",borderRadius:4,fontSize:9,padding:"1px 3px"}}>
+          <option value="0">——</option><option value="6 3">- -</option><option value="2 3">···</option><option value="8 3 2 3">-·-</option>
+        </select>
+        {shapes.length>0&&<button onClick={()=>{if(window.confirm("¿Limpiar?"))commit([]);setSelId(null);}} style={{...btnS(false),color:"#5a3a3a",marginLeft:4}}>Limpiar</button>}
+        {shapes.length>0&&<button onClick={printPlano} style={{...btnS(false),border:"1px solid #26A69A",color:"#26A69A",fontWeight:700}}>🖨</button>}
+        <button onClick={()=>setOpen(false)} style={btnS(false)}>▲</button>
       </div>
     </div>
-  );
+    <PropsPanel/>
+    <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${H}`}
+      style={{display:"block",background:"#0d1117",borderRadius:6,border:"1px solid #21262d",cursor:tool==="select"?"default":"crosshair",touchAction:"none",minHeight:200}}
+      onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
+      onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}>
+      <defs>
+        <pattern id={`mn${itemIdx||0}`} width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="#161b22" strokeWidth="0.5"/></pattern>
+        <pattern id={`mj${itemIdx||0}`} width="50" height="50" patternUnits="userSpaceOnUse"><rect width="50" height="50" fill={`url(#mn${itemIdx||0})`}/><path d="M 50 0 L 0 0 0 50" fill="none" stroke="#1c2631" strokeWidth="0.8"/></pattern>
+      </defs>
+      <rect width={W} height={H} fill={`url(#mj${itemIdx||0})`}/>
+      {freePath.length>1&&<polyline points={freePath.map(([x,y])=>`${x},${y}`).join(" ")} fill="none" stroke="#00bfff" strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>}
+      {shapes.map(s=>renderShape(s,false))}
+      {drawing&&renderShape(drawing,true)}
+    </svg>
+    <div style={{fontSize:9,color:"#30363d",marginTop:3,display:"flex",justifyContent:"space-between",fontFamily:"monospace"}}>
+      <span style={{color:"#1c2631"}}>Shift = sin snap</span>
+      <span>{tool==="select"&&"↖ Click selecciona · Arrastrá mueve"}{tool==="vidrio"&&"▭ Arrastrá · Seleccioná para configurar lados, esquinas, satinado/esmerilado"}{tool==="free"&&"✏ Mantené apretado y dibujá libremente"}{tool==="bisagra"&&"⊢ Click para colocar bisagra"}{tool==="perf"&&"⊙ Click → ingresá diámetro"}{tool==="cota"&&"↔ Arrastrá para cotar"}{tool==="linea"&&"— Arrastrá línea de referencia"}{tool==="linea_punteada"&&"╌ Línea punteada"}{tool==="text"&&"123 Click para número/medida"}{tool==="nota"&&"abc Click para anotación"}{tool==="arco"&&"◯ Arrastrá arco/elipse"}</span>
+    </div>
+  </div>;
 };
 
 
@@ -893,7 +742,7 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
     items:[emptyItem()],
     condiciones:"50% al confirmar, saldo contra entrega.",
     pago_senia:"",pago_senia_fecha:"",pago_senia_metodo:"efectivo",
-    pago_saldo:"",pago_total:"",
+    pago_total:"",
     pagos_parciales:[],
     abonado_completo:false,pago_final_monto:"",pago_final_fecha:"",pago_final_metodo:"efectivo",
     comp_senia:[],comp_final:[],
@@ -943,78 +792,59 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
   ];
 
   // ── PDF TALLER ────────────────────────────────────────────────────────────
-  // ── PDF ETIQUETAS 55×44mm ─────────────────────────────────────────────────
+  // ── PDF ETIQUETAS 100×150mm ──────────────────────────────────────────────
   const pdfEtiquetas=()=>{
     const items=form.items||[];
     if(!items.length){alert("No hay ítems en esta orden.");return;}
     const domicilio=form.inst_direccion||form.contacto_dom||"";
     const cliente=form.contacto_nombre||"";
     const numero=form.numero||"";
-
-    // Generate one label per item (repeated by quantity)
     const etiquetas=items.flatMap(it=>{
       const qty=+it.cant||1;
       return Array(qty).fill(null).map((_,qi)=>({
-        numero,
-        nombre:it.nombre||"",
-        tipo:it.tipo_vidrio||"",
+        numero,nombre:it.nombre||"",tipo:it.tipo_vidrio||"",
         medidas:it.ancho&&it.alto?`${it.ancho} × ${it.alto} mm`:"",
-        obs:(it.obs||[]).join(", "),
-        domicilio,
-        cliente,
-        idx:qi+1,
-        total:qty,
+        obs:(it.obs||[]).join(", "),domicilio,cliente,idx:qi+1,total:qty,
       }));
     });
-
-    // 55mm × 44mm at 96dpi ≈ 208px × 166px
-    // We print 2 columns to fit on A4, but page size set to label size
-    const labelHTML=etiquetas.map((e,i)=>`
+    const labelHTML=etiquetas.map((e)=>`
       <div class="label">
-        <div class="orden">${e.numero}</div>
-        ${e.nombre?`<div class="nombre">${e.nombre}${e.total>1?` (${e.idx}/${e.total})`:""}</div>`:""}
+        <div class="orden">${e.numero}${e.total>1?` · ${e.idx}/${e.total}`:""}</div>
+        ${e.nombre?`<div class="nombre">${e.nombre}</div>`:""}
         <div class="medidas">${e.medidas||e.tipo}</div>
         ${e.medidas?`<div class="tipo">${e.tipo}</div>`:""}
         ${e.obs?`<div class="obs">${e.obs}</div>`:""}
+        <div class="sep"></div>
         <div class="domicilio">📍 ${e.domicilio||e.cliente||"—"}</div>
+        ${e.cliente&&e.domicilio?`<div class="cliente">${e.cliente}</div>`:""}
       </div>`).join("");
-
     const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiquetas ${numero}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Helvetica Neue',Arial,sans-serif;background:#fff}
-  @page{size:55mm 44mm;margin:0}
+  @page{size:100mm 150mm;margin:0}
   .label{
-    width:55mm;height:44mm;
-    padding:2.5mm 3mm;
-    display:flex;flex-direction:column;justify-content:center;gap:0.8mm;
-    border:0.3mm solid #ccc;
-    page-break-after:always;
-    overflow:hidden;
+    width:100mm;height:150mm;
+    padding:6mm 7mm;
+    display:flex;flex-direction:column;justify-content:center;gap:2mm;
+    page-break-after:always;overflow:hidden;
   }
-  .orden{font-size:7pt;color:#666;font-weight:600;letter-spacing:0.5px}
-  .nombre{font-size:9pt;font-weight:900;color:#000;line-height:1.1;text-transform:uppercase}
-  .medidas{font-size:13pt;font-weight:900;color:#000;letter-spacing:0.5px;line-height:1}
-  .tipo{font-size:7.5pt;color:#333;font-weight:600}
-  .obs{font-size:7pt;color:#555;font-style:italic}
-  .domicilio{font-size:7pt;color:#444;margin-top:1mm;border-top:0.2mm solid #eee;padding-top:1mm}
+  .orden{font-size:9pt;color:#666;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+  .nombre{font-size:13pt;font-weight:900;color:#000;line-height:1.2;text-transform:uppercase;margin:1mm 0}
+  .medidas{font-size:22pt;font-weight:900;color:#000;letter-spacing:0.5px;line-height:1;margin:2mm 0}
+  .tipo{font-size:10pt;color:#333;font-weight:600}
+  .obs{font-size:9pt;color:#555;font-style:italic}
+  .sep{border-top:0.4mm solid #ddd;margin:3mm 0}
+  .domicilio{font-size:10pt;color:#222;font-weight:700}
+  .cliente{font-size:9pt;color:#555;margin-top:1mm}
   @media print{
     body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    @page{size:55mm 44mm;margin:0}
+    @page{size:100mm 150mm;margin:0}
     .label{border:none;page-break-after:always}
   }
 </style></head><body>${labelHTML}</body></html>`;
-
-    const w=window.open("","_blank","width=600,height=500");
-    if(w){
-      w.document.write(html);
-      w.document.close();
-      w.onload=()=>{
-        w.focus();
-        // Small delay to let browser render before print dialog
-        setTimeout(()=>w.print(),300);
-      };
-    }
+    const w=window.open("","_blank","width=500,height=700");
+    if(w){w.document.write(html);w.document.close();w.onload=()=>{w.focus();setTimeout(()=>w.print(),300);};}
   };
 
   const pdfTaller=()=>{
@@ -1124,7 +954,6 @@ table{width:100%;border-collapse:collapse}
       </tr>`).join("");
     const planoSVG=buildSVGStr(form.plano);
     const senia=+form.pago_senia||0;
-    const saldo=+form.pago_saldo||0;
     const total=+form.pago_total||totalCalc||0;
     const fotosHTML=(form.fotos_instalacion||[]).map(f=>`<img src="${f.data}" style="width:150px;height:115px;object-fit:cover;border-radius:7px;border:1px solid #e0ecff;"/>`).join("");
     const fotosTrabHTML=(form.fotos_trabajo||[]).map(f=>`<img src="${f.data}" style="width:150px;height:115px;object-fit:cover;border-radius:7px;border:1px solid #a5d6a7;"/>`).join("");
@@ -1856,7 +1685,10 @@ function AppInner({ currentUser, onLogout }) {
     let loaded = false;
     const markLoaded = () => { if(!loaded){loaded=true; setLoading(false); clearTimeout(timeout);} };
 
-    unsubs.push(fsSub("ordenes", docs => { setOrdenes(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); markLoaded(); }));
+    unsubs.push(fsSub("ordenes", docs => { setOrdenes(docs.sort((a,b)=>{
+      if(a.sortOrder!=null&&b.sortOrder!=null) return a.sortOrder-b.sortOrder;
+      return (b.createdAt||"").localeCompare(a.createdAt||"");
+    })); markLoaded(); }));
     unsubs.push(fsSub("clientes", docs => { setClientes(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); }));
     unsubs.push(fsSub("cotizaciones", docs => { setCotizaciones(docs.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""))); }));
     unsubs.push(fsSub("stock_items", docs => { setStock(docs); }));
@@ -1965,7 +1797,6 @@ function AppInner({ currentUser, onLogout }) {
       <style>{`@keyframes pulse{0%,100%{opacity:0.3;transform:scale(0.8)}50%{opacity:1;transform:scale(1.2)}}`}</style>
     </div>
   );
-
 
   const navItems=[
     {id:"home",label:"Inicio",icon:"home"},
@@ -2212,7 +2043,23 @@ function AppInner({ currentUser, onLogout }) {
     );
   };
 
-  const OrdenesList=()=>(
+  const OrdenesList=()=>{
+    const [expandidos,setExpandidos]=useState({});
+    const toggle=(id)=>setExpandidos(e=>({...e,[id]:!e[id]}));
+
+    const moverOrden=async(idx,direccion)=>{
+      const arr=[...filtered];
+      const newIdx=idx+direccion;
+      if(newIdx<0||newIdx>=arr.length) return;
+      // Swap sortOrder values in Firebase
+      const a=arr[idx], b=arr[newIdx];
+      const aOrder=a.sortOrder??idx;
+      const bOrder=b.sortOrder??newIdx;
+      await fsSet("ordenes",a.id,{...a,sortOrder:bOrder});
+      await fsSet("ordenes",b.id,{...b,sortOrder:aOrder});
+    };
+
+    return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22}}>
         <div><h1 style={{margin:"0 0 4px",fontFamily:"Georgia,serif",fontSize:24,color:"#e2f0ff"}}>Órdenes de Trabajo</h1><p style={{margin:0,color:"#3a6a9a",fontSize:13}}>{ordenes.length} órdenes en total</p></div>
@@ -2231,8 +2078,8 @@ function AppInner({ currentUser, onLogout }) {
           {estados.map(e=><option key={e.id} value={e.id}>{e.label}</option>)}
         </Sel>
       </div>
-      <div style={{display:"grid",gap:7}}>
-        {filtered.map(o=>{
+      <div style={{display:"grid",gap:6}}>
+        {filtered.map((o,idx)=>{
           const total=+o.pago_total||0;
           const senia=+o.pago_senia||0;
           const parciales=(o.pagos_parciales||[]).reduce((s,p)=>s+(+p.monto||0),0);
@@ -2242,40 +2089,83 @@ function AppInner({ currentUser, onLogout }) {
           const pagoEstado=o.abonado_completo||resta===0&&total>0?"completo":cobrado>0?"parcial":"sinpagar";
           const pagoColor=pagoEstado==="completo"?"#26A69A":pagoEstado==="parcial"?"#FFB74D":"#5a8ab8";
           const pagoIcon=pagoEstado==="completo"?"✅":pagoEstado==="parcial"?"🟡":"🔴";
+          const expandido=!!expandidos[o.id];
+          const incProblemas=(o.incidencias||[]).filter(i=>!i.resuelto).length;
+
           return(
-          <div key={o.id} style={{background:"#071220",borderRadius:11,padding:"12px 14px",border:`1px solid ${o.estado==="cancelada"?"#EF535020":"#0f2035"}`,display:"flex",alignItems:"center",gap:12,opacity:o.estado==="cancelada"?0.6:1}}>
-            <div style={{background:"#0a1828",border:"1px solid #1565C025",borderRadius:7,padding:"4px 10px",minWidth:95,textAlign:"center",flexShrink:0}}>
-              <div style={{fontSize:11,fontWeight:800,color:"#1565C0",fontFamily:"monospace",letterSpacing:"0.5px"}}>{o.numero||"—"}</div>
-              <div style={{fontSize:10,color:"#3a6a9a"}}>{o.fecha}</div>
-            </div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2,flexWrap:"wrap"}}>
-                <span style={{fontSize:14,fontWeight:600,color:"#e2f0ff"}}>{getNombre(o.cliente)||"Sin cliente"}</span>
-                {o.equipo_asignado&&<span style={{fontSize:10,fontWeight:700,padding:"1px 8px",borderRadius:99,background:o.equipo_asignado==="A"?"#FFB74D20":"#F48FB120",color:o.equipo_asignado==="A"?"#FFB74D":"#F48FB1",border:`1px solid ${o.equipo_asignado==="A"?"#FFB74D40":"#F48FB140"}`}}>Eq.{o.equipo_asignado}</span>}
-                {(o.incidencias||[]).filter(i=>!i.resuelto).length>0&&<span style={{fontSize:10,fontWeight:700,padding:"1px 8px",borderRadius:99,background:"#2a1000",color:"#FFB74D",border:"1px solid #FFB74D40"}}>⚠ {(o.incidencias||[]).filter(i=>!i.resuelto).length} problema{(o.incidencias||[]).filter(i=>!i.resuelto).length>1?"s":""}</span>}
-                {o.ref_cotizacion&&<span style={{fontSize:10,color:"#FFB74D",background:"#2a1a00",border:"1px solid #FFB74D30",padding:"1px 8px",borderRadius:99}}>ref. {o.ref_cotizacion}</span>}
+          <div key={o.id} style={{background:"#071220",borderRadius:11,border:`1px solid ${o.estado==="cancelada"?"#EF535020":incProblemas>0?"#FFB74D30":"#0f2035"}`,opacity:o.estado==="cancelada"?0.6:1}}>
+            {/* ── FILA COMPACTA (siempre visible) ── */}
+            <div style={{padding:"10px 12px",display:"flex",alignItems:"center",gap:10}}>
+              {/* Reorder buttons */}
+              <div style={{display:"flex",flexDirection:"column",gap:2,flexShrink:0}}>
+                <button onClick={()=>moverOrden(idx,-1)} disabled={idx===0}
+                  style={{background:"none",border:"1px solid #1e3a5a",color:idx===0?"#1e3a5a":"#3a6a9a",borderRadius:4,padding:"1px 5px",cursor:idx===0?"default":"pointer",fontSize:9,lineHeight:1}}>▲</button>
+                <button onClick={()=>moverOrden(idx,1)} disabled={idx===filtered.length-1}
+                  style={{background:"none",border:"1px solid #1e3a5a",color:idx===filtered.length-1?"#1e3a5a":"#3a6a9a",borderRadius:4,padding:"1px 5px",cursor:idx===filtered.length-1?"default":"pointer",fontSize:9,lineHeight:1}}>▼</button>
               </div>
-              {total>0&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
-                <div style={{flex:1,height:4,background:"#0a1828",borderRadius:99,overflow:"hidden"}}>
-                  <div style={{height:"100%",borderRadius:99,background:pagoEstado==="completo"?"#26A69A":pagoEstado==="parcial"?"#FFB74D":"#1e3a5a",width:`${Math.min(100,total>0?cobrado/total*100:0)}%`,transition:"width 0.3s"}}/>
+
+              {/* Número */}
+              <div style={{background:"#0a1828",border:"1px solid #1565C025",borderRadius:7,padding:"3px 8px",minWidth:88,textAlign:"center",flexShrink:0}}>
+                <div style={{fontSize:10,fontWeight:800,color:"#1565C0",fontFamily:"monospace"}}>{o.numero||"—"}</div>
+                <div style={{fontSize:9,color:"#3a6a9a"}}>{o.fecha}</div>
+              </div>
+
+              {/* Info principal */}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                  <span style={{fontSize:13,fontWeight:600,color:"#e2f0ff"}}>{o.contacto_nombre||getNombre(o.cliente)||"Sin cliente"}</span>
+                  {o.equipo_asignado&&<span style={{fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:99,background:o.equipo_asignado==="A"?"#FFB74D20":"#F48FB120",color:o.equipo_asignado==="A"?"#FFB74D":"#F48FB1",border:`1px solid ${o.equipo_asignado==="A"?"#FFB74D40":"#F48FB140"}`}}>Eq.{o.equipo_asignado}</span>}
+                  {incProblemas>0&&<span style={{fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:99,background:"#2a1000",color:"#FFB74D",border:"1px solid #FFB74D40"}}>⚠{incProblemas}</span>}
                 </div>
-                <span style={{fontSize:10,fontWeight:700,color:pagoColor,whiteSpace:"nowrap"}}>
-                  {pagoIcon} {pagoEstado==="completo"?"Pagado":pagoEstado==="parcial"?`$${cobrado.toLocaleString("es-AR")} / $${total.toLocaleString("es-AR")}`:`$${total.toLocaleString("es-AR")}`}
-                </span>
+                {total>0&&<div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
+                  <div style={{flex:1,height:3,background:"#0a1828",borderRadius:99,overflow:"hidden",maxWidth:120}}>
+                    <div style={{height:"100%",borderRadius:99,background:pagoEstado==="completo"?"#26A69A":pagoEstado==="parcial"?"#FFB74D":"#1e3a5a",width:`${Math.min(100,total>0?cobrado/total*100:0)}%`}}/>
+                  </div>
+                  <span style={{fontSize:9,fontWeight:700,color:pagoColor}}>{pagoIcon} {pagoEstado==="completo"?"Pagado":pagoEstado==="parcial"?`$${cobrado.toLocaleString("es-AR")}/$${total.toLocaleString("es-AR")}`:`$${total.toLocaleString("es-AR")}`}</span>
+                </div>}
+              </div>
+
+              {/* Estado + acciones */}
+              <Badge estado={o.estado} estados={estados}/>
+              <button onClick={()=>toggle(o.id)}
+                style={{background:"none",border:"1px solid #1e3a5a",color:"#3a6a9a",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:10,fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                {expandido?"▲ Menos":"▼ Más"}
+              </button>
+              <div style={{display:"flex",gap:2}}>
+                <button onClick={()=>setModal({type:"editar_orden",data:o})} style={{background:"none",border:"none",color:"#3a6a9a",cursor:"pointer",padding:5,borderRadius:5,display:"flex"}}><Icon name="edit" size={14}/></button>
+                <button onClick={()=>deleteOrden(o.id)} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:5,borderRadius:5,display:"flex"}}><Icon name="trash" size={14}/></button>
+              </div>
+            </div>
+
+            {/* ── DETALLE EXPANDIDO ── */}
+            {expandido&&<div style={{borderTop:"1px solid #0f2035",padding:"10px 14px",display:"grid",gap:6}}>
+              {o.contacto_dom&&<div style={{fontSize:12,color:"#5a8ab8"}}>📍 {o.contacto_dom}</div>}
+              {o.contacto_tel&&<div style={{fontSize:12,color:"#5a8ab8"}}>📞 {o.contacto_tel}</div>}
+              {o.inst_fecha&&<div style={{fontSize:12,color:"#FFB74D"}}>📅 Instalación: {o.inst_fecha}</div>}
+              {(o.items||[]).length>0&&<div>
+                <div style={{fontSize:10,fontWeight:700,color:"#3a6a9a",textTransform:"uppercase",marginBottom:4}}>Ítems ({o.items.length})</div>
+                {(o.items||[]).map((it,i)=>(
+                  <div key={i} style={{display:"flex",gap:8,padding:"3px 0",borderBottom:i<o.items.length-1?"1px solid #0a1020":"none",fontSize:12}}>
+                    <span style={{color:"#64B5F6",fontWeight:700,flexShrink:0}}>{it.cant||1}×</span>
+                    <span style={{color:"#c8e0f8"}}>{it.tipo_vidrio}</span>
+                    {it.nombre&&<span style={{color:"#FFB74D",fontSize:11}}>— {it.nombre}</span>}
+                    {(it.ancho||it.alto)&&<span style={{color:"#3a6a9a",fontSize:11,marginLeft:"auto"}}>{it.ancho}×{it.alto}mm{it.medida_confirmada?" ✓":""}</span>}
+                  </div>
+                ))}
               </div>}
-            </div>
-            <Badge estado={o.estado} estados={estados}/>
-            <div style={{display:"flex",gap:3}}>
-              <button onClick={()=>setModal({type:"editar_orden",data:o})} style={{background:"none",border:"none",color:"#3a6a9a",cursor:"pointer",padding:6,borderRadius:6,display:"flex"}}><Icon name="edit" size={15}/></button>
-              <button onClick={()=>deleteOrden(o.id)} style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:6,borderRadius:6,display:"flex"}}><Icon name="trash" size={15}/></button>
-            </div>
+              {o.inst_notas&&<div style={{fontSize:12,color:"#5a8ab8",fontStyle:"italic"}}>📋 {o.inst_notas}</div>}
+              {incProblemas>0&&(o.incidencias||[]).filter(i=>!i.resuelto).map((inc,i)=>(
+                <div key={i} style={{fontSize:11,color:"#FFB74D",background:"#1a0800",borderRadius:5,padding:"4px 8px"}}>⚠ {inc.tipo}{inc.nota?` — ${inc.nota}`:""}</div>
+              ))}
+            </div>}
           </div>
           );
         })}
         {!filtered.length&&<div style={{textAlign:"center",padding:"44px 0",color:"#2a4a6a"}}><Icon name="orders" size={40}/><p style={{marginTop:12,fontSize:14}}>No hay órdenes que coincidan</p><Btn small onClick={()=>setModal({type:"nueva_orden"})} style={{marginTop:8}}><Icon name="plus" size={14}/> Crear primera orden</Btn></div>}
       </div>
     </div>
-  );
+    );
+  };
 
   const Tablero=()=>{
     const [dragId,setDragId]=useState(null);
@@ -3250,7 +3140,6 @@ ${bizFooter()}`;
       !["cobrado","cancelada"].includes(o.estado)
     ).sort((a,b)=>(a.inst_fecha||"").localeCompare(b.inst_fecha||""));
 
-    // DEBUG — remove after fixing
     const debugInfo = {
       usuario: currentUser.usuario,
       equipo_detectado: equipo,
@@ -3279,6 +3168,18 @@ ${bizFooter()}`;
       await saveOrden(updated);
     };
 
+    const [expandidos,setExpandidos]=useState({});
+    const toggleExp=(id)=>setExpandidos(e=>({...e,[id]:!e[id]}));
+
+    const moverOrdenCol=async(idx,dir)=>{
+      const arr=[...misOrdenes];
+      const newIdx=idx+dir;
+      if(newIdx<0||newIdx>=arr.length) return;
+      const a=arr[idx],b=arr[newIdx];
+      await fsSet("ordenes",a.id,{...a,sortOrder:b.sortOrder??newIdx});
+      await fsSet("ordenes",b.id,{...b,sortOrder:a.sortOrder??idx});
+    };
+
     const ESTADO_COLOR={pendiente:"#FFB74D",esp_materiales:"#64B5F6",taller:"#CE93D8",listo_entregar:"#A5D6A7",entregado:"#26A69A"};
 
     return(
@@ -3296,157 +3197,155 @@ ${bizFooter()}`;
             <div style={{fontSize:40,marginBottom:10}}>✅</div>
             <div style={{fontSize:16,fontWeight:600,color:"#3a6a9a"}}>No tenés órdenes asignadas</div>
             <div style={{fontSize:13,color:"#2a4a6a",marginTop:6}}>Cuando te asignen trabajo aparecerá acá</div>
-            {/* DEBUG PANEL */}
-            <div style={{marginTop:20,padding:12,background:"#0a1020",borderRadius:8,border:"1px solid #1e3a5a",textAlign:"left",fontSize:11,fontFamily:"monospace",color:"#64B5F6"}}>
-              <div style={{color:"#FFB74D",fontWeight:700,marginBottom:6}}>🔍 Debug (solo visible temporalmente)</div>
-              <div>Usuario: {debugInfo.usuario}</div>
-              <div>Equipo detectado: "{debugInfo.equipo_detectado}"</div>
-              <div>Total órdenes en Firebase: {debugInfo.total_ordenes}</div>
-              <div>Órdenes con equipo asignado: {debugInfo.ordenes_con_equipo}</div>
-              <div>Mis órdenes: {debugInfo.mis_ordenes}</div>
-              <div style={{marginTop:6,color:"#A5D6A7"}}>Últimas 3 órdenes:</div>
-              {debugInfo.sample.map((o,i)=>(
-                <div key={i} style={{color:"#c8e0f8"}}>  {o.num} → equipo="{o.eq}" estado={o.est}</div>
-              ))}
-            </div>
           </div>
         )}
 
-        {misOrdenes.map(orden=>{
+        {misOrdenes.map((orden,idx)=>{
           const total=+orden.pago_total||0;
           const cobrado=(+orden.pago_senia||0)+(orden.pagos_parciales||[]).reduce((s,p)=>s+(+p.monto||0),0)+(+orden.pago_final_monto||0);
           const saldo=Math.max(0,total-cobrado);
           const estadoColor=ESTADO_COLOR[orden.estado]||"#5a8ab8";
           const incPendientes=(orden.incidencias||[]).filter(i=>!i.resuelto).length;
+          const expandido=!!expandidos[orden.id];
 
           return(
-            <div key={orden.id} style={{background:"#071220",borderRadius:12,padding:16,marginBottom:12,border:`1px solid ${incPendientes>0?"#FFB74D40":"#1e3a5a"}`}}>
-              {/* Orden header */}
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-                <div>
-                  <div style={{fontFamily:"monospace",fontSize:15,fontWeight:800,color:"#64B5F6"}}>{orden.numero}</div>
-                  <div style={{fontSize:13,fontWeight:600,color:"#e2f0ff",marginTop:2}}>{orden.contacto_nombre||getNombre(orden.cliente)||"Sin cliente"}</div>
+            <div key={orden.id} style={{background:"#071220",borderRadius:12,marginBottom:10,border:`1px solid ${incPendientes>0?"#FFB74D40":"#1e3a5a"}`}}>
+
+              {/* ── FILA COMPACTA ── */}
+              <div style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
+                {/* Reorder */}
+                <div style={{display:"flex",flexDirection:"column",gap:3,flexShrink:0}}>
+                  <button onClick={()=>moverOrdenCol(idx,-1)} disabled={idx===0}
+                    style={{background:"none",border:"1px solid #1e3a5a",color:idx===0?"#1e3a5a":"#64B5F6",borderRadius:4,padding:"2px 6px",cursor:idx===0?"default":"pointer",fontSize:10}}>▲</button>
+                  <button onClick={()=>moverOrdenCol(idx,1)} disabled={idx===misOrdenes.length-1}
+                    style={{background:"none",border:"1px solid #1e3a5a",color:idx===misOrdenes.length-1?"#1e3a5a":"#64B5F6",borderRadius:4,padding:"2px 6px",cursor:idx===misOrdenes.length-1?"default":"pointer",fontSize:10}}>▼</button>
+                </div>
+
+                {/* Info */}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <span style={{fontFamily:"monospace",fontSize:13,fontWeight:800,color:"#64B5F6"}}>{orden.numero}</span>
+                    {incPendientes>0&&<span style={{fontSize:10,fontWeight:700,color:"#FFB74D",background:"#2a1000",padding:"1px 6px",borderRadius:99,border:"1px solid #FFB74D40"}}>⚠{incPendientes}</span>}
+                  </div>
+                  <div style={{fontSize:13,fontWeight:600,color:"#e2f0ff",marginTop:1}}>{orden.contacto_nombre||getNombre(orden.cliente)||"Sin cliente"}</div>
+                  {orden.inst_fecha&&<div style={{fontSize:11,color:"#FFB74D"}}>📅 {orden.inst_fecha}</div>}
+                  {total>0&&<div style={{fontSize:11,fontWeight:700,color:saldo>0?"#FFB74D":"#26A69A",marginTop:2}}>
+                    {saldo>0?`Saldo: $${saldo.toLocaleString("es-AR")}`:"✅ Pagado"}
+                  </div>}
+                </div>
+
+                {/* Estado + toggle */}
+                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+                  <span style={{background:estadoColor+"20",color:estadoColor,border:`1px solid ${estadoColor}40`,padding:"2px 8px",borderRadius:99,fontSize:10,fontWeight:700}}>{estados.find(e=>e.id===orden.estado)?.label||orden.estado}</span>
+                  <button onClick={()=>toggleExp(orden.id)}
+                    style={{background:"none",border:"1px solid #1e3a5a",color:"#3a6a9a",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>
+                    {expandido?"▲ Menos":"▼ Ver todo"}
+                  </button>
+                </div>
+              </div>
+
+              {/* ── DETALLE EXPANDIDO ── */}
+              {expandido&&<div style={{borderTop:"1px solid #0f2035",padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}}>
+
+                {/* Contacto */}
+                <div style={{display:"flex",flexDirection:"column",gap:3}}>
                   {orden.contacto_tel&&<div style={{fontSize:12,color:"#3a6a9a"}}>📞 {orden.contacto_tel}</div>}
-                  {orden.inst_fecha&&<div style={{fontSize:12,color:"#FFB74D",marginTop:2}}>📅 Instalación: {orden.inst_fecha}</div>}
                   {orden.inst_direccion&&<div style={{fontSize:12,color:"#3a6a9a"}}>📍 {orden.inst_direccion}</div>}
                 </div>
-                <span style={{background:estadoColor+"20",color:estadoColor,border:`1px solid ${estadoColor}40`,padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
-                  {estados.find(e=>e.id===orden.estado)?.label||orden.estado}
-                </span>
-              </div>
 
-              {/* Vidrios — EDITABLES */}
-              <ItemEditor orden={orden} tiposVidrio={tiposVidrio} currentUser={currentUser} saveOrden={saveOrden}/>
-
-              {/* Incidencias — visibles y resolvibles por el colocador */}
-              {(orden.incidencias||[]).filter(i=>!i.resuelto).length>0&&(
-                <div style={{background:"#1a0800",borderRadius:8,padding:10,marginBottom:10,border:"1px solid #FFB74D40"}}>
-                  <div style={{fontSize:10,fontWeight:700,color:"#FFB74D",textTransform:"uppercase",marginBottom:8}}>⚠ Problemas abiertos</div>
-                  {(orden.incidencias||[]).filter(i=>!i.resuelto).map((inc,i)=>(
-                    <div key={inc.id||i} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"6px 0",borderBottom:i<(orden.incidencias||[]).filter(x=>!x.resuelto).length-1?"1px solid #2a1500":"none"}}>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:13,fontWeight:700,color:"#FFB74D"}}>{inc.tipo}</div>
-                        {inc.nota&&<div style={{fontSize:11,color:"#8a6a3a",marginTop:2}}>{inc.nota}</div>}
-                        <div style={{fontSize:10,color:"#5a4a2a",marginTop:2}}>{new Date(inc.fecha).toLocaleString("es-AR")}</div>
+                {/* Incidencias abiertas */}
+                {incPendientes>0&&(
+                  <div style={{background:"#1a0800",borderRadius:8,padding:10,border:"1px solid #FFB74D40"}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"#FFB74D",textTransform:"uppercase",marginBottom:8}}>⚠ Problemas abiertos</div>
+                    {(orden.incidencias||[]).filter(i=>!i.resuelto).map((inc,i)=>(
+                      <div key={inc.id||i} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"6px 0",borderBottom:i<(orden.incidencias||[]).filter(x=>!x.resuelto).length-1?"1px solid #2a1500":"none"}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"#FFB74D"}}>{inc.tipo}</div>
+                          {inc.nota&&<div style={{fontSize:11,color:"#8a6a3a",marginTop:2}}>{inc.nota}</div>}
+                        </div>
+                        <button onClick={async()=>{
+                          if(!window.confirm(`¿Marcar "${inc.tipo}" como resuelto?`))return;
+                          const updated=(orden.incidencias||[]).map(x=>x.id===inc.id?{...x,resuelto:true,resuelto_por:currentUser.nombre,resuelto_fecha:new Date().toISOString()}:x);
+                          await saveOrden({...orden,incidencias:updated});
+                        }} style={{padding:"4px 10px",borderRadius:6,border:"1px solid #26A69A40",background:"#0a2a0a",color:"#26A69A",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:700,flexShrink:0}}>✓ Resolver</button>
                       </div>
-                      <button onClick={async()=>{
-                        if(!window.confirm(`¿Marcar "${inc.tipo}" como resuelto?`))return;
-                        const updated=(orden.incidencias||[]).map(x=>
-                          x.id===inc.id?{...x,resuelto:true,resuelto_por:currentUser.nombre,resuelto_fecha:new Date().toISOString()}:x
-                        );
-                        await saveOrden({...orden,incidencias:updated});
-                      }} style={{padding:"4px 10px",borderRadius:6,border:"1px solid #26A69A40",background:"#0a2a0a",color:"#26A69A",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
-                        ✓ Resolver
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Notas de instalación */}
-              {orden.inst_notas&&(
-                <div style={{background:"#0a1020",borderRadius:8,padding:10,marginBottom:10,border:"1px solid #1565C020"}}>
-                  <div style={{fontSize:10,fontWeight:700,color:"#5a8ab8",marginBottom:4}}>📋 NOTAS</div>
-                  <div style={{fontSize:13,color:"#c8e0f8",lineHeight:1.5}}>{orden.inst_notas}</div>
-                </div>
-              )}
-
-              {/* Fotos del lugar */}
-              {(orden.fotos_instalacion||[]).length>0&&(
-                <div style={{marginBottom:10}}>
-                  <div style={{fontSize:10,fontWeight:700,color:"#CE93D8",marginBottom:6}}>📷 FOTOS DEL LUGAR</div>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                    {orden.fotos_instalacion.map((f,i)=>(
-                      <img key={i} src={f.data} alt="" style={{width:80,height:80,objectFit:"cover",borderRadius:7,cursor:"pointer",border:"1px solid #CE93D820"}} onClick={()=>window.open(f.data,"_blank")}/>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Precios */}
-              <div style={{background:"#0a1020",borderRadius:8,padding:10,marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
-                  <div style={{fontSize:10,color:"#3a6a9a",fontWeight:700,textTransform:"uppercase"}}>Total</div>
-                  <div style={{fontSize:18,fontWeight:800,color:"#e2f0ff"}}>${total.toLocaleString("es-AR")}</div>
-                </div>
-                {cobrado>0&&<div style={{textAlign:"center"}}>
-                  <div style={{fontSize:10,color:"#3a6a9a",fontWeight:700}}>Cobrado</div>
-                  <div style={{fontSize:15,fontWeight:700,color:"#A5D6A7"}}>${cobrado.toLocaleString("es-AR")}</div>
-                </div>}
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:saldo>0?"#FFB74D":"#26A69A"}}>
-                    {saldo>0?"Saldo a cobrar":"✅ Pagado"}
+                {/* Notas */}
+                {orden.inst_notas&&(
+                  <div style={{background:"#0a1020",borderRadius:8,padding:10,border:"1px solid #1565C020"}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"#5a8ab8",marginBottom:4}}>📋 NOTAS</div>
+                    <div style={{fontSize:13,color:"#c8e0f8",lineHeight:1.5}}>{orden.inst_notas}</div>
                   </div>
-                  {saldo>0&&<div style={{fontSize:18,fontWeight:800,color:"#FFB74D"}}>${saldo.toLocaleString("es-AR")}</div>}
-                </div>
-              </div>
+                )}
 
-              {/* Incidencias pendientes */}
-              {incPendientes>0&&(
-                <div style={{background:"#2a1000",borderRadius:8,padding:10,marginBottom:10,border:"1px solid #FFB74D40"}}>
-                  <div style={{fontSize:12,fontWeight:700,color:"#FFB74D"}}>⚠ {incPendientes} problema{incPendientes>1?"s":""} reportado{incPendientes>1?"s":""}</div>
-                  {(orden.incidencias||[]).filter(i=>!i.resuelto).map((inc,i)=>(
-                    <div key={i} style={{fontSize:11,color:"#FFB74D",opacity:0.8,marginTop:3}}>• {inc.tipo}{inc.nota?` — ${inc.nota}`:""}</div>
-                  ))}
-                </div>
-              )}
-
-              {/* Fotos del trabajo — subir desde campo */}
-              <div style={{marginBottom:12}}>
-                <div style={{fontSize:10,fontWeight:700,color:"#5a8ab8",marginBottom:6}}>📸 FOTOS DEL TRABAJO</div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {(orden.fotos_trabajo||[]).map((f,i)=>(
-                    <div key={i} style={{position:"relative"}}>
-                      <img src={f.data} alt="" style={{width:70,height:70,objectFit:"cover",borderRadius:7,border:"1px solid #1e3a5a"}} onClick={()=>window.open(f.data,"_blank")}/>
+                {/* Fotos del lugar */}
+                {(orden.fotos_instalacion||[]).length>0&&(
+                  <div>
+                    <div style={{fontSize:10,fontWeight:700,color:"#CE93D8",marginBottom:6}}>📷 FOTOS DEL LUGAR</div>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      {orden.fotos_instalacion.map((f,i)=>(
+                        <img key={i} src={f.data} alt="" style={{width:80,height:80,objectFit:"cover",borderRadius:7,cursor:"pointer",border:"1px solid #CE93D820"}} onClick={()=>window.open(f.data,"_blank")}/>
+                      ))}
                     </div>
-                  ))}
-                  <label style={{width:70,height:70,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,background:"#0a1020",borderRadius:7,border:"2px dashed #1e3a5a",cursor:"pointer"}}>
-                    <span style={{fontSize:20}}>📷</span>
-                    <span style={{fontSize:8,color:"#3a6a9a",textAlign:"center"}}>Agregar</span>
-                    <input type="file" accept="image/*" capture="environment" multiple style={{display:"none"}} onChange={e=>{
-                      Array.from(e.target.files).forEach(f=>{
-                        if(f.size>5*1024*1024){alert("Máx 5MB");return;}
-                        const r=new FileReader();
-                        r.onload=ev=>saveOrden({...orden,fotos_trabajo:[...(orden.fotos_trabajo||[]),{data:ev.target.result,nombre:f.name,fecha:new Date().toISOString()}]});
-                        r.readAsDataURL(f);
-                      });
-                    }}/>
-                  </label>
-                </div>
-              </div>
+                  </div>
+                )}
 
-              {/* Botones de acción */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                <button onClick={()=>reportarProblema(orden)}
-                  style={{padding:"10px",borderRadius:9,border:"1px solid #FFB74D40",background:"#1a0800",color:"#FFB74D",cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:700}}>
-                  ⚠ Reportar problema
-                </button>
-                <button onClick={()=>marcarInstalado(orden)}
-                  disabled={orden.estado==="entregado"}
-                  style={{padding:"10px",borderRadius:9,border:"none",background:orden.estado==="entregado"?"#0a2a1a":"#26A69A",color:orden.estado==="entregado"?"#26A69A":"#fff",cursor:orden.estado==="entregado"?"default":"pointer",fontSize:13,fontFamily:"inherit",fontWeight:700,opacity:orden.estado==="entregado"?0.7:1}}>
-                  {orden.estado==="entregado"?"✅ Instalado":"✅ Marcar instalado"}
-                </button>
-              </div>
+                {/* Ítems editables */}
+                <ItemEditor orden={orden} tiposVidrio={tiposVidrio} currentUser={currentUser} saveOrden={saveOrden}/>
+
+                {/* Precios */}
+                <div style={{background:"#0a1020",borderRadius:8,padding:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontSize:10,color:"#3a6a9a",fontWeight:700,textTransform:"uppercase"}}>Total</div>
+                    <div style={{fontSize:18,fontWeight:800,color:"#e2f0ff"}}>${total.toLocaleString("es-AR")}</div>
+                  </div>
+                  {cobrado>0&&<div style={{textAlign:"center"}}>
+                    <div style={{fontSize:10,color:"#3a6a9a",fontWeight:700}}>Cobrado</div>
+                    <div style={{fontSize:15,fontWeight:700,color:"#A5D6A7"}}>${cobrado.toLocaleString("es-AR")}</div>
+                  </div>}
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:saldo>0?"#FFB74D":"#26A69A"}}>{saldo>0?"Saldo a cobrar":"✅ Pagado"}</div>
+                    {saldo>0&&<div style={{fontSize:18,fontWeight:800,color:"#FFB74D"}}>${saldo.toLocaleString("es-AR")}</div>}
+                  </div>
+                </div>
+
+                {/* Fotos del trabajo */}
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,color:"#5a8ab8",marginBottom:6}}>📸 FOTOS DEL TRABAJO</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {(orden.fotos_trabajo||[]).map((f,i)=>(
+                      <img key={i} src={f.data} alt="" style={{width:70,height:70,objectFit:"cover",borderRadius:7,border:"1px solid #1e3a5a"}} onClick={()=>window.open(f.data,"_blank")}/>
+                    ))}
+                    <label style={{width:70,height:70,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,background:"#0a1020",borderRadius:7,border:"2px dashed #1e3a5a",cursor:"pointer"}}>
+                      <span style={{fontSize:20}}>📷</span>
+                      <span style={{fontSize:8,color:"#3a6a9a",textAlign:"center"}}>Agregar</span>
+                      <input type="file" accept="image/*" capture="environment" multiple style={{display:"none"}} onChange={e=>{
+                        Array.from(e.target.files).forEach(f=>{
+                          if(f.size>5*1024*1024){alert("Máx 5MB");return;}
+                          const r=new FileReader();
+                          r.onload=ev=>saveOrden({...orden,fotos_trabajo:[...(orden.fotos_trabajo||[]),{data:ev.target.result,nombre:f.name,fecha:new Date().toISOString()}]});
+                          r.readAsDataURL(f);
+                        });
+                      }}/>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Botones de acción */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <button onClick={()=>reportarProblema(orden)}
+                    style={{padding:"10px",borderRadius:9,border:"1px solid #FFB74D40",background:"#1a0800",color:"#FFB74D",cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:700}}>
+                    ⚠ Reportar problema
+                  </button>
+                  <button onClick={()=>marcarInstalado(orden)} disabled={orden.estado==="entregado"}
+                    style={{padding:"10px",borderRadius:9,border:"none",background:orden.estado==="entregado"?"#0a2a1a":"#26A69A",color:orden.estado==="entregado"?"#26A69A":"#fff",cursor:orden.estado==="entregado"?"default":"pointer",fontSize:13,fontFamily:"inherit",fontWeight:700,opacity:orden.estado==="entregado"?0.7:1}}>
+                    {orden.estado==="entregado"?"✅ Instalado":"✅ Marcar instalado"}
+                  </button>
+                </div>
+              </div>}
             </div>
           );
         })}
