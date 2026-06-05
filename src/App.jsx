@@ -362,94 +362,237 @@ const buildSVGStr=(shapes)=>{
   return `<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:260px;border:1.5px solid #1a4a6e;border-radius:4px;background:#f0f8ff;display:block">${shapes.map(toStr).join("")}</svg>`;
 };
 // ─── COTIZACION / ORDEN FORM ─────────────────────────────────────────────────
-// ─── ITEM CANVAS PRO v4 ──────────────────────────────────────────────────────
+// ─── ITEM CANVAS v5 ──────────────────────────────────────────────────────────
 const ItemCanvas=({value,onChange,label,itemIdx})=>{
   const svgRef=useRef(null);
+  const containerRef=useRef(null);
   const [tool,setTool]=useState("select");
   const [shapes,setShapes]=useState(value||[]);
   const [drawing,setDrawing]=useState(null);
   const [freePath,setFreePath]=useState([]);
-  const [selId,setSelId]=useState(null);
+  const [polyPts,setPolyPts]=useState([]);
+  const [polyPreview,setPolyPreview]=useState(null);
+  const [selIds,setSelIds]=useState([]); // multi-select
+  const [selBox,setSelBox]=useState(null); // {x1,y1,x2,y2} rubber band
   const [drag,setDrag]=useState(null);
+  const [rotating,setRotating]=useState(null);
+  const [editingText,setEditingText]=useState(null); // {id, x, y}
   const [open,setOpen]=useState(!!(value&&value.length));
+  // Canvas transform
+  const [zoom,setZoom]=useState(1);
+  const [pan,setPan]=useState({x:0,y:0});
+  const [panning,setPanning]=useState(false);
+  const [panStart,setPanStart]=useState(null);
+  // Stroke options
   const [strokeW,setStrokeW]=useState(1.5);
   const [strokeDash,setStrokeDash]=useState("0");
   const [strokeColor,setStrokeColor]=useState("#4dd0e1");
+  // History
   const [history,setHistory]=useState([value||[]]);
   const [histIdx,setHistIdx]=useState(0);
+
   const uid=()=>Math.random().toString(36).slice(2,8);
-  const W=600,H=340;
-  const snap=v=>Math.round(v/5)*5;
+  const W=600,H=380;
+  const SNAP=5;
+
   const commit=(sh)=>{
-    setShapes(sh);onChange(sh);
-    setHistory(h=>{const trimmed=h.slice(0,histIdx+1);const next=[...trimmed,sh];return next.slice(-30);});// keep last 30 states
-    setHistIdx(i=>Math.min(i+1,29));
+    const next=JSON.parse(JSON.stringify(sh));
+    setShapes(next);onChange(next);
+    setHistory(h=>{const t=h.slice(0,histIdx+1);return [...t,next].slice(-40);});
+    setHistIdx(i=>Math.min(i+1,39));
   };
-  const undo=()=>{
-    if(histIdx<=0)return;
-    const prev=history[histIdx-1];
-    setShapes(prev);onChange(prev);setHistIdx(i=>i-1);
+  const undo=()=>{if(histIdx<=0)return;const p=history[histIdx-1];setShapes(p);onChange(p);setHistIdx(i=>i-1);};
+  const redo=()=>{if(histIdx>=history.length-1)return;const n=history[histIdx+1];setShapes(n);onChange(n);setHistIdx(i=>i+1);};
+
+  // ── COORDINATE TRANSFORMS ───────────────────────────────────────────────────
+  const svgToWorld=(sx,sy)=>({x:(sx-pan.x)/zoom, y:(sy-pan.y)/zoom});
+  const worldToSvg=(wx,wy)=>({x:wx*zoom+pan.x, y:wy*zoom+pan.y});
+  const snapPt=(x,y,shift)=>{
+    if(shift) return {x,y};
+    // snap to grid
+    let sx=Math.round(x/SNAP)*SNAP, sy=Math.round(y/SNAP)*SNAP;
+    // snap to existing shape endpoints
+    let bestD=8/zoom;
+    for(const s of shapes){
+      const pts=shapeKeyPts(s);
+      for(const [px,py] of pts){
+        const d=Math.hypot(x-px,y-py);
+        if(d<bestD){bestD=d;sx=px;sy=py;}
+      }
+    }
+    return{x:sx,y:sy};
   };
 
-  const getPos=(e)=>{
+  const shapeKeyPts=(s)=>{
+    if(s.cx!=null) return [[s.cx,s.cy]];
+    if(s.type==="text"||s.type==="nota") return [[s.x,s.y]];
+    if(s.type==="angulo") return [[s.x,s.y]];
+    if((s.type==="free"||s.type==="poligono")&&s.pts) return s.pts;
+    if(s.x1!=null){
+      const mx=(s.x1+s.x2)/2,my=(s.y1+s.y2)/2;
+      return[[s.x1,s.y1],[s.x2,s.y2],[mx,my]];
+    }
+    return[];
+  };
+
+  const getPos=(e,noSnap)=>{
     if(!svgRef.current)return{x:0,y:0};
     const r=svgRef.current.getBoundingClientRect();
-    const sx=W/r.width,sy=H/r.height;
     const src=e.touches?e.touches[0]:e;
-    const raw={x:(src.clientX-r.left)*sx,y:(src.clientY-r.top)*sy};
-    return e.shiftKey?raw:{x:snap(raw.x),y:snap(raw.y)};
+    const sx=(src.clientX-r.left)*(W/r.width);
+    const sy=(src.clientY-r.top)*(H/r.height);
+    const w=svgToWorld(sx,sy);
+    if(noSnap||e.shiftKey) return w;
+    return snapPt(w.x,w.y,false);
   };
 
-  const hitTest=(s,p)=>{
+  // ── HIT TEST (world coords) ──────────────────────────────────────────────────
+  const hitTest=(s,p,thresh=8)=>{
+    const t=thresh/zoom;
     if(s.type==="text"||s.type==="nota") return Math.abs(p.x-s.x)<55&&Math.abs(p.y-s.y)<16;
-    if(s.type==="perf") return Math.hypot(p.x-s.cx,p.y-s.cy)<(s.r||15)+10;
-    if(s.type==="bisagra"){const hw=s.rw||12,hh=(s.h||46)/2;return p.x>=s.cx-hw-8&&p.x<=s.cx+hw+8&&p.y>=s.cy-hh-8&&p.y<=s.cy+hh+8;}
-    if(s.type==="free"&&s.pts){for(let i=0;i<s.pts.length-1;i++){const dx=s.pts[i+1][0]-s.pts[i][0],dy=s.pts[i+1][1]-s.pts[i][1],len=Math.hypot(dx,dy);if(!len)continue;const t=Math.max(0,Math.min(1,((p.x-s.pts[i][0])*dx+(p.y-s.pts[i][1])*dy)/(len*len)));if(Math.hypot(p.x-s.pts[i][0]-t*dx,p.y-s.pts[i][1]-t*dy)<10)return true;}return false;}
-    if(s.type==="poligono"&&s.pts){for(let i=0;i<s.pts.length-1;i++){const dx=s.pts[i+1][0]-s.pts[i][0],dy=s.pts[i+1][1]-s.pts[i][1],len=Math.hypot(dx,dy);if(!len)continue;const t=Math.max(0,Math.min(1,((p.x-s.pts[i][0])*dx+(p.y-s.pts[i][1])*dy)/(len*len)));if(Math.hypot(p.x-s.pts[i][0]-t*dx,p.y-s.pts[i][1]-t*dy)<10)return true;}return false;}
-    if(s.x1!=null){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);if(s.type==="vidrio"||s.type==="arco")return p.x>=x-5&&p.x<=x+w+5&&p.y>=y-5&&p.y<=y+h+5;const dx=s.x2-s.x1,dy=s.y2-s.y1,len=Math.hypot(dx,dy);if(!len)return false;const t=Math.max(0,Math.min(1,((p.x-s.x1)*dx+(p.y-s.y1)*dy)/(len*len)));return Math.hypot(p.x-s.x1-t*dx,p.y-s.y1-t*dy)<10;}
+    if(s.type==="angulo") return Math.abs(p.x-s.x)<20&&Math.abs(p.y-s.y)<20;
+    if(s.cx!=null){
+      if(s.type==="perf"){const r=s.r||15;return Math.abs(Math.hypot(p.x-s.cx,p.y-s.cy)-r)<t;}
+      if(s.type==="bisagra"){const hw=s.rw||12,hh=(s.h||46)/2;return p.x>=s.cx-hw-t&&p.x<=s.cx+hw+t&&p.y>=s.cy-hh-t&&p.y<=s.cy+hh+t;}
+      return Math.hypot(p.x-s.cx,p.y-s.cy)<t;
+    }
+    if((s.type==="free"||s.type==="poligono")&&s.pts){
+      for(let i=0;i<s.pts.length-1;i++){const [ax,ay]=s.pts[i],[bx,by]=s.pts[i+1];const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy);if(!len)continue;const tt=Math.max(0,Math.min(1,((p.x-ax)*dx+(p.y-ay)*dy)/(len*len)));if(Math.hypot(p.x-ax-tt*dx,p.y-ay-tt*dy)<t)return true;}
+      return false;
+    }
+    if(s.x1!=null){
+      if(s.type==="vidrio"||s.type==="arco"||s.type==="guarda"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);return p.x>=x-t&&p.x<=x+w+t&&p.y>=y-t&&p.y<=y+h+t;}
+      const dx=s.x2-s.x1,dy=s.y2-s.y1,len=Math.hypot(dx,dy);if(!len)return false;const tt=Math.max(0,Math.min(1,((p.x-s.x1)*dx+(p.y-s.y1)*dy)/(len*len)));return Math.hypot(p.x-s.x1-tt*dx,p.y-s.y1-tt*dy)<t;
+    }
     return false;
   };
 
+  // ── MOVE SHAPE ──────────────────────────────────────────────────────────────
   const moveShape=(s,dx,dy)=>{
-    if(s.type==="text"||s.type==="nota")return{...s,x:snap(s.x+dx),y:snap(s.y+dy)};
-    if(s.cx!=null)return{...s,cx:snap(s.cx+dx),cy:snap(s.cy+dy)};
-    if((s.type==="free"||s.type==="poligono")&&s.pts)return{...s,pts:s.pts.map(([x,y])=>[snap(x+dx),snap(y+dy)])};
-    return{...s,x1:snap(s.x1+dx),y1:snap(s.y1+dy),x2:snap(s.x2+dx),y2:snap(s.y2+dy)};
+    if(s.type==="text"||s.type==="nota")return{...s,x:s.x+dx,y:s.y+dy};
+    if(s.cx!=null)return{...s,cx:s.cx+dx,cy:s.cy+dy};
+    if(s.type==="angulo")return{...s,x:s.x+dx,y:s.y+dy};
+    if((s.type==="free"||s.type==="poligono")&&s.pts)return{...s,pts:s.pts.map(([x,y])=>[x+dx,y+dy])};
+    return{...s,x1:s.x1+dx,y1:s.y1+dy,x2:s.x2+dx,y2:s.y2+dy};
   };
 
-  // ── POLYGON tool: click to add points, dblclick to close ───────────────────
-  const [polyPts,setPolyPts]=useState([]);
-  const [polyPreview,setPolyPreview]=useState(null);
+  // ── ROTATE SHAPE ────────────────────────────────────────────────────────────
+  const rotatePt=(x,y,cx,cy,deg)=>{const r=deg*Math.PI/180;return[cx+(x-cx)*Math.cos(r)-(y-cy)*Math.sin(r),cy+(x-cx)*Math.sin(r)+(y-cy)*Math.cos(r)];};
+  const shapeCenter=(s)=>{
+    if(s.cx!=null)return[s.cx,s.cy];
+    if(s.type==="text"||s.type==="nota"||s.type==="angulo")return[s.x,s.y];
+    if((s.type==="free"||s.type==="poligono")&&s.pts){const xs=s.pts.map(p=>p[0]),ys=s.pts.map(p=>p[1]);return[(Math.min(...xs)+Math.max(...xs))/2,(Math.min(...ys)+Math.max(...ys))/2];}
+    if(s.x1!=null)return[(s.x1+s.x2)/2,(s.y1+s.y2)/2];
+    return[0,0];
+  };
+  const rotateShape=(s,deg)=>{
+    const [cx,cy]=shapeCenter(s);
+    const cur=s.rotation||0;
+    const nd=cur+deg;
+    if(s.cx!=null)return{...s,rotation:nd};
+    if(s.type==="text"||s.type==="nota"||s.type==="angulo")return{...s,rotation:nd};
+    if((s.type==="free"||s.type==="poligono")&&s.pts)return{...s,pts:s.pts.map(([x,y])=>{const[nx,ny]=rotatePt(x,y,cx,cy,deg);return[nx,ny];})};
+    if(s.x1!=null){const pts=[[s.x1,s.y1],[s.x2,s.y2]].map(([x,y])=>rotatePt(x,y,cx,cy,deg));return{...s,x1:pts[0][0],y1:pts[0][1],x2:pts[1][0],y2:pts[1][1]};}
+    return s;
+  };
+
+  // ── EVENTS ──────────────────────────────────────────────────────────────────
+  const isSpaceRef=useRef(false);
+  React.useEffect(()=>{
+    if(!open)return;
+    const kd=(e)=>{
+      if(e.code==="Space"&&e.target===svgRef.current){e.preventDefault();isSpaceRef.current=true;}
+      if((e.ctrlKey||e.metaKey)&&e.key==="z"){e.preventDefault();if(e.shiftKey)redo();else undo();}
+      if(e.key==="Escape"){setPolyPts([]);setPolyPreview(null);setSelBox(null);}
+      if(e.key==="Delete"||e.key==="Backspace"){
+        if(selIds.length>0&&document.activeElement===svgRef.current){
+          commit(shapes.filter(s=>!selIds.includes(s.id)));setSelIds([]);
+        }
+      }
+      // Arrow keys to nudge
+      if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)&&selIds.length>0){
+        e.preventDefault();
+        const d=e.shiftKey?10:1;
+        const dx=e.key==="ArrowLeft"?-d:e.key==="ArrowRight"?d:0;
+        const dy=e.key==="ArrowUp"?-d:e.key==="ArrowDown"?d:0;
+        commit(shapes.map(s=>selIds.includes(s.id)?moveShape(s,dx,dy):s));
+      }
+    };
+    const ku=(e)=>{if(e.code==="Space")isSpaceRef.current=false;};
+    window.addEventListener("keydown",kd);window.addEventListener("keyup",ku);
+    return()=>{window.removeEventListener("keydown",kd);window.removeEventListener("keyup",ku);};
+  },[open,selIds,shapes,histIdx,history,undo,redo]);
+
+  // Wheel zoom
+  const onWheel=(e)=>{
+    e.preventDefault();
+    const r=svgRef.current.getBoundingClientRect();
+    const mx=(e.clientX-r.left)*(W/r.width);
+    const my=(e.clientY-r.top)*(H/r.height);
+    const factor=e.deltaY<0?1.12:1/1.12;
+    const nz=Math.max(0.2,Math.min(10,zoom*factor));
+    setPan(p=>({x:mx-(mx-p.x)*(nz/zoom),y:my-(my-p.y)*(nz/zoom)}));
+    setZoom(nz);
+  };
 
   const onDown=(e)=>{
     e.preventDefault();
+    svgRef.current?.focus();
+    const rawPos=getPos(e,true);
     const p=getPos(e);
 
-    if(tool==="select"){
-      const hit=[...shapes].reverse().find(s=>hitTest(s,p));
-      if(hit){setSelId(hit.id);setDrag({id:hit.id,px:p.x,py:p.y,orig:shapes.map(s=>({...s}))});}
-      else setSelId(null);
-      return;
+    // Pan with space or middle mouse
+    if(isSpaceRef.current||e.button===1){
+      setPanning(true);setPanStart({mx:rawPos.x,my:rawPos.y,px:pan.x,py:pan.y});return;
     }
-    if(tool==="poligono"){
-      if(e.detail===2&&polyPts.length>=2){// double click = close
-        commit([...shapes,{id:uid(),type:"poligono",pts:[...polyPts,polyPts[0]],closed:true,sw:strokeW,dash:strokeDash,color:strokeColor}]);
-        setPolyPts([]);setPolyPreview(null);
+
+    if(tool==="select"){
+      // Check if clicking a rotation handle
+      if(selIds.length===1){
+        const s=shapes.find(s=>s.id===selIds[0]);
+        if(s){const[cx,cy]=shapeCenter(s);const rh=worldToSvg(cx,cy);
+          // rotation handle is 30px above center in SVG space
+          const rhx=(rh.x)/zoom*zoom,rhy=rh.y-30/zoom*zoom;
+          // simplified check
+        }
+      }
+      const hit=[...shapes].reverse().find(s=>hitTest(s,p));
+      if(hit){
+        if(e.shiftKey){// toggle in multi-select
+          setSelIds(ids=>ids.includes(hit.id)?ids.filter(i=>i!==hit.id):[...ids,hit.id]);
+        } else {
+          if(!selIds.includes(hit.id))setSelIds([hit.id]);
+          setDrag({ids:selIds.includes(hit.id)?selIds:[hit.id],px:p.x,py:p.y,orig:shapes.map(s=>({...s}))});
+        }
       } else {
-        setPolyPts(pp=>[...pp,[p.x,p.y]]);
+        setSelIds([]);
+        setSelBox({x1:p.x,y1:p.y,x2:p.x,y2:p.y,orig:shapes.map(s=>({...s}))});
       }
       return;
     }
-    if(tool==="bisagra"){commit([...shapes,{id:uid(),type:"bisagra",cx:p.x,cy:p.y,rw:12,h:46,sw:strokeW,dash:strokeDash,color:strokeColor}]);return;}
-    if(tool==="perf"){const d=window.prompt("Diámetro (mm):","30");if(d){commit([...shapes,{id:uid(),type:"perf",cx:p.x,cy:p.y,r:Math.max(4,+d/2)||15,sw:strokeW,color:strokeColor}]);}return;}
-    if(tool==="text"){const t=window.prompt("Texto/Medida:");if(t)commit([...shapes,{id:uid(),type:"text",x:p.x,y:p.y,text:t,size:11,color:strokeColor}]);return;}
-    if(tool==="nota"){const t=window.prompt("Anotación:");if(t)commit([...shapes,{id:uid(),type:"nota",x:p.x,y:p.y,text:t}]);return;}
-    if(tool==="angulo"){// right angle marker
-      commit([...shapes,{id:uid(),type:"angulo",x:p.x,y:p.y,size:14,color:strokeColor}]);return;}
+
+    if(tool==="poligono"){
+      if(e.detail===2&&polyPts.length>=2){
+        commit([...shapes,{id:uid(),type:"poligono",pts:[...polyPts],closed:true,sw:strokeW,dash:strokeDash,color:strokeColor}]);
+        setPolyPts([]);setPolyPreview(null);
+      } else setPolyPts(pp=>[...pp,[p.x,p.y]]);
+      return;
+    }
+    if(tool==="bisagra"){commit([...shapes,{id:uid(),type:"bisagra",cx:p.x,cy:p.y,rw:12,h:46,sw:strokeW,color:strokeColor}]);return;}
+    if(tool==="perf"){
+      const d=window.prompt("Diámetro en mm (ej: 12, 19, 30)","12");
+      if(d)commit([...shapes,{id:uid(),type:"perf",cx:p.x,cy:p.y,r:Math.max(3,+d/2)||6,sw:strokeW,color:strokeColor}]);
+      return;
+    }
+    if(tool==="text"||tool==="nota"){
+      const t=window.prompt(tool==="text"?"Medida o número:":"Anotación:");
+      if(t)commit([...shapes,{id:uid(),type:tool,x:p.x,y:p.y,text:t,size:tool==="text"?11:10,color:strokeColor,rotation:0}]);
+      return;
+    }
+    if(tool==="angulo"){commit([...shapes,{id:uid(),type:"angulo",x:p.x,y:p.y,size:14,color:strokeColor}]);return;}
     if(tool==="free"){setFreePath([[p.x,p.y]]);return;}
-    if(tool==="guarda"){// guardita esmerilada alrededor del rectángulo - place by dragging
-      setDrawing({id:uid(),type:"guarda",x1:p.x,y1:p.y,x2:p.x,y2:p.y,grosorGuarda:12,sw:strokeW,color:strokeColor});return;}
-    setDrawing({id:uid(),type:tool,x1:p.x,y1:p.y,x2:p.x,y2:p.y,sw:strokeW,dash:strokeDash,color:strokeColor,
+    if(tool==="guarda")setDrawing({id:uid(),type:"guarda",x1:p.x,y1:p.y,x2:p.x,y2:p.y,grosorGuarda:12,sw:strokeW,color:strokeColor});
+    else setDrawing({id:uid(),type:tool,x1:p.x,y1:p.y,x2:p.x,y2:p.y,sw:strokeW,dash:strokeDash,color:strokeColor,
       ...(tool==="vidrio"?{cornerTL:0,cornerTR:0,cornerBR:0,cornerBL:0,satinado:false,esmerilado:false,labelT:"",labelB:"",labelL:"",labelR:"",labelC:""}:{}),
       ...(tool==="cota"?{label:"",offset:20}:{}),
     });
@@ -457,148 +600,197 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
 
   const onMove=(e)=>{
     e.preventDefault();
+    const rawP=getPos(e,true);
     const p=getPos(e);
+    if(panning&&panStart){setPan({x:panStart.px+(rawP.x-panStart.mx)*zoom,y:panStart.py+(rawP.y-panStart.my)*zoom});return;}
     if(tool==="poligono"&&polyPts.length>0){setPolyPreview([p.x,p.y]);return;}
     if(tool==="free"&&freePath.length>0){setFreePath(fp=>[...fp,[p.x,p.y]]);return;}
+    if(selBox){setSelBox(b=>({...b,x2:p.x,y2:p.y}));return;}
     if(drawing){setDrawing(d=>({...d,x2:p.x,y2:p.y}));return;}
     if(drag){
       const dx=p.x-drag.px,dy=p.y-drag.py;
-      commit(drag.orig.map(s=>s.id===drag.id?moveShape(s,dx,dy):s));
+      commit(drag.orig.map(s=>drag.ids.includes(s.id)?moveShape(s,dx,dy):s));
     }
   };
 
   const onUp=()=>{
+    if(panning){setPanning(false);setPanStart(null);return;}
     if(tool==="free"&&freePath.length>2){
       commit([...shapes,{id:uid(),type:"free",pts:freePath,sw:strokeW,dash:strokeDash,color:strokeColor}]);
       setFreePath([]);return;
     }
+    if(selBox){
+      const {x1,y1,x2,y2}=selBox;
+      const bx=Math.min(x1,x2),by=Math.min(y1,y2),bw=Math.abs(x2-x1),bh=Math.abs(y2-y1);
+      if(bw>4&&bh>4){
+        const inBox=shapes.filter(s=>{
+          const[cx,cy]=shapeCenter(s);
+          return cx>=bx&&cx<=bx+bw&&cy>=by&&cy<=by+bh;
+        });
+        setSelIds(inBox.map(s=>s.id));
+      }
+      setSelBox(null);return;
+    }
     if(drawing){
-      if(Math.abs(drawing.x2-drawing.x1)>6||Math.abs(drawing.y2-drawing.y1)>6)commit([...shapes,drawing]);
+      if(Math.abs(drawing.x2-drawing.x1)>4/zoom||Math.abs(drawing.y2-drawing.y1)>4/zoom)commit([...shapes,drawing]);
       setDrawing(null);
     }
     setDrag(null);
   };
 
-  const selShape=shapes.find(s=>s.id===selId);
-  const updateSel=(k,v)=>commit(shapes.map(s=>s.id===selId?{...s,[k]:v}:s));
+  // Double click to edit text
+  const onDblClick=(e)=>{
+    const p=getPos(e);
+    const hit=[...shapes].reverse().find(s=>hitTest(s,p)&&(s.type==="text"||s.type==="nota"));
+    if(hit){
+      const t=window.prompt("Editar texto:",hit.text||"");
+      if(t!==null)commit(shapes.map(s=>s.id===hit.id?{...s,text:t}:s));
+    }
+  };
 
-  // ── COLOR PALETTE ──────────────────────────────────────────────────────────
-  const COLORS=["#4dd0e1","#ffd740","#ef9a9a","#a5d6a7","#80cbc4","#ce93d8","#ffcc02","#ff6b6b","#fff","#aaa"];
+  const selShapes=shapes.filter(s=>selIds.includes(s.id));
+  const updateSel=(k,v)=>commit(shapes.map(s=>selIds.includes(s.id)?{...s,[k]:v}:s));
+  const updateOne=(id,k,v)=>commit(shapes.map(s=>s.id===id?{...s,[k]:v}:s));
 
-  // ── RENDER ─────────────────────────────────────────────────────────────────
-  const renderShape=(s,ghost)=>{
-    const sel=!ghost&&selId===s.id;
+  // ── SNAP INDICATORS ─────────────────────────────────────────────────────────
+  const [snapIndicator,setSnapIndicator]=useState(null);
+
+  // ── RENDER TRANSFORM ────────────────────────────────────────────────────────
+  const tx=`translate(${pan.x},${pan.y}) scale(${zoom})`;
+
+  // ── RENDER SHAPE ────────────────────────────────────────────────────────────
+  const renderShape=(s,isGhost)=>{
+    const sel=!isGhost&&selIds.includes(s.id);
     const baseCol=s.color||"#4dd0e1";
-    const sc=ghost?"#00bfff":sel?"#ff9500":baseCol;
-    const sw=s.sw||1.5;
-    const dashArr=s.dash&&s.dash!=="0"?s.dash:"none";
+    const sc=isGhost?"#00bfff":sel?"#ff9500":baseCol;
+    const sw=(s.sw||1.5)/zoom; // scale-independent stroke
+    const dashArr=s.dash&&s.dash!=="0"?s.dash.split(" ").map(n=>+n/zoom).join(" "):"none";
     const cur=tool==="select"?"pointer":"crosshair";
-    const onClick=ghost?undefined:()=>{if(tool==="select")setSelId(sel?null:s.id);};
+    const onClick=isGhost?undefined:(e)=>{if(tool==="select"){e.stopPropagation();if(e.shiftKey){setSelIds(ids=>ids.includes(s.id)?ids.filter(i=>i!==s.id):[...ids,s.id]);}else{setSelIds([s.id]);setDrag({ids:[s.id],px:getPos(e).x,py:getPos(e).y,orig:shapes.map(sh=>({...sh}))});}}};
+    const rot=s.rotation?`rotate(${s.rotation},${shapeCenter(s).join(",")})`:undefined;
+    const wrap=(el)=>rot?<g key={s.id} transform={rot}>{el}</g>:<React.Fragment key={s.id}>{el}</React.Fragment>;
 
-    if(s.type==="text")return<text key={s.id} x={s.x} y={s.y} fontSize={s.size||11} fill={sel?"#ff9500":s.color||"#ffd740"} fontFamily="monospace" fontWeight="700" style={{cursor:cur,userSelect:"none"}} onClick={onClick}>{s.text}</text>;
-    if(s.type==="nota")return<g key={s.id} onClick={onClick} style={{cursor:cur}}><text x={s.x} y={s.y} fontSize="10" fill={sel?"#ff9500":"#a5d6a7"} fontFamily="Arial" fontStyle="italic">{s.text}</text></g>;
+    if(s.type==="text")return wrap(<text x={s.x} y={s.y} fontSize={(s.size||11)/zoom} fill={sel?"#ff9500":s.color||"#ffd740"} fontFamily="monospace" fontWeight="700" style={{cursor:cur,userSelect:"none"}} onClick={onClick} onDoubleClick={()=>{const t=window.prompt("Editar:",s.text);if(t!==null)commit(shapes.map(sh=>sh.id===s.id?{...sh,text:t}:sh));}}>{s.text}</text>);
+    if(s.type==="nota")return wrap(<text x={s.x} y={s.y} fontSize={10/zoom} fill={sel?"#ff9500":"#a5d6a7"} fontFamily="Arial" fontStyle="italic" style={{cursor:cur,userSelect:"none"}} onClick={onClick} onDoubleClick={()=>{const t=window.prompt("Editar:",s.text);if(t!==null)commit(shapes.map(sh=>sh.id===s.id?{...sh,text:t}:sh));}}>{s.text}</text>);
 
-    if(s.type==="angulo"){// right angle symbol (little square in corner)
-      const sz=s.size||14;
-      return<g key={s.id} style={{cursor:cur}} onClick={onClick}>
-        <polyline points={`${s.x} ${s.y+sz} ${s.x} ${s.y} ${s.x+sz} ${s.y}`} fill="none" stroke={sc} strokeWidth={sw}/>
-        <rect x={s.x+1} y={s.y+1} width={sz*0.45} height={sz*0.45} fill="none" stroke={sc} strokeWidth={sw*0.7}/>
-      </g>;
-    }
+    if(s.type==="angulo"){const sz=(s.size||14);return wrap(<g style={{cursor:cur}} onClick={onClick}><polyline points={`${s.x},${s.y+sz} ${s.x},${s.y} ${s.x+sz},${s.y}`} fill="none" stroke={sc} strokeWidth={sw}/><rect x={s.x+sw} y={s.y+sw} width={sz*0.42} height={sz*0.42} fill="none" stroke={sc} strokeWidth={sw*0.7}/></g>);}
 
-    if(s.type==="free"&&s.pts&&s.pts.length>1){const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ");return<path key={s.id} d={d} fill="none" stroke={sc} strokeWidth={sw} strokeDasharray={dashArr} strokeLinecap="round" strokeLinejoin="round" style={{cursor:cur}} onClick={onClick}/>;}
+    if(s.type==="free"&&s.pts&&s.pts.length>1){const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ");return wrap(<path d={d} fill="none" stroke={sc} strokeWidth={sw} strokeDasharray={dashArr} strokeLinecap="round" strokeLinejoin="round" style={{cursor:cur}} onClick={onClick}/>);}
 
-    if(s.type==="poligono"&&s.pts&&s.pts.length>1){const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ")+(s.closed?" Z":"");return<path key={s.id} d={d} fill={s.closed?"rgba(0,40,60,0.3)":"none"} stroke={sc} strokeWidth={sw} strokeDasharray={dashArr} strokeLinecap="round" strokeLinejoin="round" style={{cursor:cur}} onClick={onClick}/>;}
+    if(s.type==="poligono"&&s.pts&&s.pts.length>1){const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ")+(s.closed?" Z":"");return wrap(<path d={d} fill={s.closed?"rgba(0,40,60,0.3)":"none"} stroke={sc} strokeWidth={sw} strokeDasharray={dashArr} strokeLinecap="round" style={{cursor:cur}} onClick={onClick}/>);}
 
-    if(s.type==="perf"){const r=s.r||15;return<g key={s.id} style={{cursor:cur}} onClick={onClick}>
+    if(s.type==="perf"){const r=s.r||6;const llen=r+6/zoom;return wrap(<g style={{cursor:cur}} onClick={onClick}>
       <circle cx={s.cx} cy={s.cy} r={r} fill="none" stroke={sc} strokeWidth={sw}/>
-      <line x1={s.cx-r-6} y1={s.cy} x2={s.cx+r+6} y2={s.cy} stroke={sc} strokeWidth="0.8" strokeDasharray="3 2"/>
-      <line x1={s.cx} y1={s.cy-r-6} x2={s.cx} y2={s.cy+r+6} stroke={sc} strokeWidth="0.8" strokeDasharray="3 2"/>
-      <text x={s.cx+r+8} y={s.cy-2} fontSize="9" fill="#ffd740" fontFamily="monospace" fontWeight="700">⌀{r*2}</text>
-      {sel&&<circle cx={s.cx} cy={s.cy} r={r+6} fill="none" stroke="#ff9500" strokeWidth="1" strokeDasharray="3 2"/>}
-    </g>;}
+      <line x1={s.cx-llen} y1={s.cy} x2={s.cx+llen} y2={s.cy} stroke={sc} strokeWidth={sw*0.5} strokeDasharray={`${3/zoom} ${2/zoom}`}/>
+      <line x1={s.cx} y1={s.cy-llen} x2={s.cx} y2={s.cy+llen} stroke={sc} strokeWidth={sw*0.5} strokeDasharray={`${3/zoom} ${2/zoom}`}/>
+      <text x={s.cx+r+5/zoom} y={s.cy-2/zoom} fontSize={9/zoom} fill="#ffd740" fontFamily="monospace" fontWeight="700">⌀{Math.round(r*2)}</text>
+      {sel&&<circle cx={s.cx} cy={s.cy} r={r+5/zoom} fill="none" stroke="#ff9500" strokeWidth={sw*0.7} strokeDasharray={`${3/zoom} ${2/zoom}`}/>}
+    </g>);}
 
-    if(s.type==="bisagra"){const rw=s.rw||12,hh=(s.h||46)/2,rh=rw;const path=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;return<g key={s.id} style={{cursor:cur}} onClick={onClick}><path d={path} fill="rgba(128,203,196,0.1)" stroke={sc} strokeWidth={sw}/><line x1={s.cx-4} y1={s.cy} x2={s.cx+4} y2={s.cy} stroke={sc} strokeWidth="0.8"/><line x1={s.cx} y1={s.cy-4} x2={s.cx} y2={s.cy+4} stroke={sc} strokeWidth="0.8"/></g>;}
+    if(s.type==="bisagra"){const rw=s.rw||12,hh=(s.h||46)/2,rh=rw;const path=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;return wrap(<g style={{cursor:cur}} onClick={onClick}><path d={path} fill="rgba(128,203,196,0.12)" stroke={sc} strokeWidth={sw}/><line x1={s.cx-4/zoom} y1={s.cy} x2={s.cx+4/zoom} y2={s.cy} stroke={sc} strokeWidth={sw*0.5}/><line x1={s.cx} y1={s.cy-4/zoom} x2={s.cx} y2={s.cy+4/zoom} stroke={sc} strokeWidth={sw*0.5}/></g>);}
 
-    if(s.type==="guarda"){// esmerilado border around rectangle
-      const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
-      const g=s.grosorGuarda||12;
-      const pid=`gd${s.id}`;
-      return<g key={s.id} style={{cursor:cur}} onClick={onClick}>
-        <defs><pattern id={pid} width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke={sc} strokeWidth="1.2" opacity="0.45"/><line x1="2" y1="0" x2="2" y2="4" stroke={sc} strokeWidth="0.5" opacity="0.2"/></pattern></defs>
-        {/* outer rect filled with hatch, inner rect clipped out */}
-        <rect x={x} y={y} width={w} height={h} fill={`url(#${pid})`} stroke={sc} strokeWidth={sw}/>
-        <rect x={x+g} y={y+g} width={Math.max(0,w-g*2)} height={Math.max(0,h-g*2)} fill="#0d1117" stroke={sc} strokeWidth="0.8"/>
-        <text x={x+w/2} y={y+h+13} textAnchor="middle" fontSize="8" fill={sc} fontFamily="monospace">GUARDA ESM.</text>
-      </g>;
-    }
+    if(s.type==="guarda"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const g=s.grosorGuarda||12;const pid=`gd${s.id}${isGhost?"g":""}`;return wrap(<g style={{cursor:cur}} onClick={onClick}>
+      <defs><pattern id={pid} width={4/zoom} height={4/zoom} patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2={4/zoom} stroke={sc} strokeWidth={1/zoom} opacity="0.45"/></pattern></defs>
+      <rect x={x} y={y} width={w} height={h} fill={`url(#${pid})`} stroke={sc} strokeWidth={sw}/>
+      <rect x={x+g} y={y+g} width={Math.max(0,w-g*2)} height={Math.max(0,h-g*2)} fill="#0d1117" stroke={sc} strokeWidth={sw*0.6}/>
+    </g>);}
 
     if(s.type==="vidrio"){
       const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
-      if(w<4||h<4)return null;
+      if(w<2/zoom||h<2/zoom)return null;
       const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;
       const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;
-      const pid=`vp${s.id}`;
-      let patternDef=null;
-      let fillColor="rgba(0,40,60,0.45)";
-      if(s.esmerilado){patternDef=<defs key="pd"><pattern id={pid} width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke={sc} strokeWidth="1.2" opacity="0.4"/><line x1="2" y1="0" x2="2" y2="4" stroke={sc} strokeWidth="0.5" opacity="0.2"/></pattern></defs>;fillColor=`url(#${pid})`;}
-      else if(s.satinado){patternDef=<defs key="pd"><pattern id={pid} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><line x1="0" y1="0" x2="0" y2="5" stroke={sc} strokeWidth="1" opacity="0.3"/></pattern></defs>;fillColor=`url(#${pid})`;}
-      return<g key={s.id} style={{cursor:cur}} onClick={onClick}>
-        {patternDef}
+      const pid=`vp${s.id}${isGhost?"g":""}`;
+      let patDef=null;let fillColor="rgba(0,40,60,0.45)";
+      if(s.esmerilado){patDef=<defs><pattern id={pid} width={4/zoom} height={4/zoom} patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2={4/zoom} stroke={sc} strokeWidth={1.2/zoom} opacity="0.4"/><line x1={2/zoom} y1="0" x2={2/zoom} y2={4/zoom} stroke={sc} strokeWidth={0.5/zoom} opacity="0.2"/></pattern></defs>;fillColor=`url(#${pid})`;}
+      else if(s.satinado){patDef=<defs><pattern id={pid} width={5/zoom} height={5/zoom} patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><line x1="0" y1="0" x2="0" y2={5/zoom} stroke={sc} strokeWidth={1/zoom} opacity="0.3"/></pattern></defs>;fillColor=`url(#${pid})`;}
+      const fs=10/zoom;
+      return wrap(<g style={{cursor:cur}} onClick={onClick}>
+        {patDef}
         <clipPath id={`cp${s.id}`}><path d={d}/></clipPath>
         <path d={d} fill={fillColor} stroke={sc} strokeWidth={sw} strokeDasharray={dashArr}/>
-        <line x1={x} y1={y} x2={x+w} y2={y+h} stroke={sc} strokeWidth="0.4" opacity="0.15" clipPath={`url(#cp${s.id})`}/>
-        <line x1={x+w} y1={y} x2={x} y2={y+h} stroke={sc} strokeWidth="0.4" opacity="0.15" clipPath={`url(#cp${s.id})`}/>
-        {s.esmerilado&&<text x={x+w/2} y={y+h/2+4} textAnchor="middle" fontSize="8" fill={sc} fontFamily="monospace" opacity="0.6">ESM</text>}
-        {s.satinado&&!s.esmerilado&&<text x={x+w/2} y={y+h/2+4} textAnchor="middle" fontSize="8" fill={sc} fontFamily="monospace" opacity="0.6">SAT</text>}
-        {s.labelT&&<text x={x+w/2} y={y-6} textAnchor="middle" fontSize="10" fill="#ffd740" fontFamily="monospace">{s.labelT}</text>}
-        {s.labelB&&<text x={x+w/2} y={y+h+14} textAnchor="middle" fontSize="10" fill="#ffd740" fontFamily="monospace">{s.labelB}</text>}
-        {s.labelL&&<text x={x-6} y={y+h/2} textAnchor="end" dominantBaseline="middle" fontSize="10" fill="#ffd740" fontFamily="monospace">{s.labelL}</text>}
-        {s.labelR&&<text x={x+w+6} y={y+h/2} dominantBaseline="middle" fontSize="10" fill="#ffd740" fontFamily="monospace">{s.labelR}</text>}
-        {s.labelC&&<text x={x+w/2} y={y+h/2+4} textAnchor="middle" fontSize="11" fill="#ffd740" fontFamily="monospace" fontWeight="700">{s.labelC}</text>}
-        {sel&&<path d={d} fill="none" stroke="#ff9500" strokeWidth="1" strokeDasharray="4 2"/>}
-      </g>;
+        <line x1={x} y1={y} x2={x+w} y2={y+h} stroke={sc} strokeWidth={0.4/zoom} opacity="0.15" clipPath={`url(#cp${s.id})`}/>
+        <line x1={x+w} y1={y} x2={x} y2={y+h} stroke={sc} strokeWidth={0.4/zoom} opacity="0.15" clipPath={`url(#cp${s.id})`}/>
+        {s.esmerilado&&<text x={x+w/2} y={y+h/2+fs*0.4} textAnchor="middle" fontSize={fs*0.75} fill={sc} fontFamily="monospace" opacity="0.6">ESM</text>}
+        {s.satinado&&!s.esmerilado&&<text x={x+w/2} y={y+h/2+fs*0.4} textAnchor="middle" fontSize={fs*0.75} fill={sc} fontFamily="monospace" opacity="0.6">SAT</text>}
+        {s.labelT&&<text x={x+w/2} y={y-6/zoom} textAnchor="middle" fontSize={fs} fill="#ffd740" fontFamily="monospace">{s.labelT}</text>}
+        {s.labelB&&<text x={x+w/2} y={y+h+14/zoom} textAnchor="middle" fontSize={fs} fill="#ffd740" fontFamily="monospace">{s.labelB}</text>}
+        {s.labelL&&<text x={x-6/zoom} y={y+h/2} textAnchor="end" dominantBaseline="middle" fontSize={fs} fill="#ffd740" fontFamily="monospace">{s.labelL}</text>}
+        {s.labelR&&<text x={x+w+6/zoom} y={y+h/2} dominantBaseline="middle" fontSize={fs} fill="#ffd740" fontFamily="monospace">{s.labelR}</text>}
+        {s.labelC&&<text x={x+w/2} y={y+h/2+fs*0.4} textAnchor="middle" fontSize={fs} fill="#ffd740" fontFamily="monospace" fontWeight="700">{s.labelC}</text>}
+        {sel&&<path d={d} fill="none" stroke="#ff9500" strokeWidth={1.5/zoom} strokeDasharray={`${4/zoom} ${2/zoom}`}/>}
+      </g>);
     }
 
-    if(s.type==="cota"){const off=s.offset||20;const dx=s.x2-s.x1,dy=s.y2-s.y1;const len=Math.hypot(dx,dy);if(len<4)return null;const px=-dy/len,py=dx/len;const ox1=s.x1+px*off,oy1=s.y1+py*off,ox2=s.x2+px*off,oy2=s.y2+py*off;const ux=dx/len,uy=dy/len,as=6;const lbl=s.label||(Math.round(len)+"");const ang=Math.atan2(dy,dx)*180/Math.PI;const mx=(ox1+ox2)/2,my=(oy1+oy2)/2;const col=sel?"#ff9500":"#ffd740";return<g key={s.id} style={{cursor:cur}} onClick={onClick}><line x1={s.x1+px*3} y1={s.y1+py*3} x2={ox1+px*4} y2={oy1+py*4} stroke={col} strokeWidth="0.8" strokeDasharray="2 2"/><line x1={s.x2+px*3} y1={s.y2+py*3} x2={ox2+px*4} y2={oy2+py*4} stroke={col} strokeWidth="0.8" strokeDasharray="2 2"/><line x1={ox1} y1={oy1} x2={ox2} y2={oy2} stroke={col} strokeWidth="1.2"/><polygon points={`${ox1},${oy1} ${ox1+ux*as-uy*as*0.4},${oy1+uy*as+ux*as*0.4} ${ox1+ux*as+uy*as*0.4},${oy1+uy*as-ux*as*0.4}`} fill={col}/><polygon points={`${ox2},${oy2} ${ox2-ux*as-uy*as*0.4},${oy2-uy*as+ux*as*0.4} ${ox2-ux*as+uy*as*0.4},${oy2-uy*as-ux*as*0.4}`} fill={col}/><rect x={mx-lbl.length*3.5-2} y={my-8} width={lbl.length*7+4} height={14} fill="#0d1117" rx="2"/><text x={mx} y={my+4} textAnchor="middle" fontSize="10" fill={col} fontFamily="monospace" fontWeight="700" transform={`rotate(${ang},${mx},${my})`}>{lbl}</text></g>;}
+    if(s.type==="cota"){const off=s.offset||20;const dx=s.x2-s.x1,dy=s.y2-s.y1;const len=Math.hypot(dx,dy);if(len<2/zoom)return null;const px=-dy/len,py=dx/len;const ox1=s.x1+px*off,oy1=s.y1+py*off,ox2=s.x2+px*off,oy2=s.y2+py*off;const ux=dx/len,uy=dy/len,as=6/zoom;const lbl=s.label||(Math.round(len)+"");const ang=Math.atan2(dy,dx)*180/Math.PI;const mx=(ox1+ox2)/2,my=(oy1+oy2)/2;const col=sel?"#ff9500":"#ffd740";const fs=10/zoom;return wrap(<g style={{cursor:cur}} onClick={onClick}><line x1={s.x1+px*3/zoom} y1={s.y1+py*3/zoom} x2={ox1+px*4/zoom} y2={oy1+py*4/zoom} stroke={col} strokeWidth={sw*0.7} strokeDasharray={`${2/zoom} ${2/zoom}`}/><line x1={s.x2+px*3/zoom} y1={s.y2+py*3/zoom} x2={ox2+px*4/zoom} y2={oy2+py*4/zoom} stroke={col} strokeWidth={sw*0.7} strokeDasharray={`${2/zoom} ${2/zoom}`}/><line x1={ox1} y1={oy1} x2={ox2} y2={oy2} stroke={col} strokeWidth={sw}/><polygon points={`${ox1},${oy1} ${ox1+ux*as-uy*as*0.4},${oy1+uy*as+ux*as*0.4} ${ox1+ux*as+uy*as*0.4},${oy1+uy*as-ux*as*0.4}`} fill={col}/><polygon points={`${ox2},${oy2} ${ox2-ux*as-uy*as*0.4},${oy2-uy*as+ux*as*0.4} ${ox2-ux*as+uy*as*0.4},${oy2-uy*as-ux*as*0.4}`} fill={col}/><rect x={mx-lbl.length*fs*0.35} y={my-fs*0.85} width={lbl.length*fs*0.7} height={fs*1.3} fill="#0d1117" rx={2/zoom}/><text x={mx} y={my+fs*0.35} textAnchor="middle" fontSize={fs} fill={col} fontFamily="monospace" fontWeight="700" transform={`rotate(${ang},${mx},${my})`}>{lbl}</text></g>);}
 
-    if(s.type==="linea"||s.type==="linea_punteada"){const dArr=s.dash&&s.dash!=="0"?s.dash:s.type==="linea_punteada"?"6 4":"none";const mx=(s.x1+s.x2)/2,my=(s.y1+s.y2)/2;const ang=Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI;return<g key={s.id} style={{cursor:cur}} onClick={onClick}><line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={sc} strokeWidth={sw} strokeDasharray={dArr} strokeLinecap="round"/>{s.label&&<text x={mx} y={my-5} textAnchor="middle" fontSize="10" fill="#ffd740" fontFamily="monospace" transform={`rotate(${ang},${mx},${my})`}>{s.label}</text>}</g>;}
+    if(s.type==="linea"||s.type==="linea_punteada"){const dArr=s.dash&&s.dash!=="0"?dashArr:s.type==="linea_punteada"?`${6/zoom} ${4/zoom}`:"none";const mx=(s.x1+s.x2)/2,my=(s.y1+s.y2)/2;const ang=Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI;return wrap(<g style={{cursor:cur}} onClick={onClick}><line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={sc} strokeWidth={sw} strokeDasharray={dArr} strokeLinecap="round"/>{s.label&&<text x={mx} y={my-5/zoom} textAnchor="middle" fontSize={10/zoom} fill="#ffd740" fontFamily="monospace" transform={`rotate(${ang},${mx},${my})`}>{s.label}</text>}</g>);}
 
-    if(s.type==="arco"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;if(rx<2||ry<2)return null;return<g key={s.id} style={{cursor:cur}} onClick={onClick}><ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="rgba(0,40,60,0.3)" stroke={sc} strokeWidth={sw} strokeDasharray={dashArr}/><line x1={cx-4} y1={cy} x2={cx+4} y2={cy} stroke={sc} strokeWidth="0.7"/><line x1={cx} y1={cy-4} x2={cx} y2={cy+4} stroke={sc} strokeWidth="0.7"/><text x={cx+rx+6} y={cy} dominantBaseline="middle" fontSize="9" fill="#ffd740" fontFamily="monospace">R{Math.round(Math.min(rx,ry))}</text></g>;}
+    if(s.type==="arco"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;if(rx<1/zoom||ry<1/zoom)return null;return wrap(<g style={{cursor:cur}} onClick={onClick}><ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="rgba(0,40,60,0.3)" stroke={sc} strokeWidth={sw} strokeDasharray={dashArr}/><line x1={cx-4/zoom} y1={cy} x2={cx+4/zoom} y2={cy} stroke={sc} strokeWidth={sw*0.5}/><line x1={cx} y1={cy-4/zoom} x2={cx} y2={cy+4/zoom} stroke={sc} strokeWidth={sw*0.5}/><text x={cx+rx+5/zoom} y={cy} dominantBaseline="middle" fontSize={9/zoom} fill="#ffd740" fontFamily="monospace">R{Math.round(Math.min(rx,ry))}</text></g>);}
 
     return null;
   };
 
-  // ── PDF string ──────────────────────────────────────────────────────────────
+  // ── SELECTION BOX OVERLAY ───────────────────────────────────────────────────
+  const renderSelBox=()=>{
+    if(!selBox)return null;
+    const x=Math.min(selBox.x1,selBox.x2),y=Math.min(selBox.y1,selBox.y2),w=Math.abs(selBox.x2-selBox.x1),h=Math.abs(selBox.y2-selBox.y1);
+    return<rect x={x} y={y} width={w} height={h} fill="rgba(100,181,246,0.08)" stroke="#64B5F6" strokeWidth={1/zoom} strokeDasharray={`${4/zoom} ${2/zoom}`}/>;
+  };
+
+  // ── ROTATION HANDLES ────────────────────────────────────────────────────────
+  const renderRotHandles=()=>{
+    if(selIds.length!==1)return null;
+    const s=shapes.find(sh=>sh.id===selIds[0]);
+    if(!s)return null;
+    const[cx,cy]=shapeCenter(s);
+    const hr=20/zoom;
+    return<g>
+      <line x1={cx} y1={cy} x2={cx} y2={cy-hr} stroke="#ff9500" strokeWidth={1/zoom} strokeDasharray={`${2/zoom} ${2/zoom}`}/>
+      <circle cx={cx} cy={cy-hr} r={5/zoom} fill="#ff9500" stroke="#fff" strokeWidth={1/zoom} style={{cursor:"crosshair"}}
+        onMouseDown={e=>{e.stopPropagation();e.preventDefault();
+          const orig=shapes.map(sh=>({...sh}));
+          const startAngle=Math.atan2(getPos(e).y-cy,getPos(e).x-cx)*180/Math.PI;
+          const origRot=s.rotation||0;
+          const mm=(ev)=>{const a=Math.atan2(getPos(ev).y-cy,getPos(ev).x-cx)*180/Math.PI;const delta=a-startAngle;commit(shapes.map(sh=>sh.id===s.id?rotateShape(sh,delta-(sh.rotation||0)+origRot):sh));};
+          const mu=()=>{window.removeEventListener("mousemove",mm);window.removeEventListener("mouseup",mu);};
+          window.addEventListener("mousemove",mm);window.addEventListener("mouseup",mu);
+        }}/>
+    </g>;
+  };
+
+  // ── PDF STRING ──────────────────────────────────────────────────────────────
   const shapeToStr=(s)=>{
-    const col=s.color||"#1a4a6e";const sw=s.sw||1.5;const dash=s.dash&&s.dash!=="0"?s.dash:"none";
+    const sw=s.sw||1.5;const dash=s.dash&&s.dash!=="0"?s.dash:"none";
     const DIM="#333",GLASS="#1a4a6e",NOTE="#2d6a2d";
-    if(s.type==="text")return`<text x="${s.x}" y="${s.y}" font-size="${s.size||11}" fill="${DIM}" font-family="monospace" font-weight="700">${s.text||""}</text>`;
-    if(s.type==="nota")return`<text x="${s.x}" y="${s.y}" font-size="10" fill="${NOTE}" font-family="Arial" font-style="italic">${s.text||""}</text>`;
-    if(s.type==="angulo"){const sz=s.size||14;return`<polyline points="${s.x} ${s.y+sz} ${s.x} ${s.y} ${s.x+sz} ${s.y}" fill="none" stroke="${DIM}" stroke-width="${sw}"/><rect x="${s.x+1}" y="${s.y+1}" width="${sz*0.45}" height="${sz*0.45}" fill="none" stroke="${DIM}" stroke-width="${sw*0.7}"/>`;}
-    if(s.type==="free"&&s.pts&&s.pts.length>1){const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ");return`<path d="${d}" fill="none" stroke="#555" stroke-width="${sw}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round"/>`;}
-    if(s.type==="poligono"&&s.pts&&s.pts.length>1){const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ")+(s.closed?" Z":"");return`<path d="${d}" fill="${s.closed?"#e8f4ff":"none"}" stroke="${GLASS}" stroke-width="${sw}" stroke-dasharray="${dash}" stroke-linecap="round"/>`;}
-    if(s.type==="perf"){const r=s.r||15;return`<circle cx="${s.cx}" cy="${s.cy}" r="${r}" fill="none" stroke="#c62828" stroke-width="${sw}"/><line x1="${s.cx-r-6}" y1="${s.cy}" x2="${s.cx+r+6}" y2="${s.cy}" stroke="#c62828" stroke-width="0.8" stroke-dasharray="3 2"/><line x1="${s.cx}" y1="${s.cy-r-6}" x2="${s.cx}" y2="${s.cy+r+6}" stroke="#c62828" stroke-width="0.8" stroke-dasharray="3 2"/><text x="${s.cx+r+8}" y="${s.cy-2}" font-size="9" fill="${DIM}" font-family="monospace" font-weight="700">⌀${r*2}</text>`;}
-    if(s.type==="bisagra"){const rw=s.rw||12,hh=(s.h||46)/2,rh=rw;const p=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;return`<path d="${p}" fill="white" stroke="#006064" stroke-width="${sw}"/><line x1="${s.cx-4}" y1="${s.cy}" x2="${s.cx+4}" y2="${s.cy}" stroke="#006064" stroke-width="0.8"/><line x1="${s.cx}" y1="${s.cy-4}" x2="${s.cx}" y2="${s.cy+4}" stroke="#006064" stroke-width="0.8"/>`;}
-    if(s.type==="guarda"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const g=s.grosorGuarda||12;const pid=`gd${x}${y}`;return`<defs><pattern id="${pid}" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="${GLASS}" stroke-width="1.2" opacity="0.45"/><line x1="2" y1="0" x2="2" y2="4" stroke="${GLASS}" stroke-width="0.5" opacity="0.2"/></pattern></defs><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${pid})" stroke="${GLASS}" stroke-width="${sw}"/><rect x="${x+g}" y="${y+g}" width="${Math.max(0,w-g*2)}" height="${Math.max(0,h-g*2)}" fill="white" stroke="${GLASS}" stroke-width="0.8"/><text x="${x+w/2}" y="${y+h+12}" text-anchor="middle" font-size="8" fill="${GLASS}" font-family="monospace">GUARDA ESM.</text>`;}
-    if(s.type==="vidrio"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;const pid=`vp${x}${y}`;const satDef=s.esmerilado?`<defs><pattern id="${pid}" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="${GLASS}" stroke-width="1.2" opacity="0.4"/><line x1="2" y1="0" x2="2" y2="4" stroke="${GLASS}" stroke-width="0.5" opacity="0.2"/></pattern></defs>`:s.satinado?`<defs><pattern id="${pid}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><line x1="0" y1="0" x2="0" y2="5" stroke="${GLASS}" stroke-width="1" opacity="0.3"/></pattern></defs>`:"";const fill=s.esmerilado||s.satinado?`url(#${pid})`:"#e8f4ff";const lT=s.labelT?`<text x="${x+w/2}" y="${y-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelT}</text>`:"";const lB=s.labelB?`<text x="${x+w/2}" y="${y+h+14}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelB}</text>`:"";const lL=s.labelL?`<text x="${x-6}" y="${y+h/2}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelL}</text>`:"";const lR=s.labelR?`<text x="${x+w+6}" y="${y+h/2}" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelR}</text>`:"";const lC=s.labelC?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="11" fill="${GLASS}" font-family="monospace" font-weight="700">${s.labelC}</text>`:"";const esmLbl=s.esmerilado?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="9" fill="${GLASS}" opacity="0.6">ESM</text>`:s.satinado?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="9" fill="${GLASS}" opacity="0.6">SAT</text>`:"";return`${satDef}<path d="${d}" fill="${fill}" stroke="${GLASS}" stroke-width="${sw}" stroke-dasharray="${dash}"/>${lT}${lB}${lL}${lR}${lC}${esmLbl}`;}
+    const rot=s.rotation?` transform="rotate(${s.rotation},${shapeCenter(s).join(",")})"` :"";
+    if(s.type==="text")return`<text x="${s.x}" y="${s.y}" font-size="${s.size||11}" fill="${DIM}" font-family="monospace" font-weight="700"${rot}>${s.text||""}</text>`;
+    if(s.type==="nota")return`<text x="${s.x}" y="${s.y}" font-size="10" fill="${NOTE}" font-family="Arial" font-style="italic"${rot}>${s.text||""}</text>`;
+    if(s.type==="angulo"){const sz=s.size||14;return`<g${rot}><polyline points="${s.x},${s.y+sz} ${s.x},${s.y} ${s.x+sz},${s.y}" fill="none" stroke="${DIM}" stroke-width="${sw}"/><rect x="${s.x+1}" y="${s.y+1}" width="${sz*0.42}" height="${sz*0.42}" fill="none" stroke="${DIM}" stroke-width="${sw*0.7}"/></g>`;}
+    if(s.type==="free"&&s.pts&&s.pts.length>1){const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ");return`<path d="${d}" fill="none" stroke="#555" stroke-width="${sw}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round"${rot}/>`;}
+    if(s.type==="poligono"&&s.pts&&s.pts.length>1){const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ")+(s.closed?" Z":"");return`<path d="${d}" fill="${s.closed?"#e8f4ff":"none"}" stroke="${GLASS}" stroke-width="${sw}" stroke-dasharray="${dash}" stroke-linecap="round"${rot}/>`;}
+    if(s.type==="perf"){const r=s.r||6;return`<g${rot}><circle cx="${s.cx}" cy="${s.cy}" r="${r}" fill="none" stroke="#c62828" stroke-width="${sw}"/><line x1="${s.cx-r-5}" y1="${s.cy}" x2="${s.cx+r+5}" y2="${s.cy}" stroke="#c62828" stroke-width="0.6" stroke-dasharray="3 2"/><line x1="${s.cx}" y1="${s.cy-r-5}" x2="${s.cx}" y2="${s.cy+r+5}" stroke="#c62828" stroke-width="0.6" stroke-dasharray="3 2"/><text x="${s.cx+r+4}" y="${s.cy-1}" font-size="8" fill="${DIM}" font-family="monospace" font-weight="700">⌀${Math.round(r*2)}</text></g>`;}
+    if(s.type==="bisagra"){const rw=s.rw||12,hh=(s.h||46)/2,rh=rw;const p=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;return`<g${rot}><path d="${p}" fill="white" stroke="#006064" stroke-width="${sw}"/><line x1="${s.cx-3}" y1="${s.cy}" x2="${s.cx+3}" y2="${s.cy}" stroke="#006064" stroke-width="0.6"/><line x1="${s.cx}" y1="${s.cy-3}" x2="${s.cx}" y2="${s.cy+3}" stroke="#006064" stroke-width="0.6"/></g>`;}
+    if(s.type==="guarda"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const g=s.grosorGuarda||12;const pid=`gd${x}${y}`;return`<defs><pattern id="${pid}" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="${GLASS}" stroke-width="1.2" opacity="0.45"/></pattern></defs><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${pid})" stroke="${GLASS}" stroke-width="${sw}"${rot}/><rect x="${x+g}" y="${y+g}" width="${Math.max(0,w-g*2)}" height="${Math.max(0,h-g*2)}" fill="white" stroke="${GLASS}" stroke-width="0.7"/>`;}
+    if(s.type==="vidrio"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;const pid=`vp${x}${y}`;const satDef=s.esmerilado?`<defs><pattern id="${pid}" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="${GLASS}" stroke-width="1.2" opacity="0.4"/><line x1="2" y1="0" x2="2" y2="4" stroke="${GLASS}" stroke-width="0.5" opacity="0.2"/></pattern></defs>`:s.satinado?`<defs><pattern id="${pid}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><line x1="0" y1="0" x2="0" y2="5" stroke="${GLASS}" stroke-width="1" opacity="0.3"/></pattern></defs>`:"";const fill=s.esmerilado||s.satinado?`url(#${pid})`:"#e8f4ff";const lT=s.labelT?`<text x="${x+w/2}" y="${y-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelT}</text>`:"";const lB=s.labelB?`<text x="${x+w/2}" y="${y+h+13}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelB}</text>`:"";const lL=s.labelL?`<text x="${x-5}" y="${y+h/2}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelL}</text>`:"";const lR=s.labelR?`<text x="${x+w+5}" y="${y+h/2}" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelR}</text>`:"";const lC=s.labelC?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="11" fill="${GLASS}" font-family="monospace" font-weight="700">${s.labelC}</text>`:"";return`${satDef}<path d="${d}" fill="${fill}" stroke="${GLASS}" stroke-width="${sw}" stroke-dasharray="${dash}"${rot}/>${lT}${lB}${lL}${lR}${lC}`;}
     if(s.type==="cota"){const off=s.offset||20;const dx=s.x2-s.x1,dy=s.y2-s.y1;const len=Math.hypot(dx,dy);if(!len)return"";const px=-dy/len,py=dx/len;const ox1=s.x1+px*off,oy1=s.y1+py*off,ox2=s.x2+px*off,oy2=s.y2+py*off;const ux=dx/len,uy=dy/len,as=6;const lbl=s.label||(Math.round(len)+"");const ang=Math.atan2(dy,dx)*180/Math.PI;const mmx=(ox1+ox2)/2,mmy=(oy1+oy2)/2;return`<line x1="${s.x1+px*3}" y1="${s.y1+py*3}" x2="${ox1+px*4}" y2="${oy1+py*4}" stroke="${DIM}" stroke-width="0.8" stroke-dasharray="2 2"/><line x1="${s.x2+px*3}" y1="${s.y2+py*3}" x2="${ox2+px*4}" y2="${oy2+py*4}" stroke="${DIM}" stroke-width="0.8" stroke-dasharray="2 2"/><line x1="${ox1}" y1="${oy1}" x2="${ox2}" y2="${oy2}" stroke="${DIM}" stroke-width="1.2"/><polygon points="${ox1},${oy1} ${ox1+ux*as-uy*as*0.4},${oy1+uy*as+ux*as*0.4} ${ox1+ux*as+uy*as*0.4},${oy1+uy*as-ux*as*0.4}" fill="${DIM}"/><polygon points="${ox2},${oy2} ${ox2-ux*as-uy*as*0.4},${oy2-uy*as+ux*as*0.4} ${ox2-ux*as+uy*as*0.4},${oy2-uy*as-ux*as*0.4}" fill="${DIM}"/><text x="${mmx}" y="${mmy-4}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" font-weight="700" transform="rotate(${ang},${mmx},${mmy})">${lbl}</text>`;}
-    if(s.type==="linea"||s.type==="linea_punteada"){const dArr=s.dash&&s.dash!=="0"?s.dash:s.type==="linea_punteada"?"6 4":"none";const mx2=(s.x1+s.x2)/2,my2=(s.y1+s.y2)/2;const ang=Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI;return`<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#555" stroke-width="${sw}" stroke-dasharray="${dArr}" stroke-linecap="round"/>${s.label?`<text x="${mx2}" y="${my2-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" transform="rotate(${ang},${mx2},${my2})">${s.label}</text>`:""}`;}
-    if(s.type==="arco"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e8f4ff" stroke="${GLASS}" stroke-width="${sw}"/><text x="${cx+rx+6}" y="${cy}" dominant-baseline="middle" font-size="9" fill="${DIM}" font-family="monospace">R${Math.round(Math.min(rx,ry))}</text>`;}
+    if(s.type==="linea"||s.type==="linea_punteada"){const dArr=s.dash&&s.dash!=="0"?s.dash:s.type==="linea_punteada"?"6 4":"none";const mx2=(s.x1+s.x2)/2,my2=(s.y1+s.y2)/2;const ang=Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI;return`<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#555" stroke-width="${sw}" stroke-dasharray="${dArr}" stroke-linecap="round"${rot}/>${s.label?`<text x="${mx2}" y="${my2-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" transform="rotate(${ang},${mx2},${my2})">${s.label}</text>`:""}`;}
+    if(s.type==="arco"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e8f4ff" stroke="${GLASS}" stroke-width="${sw}"${rot}/><text x="${cx+rx+5}" y="${cy}" dominant-baseline="middle" font-size="9" fill="${DIM}" font-family="monospace">R${Math.round(Math.min(rx,ry))}</text>`;}
     return"";
   };
 
   const getSVGForPDF=()=>{
     if(!shapes.length)return"";
-    const pts=shapes.flatMap(s=>{
-      if(s.cx!=null){const rw=s.rw||s.r||20,rh=(s.h||rw*2)/2;return[[s.cx-rw-20,s.cy-rh-20],[s.cx+rw+20,s.cy+rh+20]];}
+    const allPts=shapes.flatMap(s=>{
+      if(s.cx!=null){const r=s.r||s.rw||20;return[[s.cx-r-15,s.cy-r-15],[s.cx+r+15,s.cy+r+15]];}
       if((s.type==="free"||s.type==="poligono")&&s.pts)return s.pts.map(([x,y])=>[x,y]);
       if(s.x!=null&&s.x1==null)return[[s.x-5,s.y-14],[s.x+120,s.y+5]];
+      if(s.type==="angulo")return[[s.x,s.y],[s.x+30,s.y+30]];
       return[[s.x1||0,s.y1||0],[s.x2||0,s.y2||0]];
     });
-    const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
-    if(!xs.length)return"";
-    const mx=Math.min(...xs)-30,my=Math.min(...ys)-30,Mx=Math.max(...xs)+30,My=Math.max(...ys)+30;
+    if(!allPts.length)return"";
+    const xs=allPts.map(p=>p[0]),ys=allPts.map(p=>p[1]);
+    const mx=Math.min(...xs)-25,my=Math.min(...ys)-25,Mx=Math.max(...xs)+25,My=Math.max(...ys)+25;
     return`<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:220px;border:1.5px solid #1a4a6e;border-radius:4px;background:#f0f8ff;display:block">${shapes.map(shapeToStr).join("")}</svg>`;
   };
 
@@ -606,144 +798,144 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
     if(!shapes.length){alert("El plano está vacío.");return;}
     const svg=getSVGForPDF().replace('max-height:220px;','max-height:80vh;').replace('display:block','display:block;width:100%');
     const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Plano</title><style>body{margin:16px 20px;font-family:Arial}h2{color:#1a4a6e;font-size:15px;margin-bottom:4px}p{color:#555;font-size:11px;margin-bottom:12px}@media print{body{-webkit-print-color-adjust:exact}@page{margin:8mm}}</style></head><body><h2>Plano Técnico — La Vidriería Rosario</h2><p>${label||""}</p>${svg}</body></html>`;
-    const w=window.open("","_blank","width=860,height=720");
+    const w=window.open("","_blank","width=900,height=750");
     if(w){w.document.write(html);w.document.close();w.onload=()=>{w.focus();w.print();};}
   };
 
-  // ── TOOLS ──────────────────────────────────────────────────────────────────
+  // ── TOOLS ───────────────────────────────────────────────────────────────────
   const TOOL_GROUPS=[
-    {label:"SEL",tools:[{id:"select",label:"↖",tip:"Seleccionar / Mover"}]},
-    {label:"VIDRIO",tools:[
-      {id:"vidrio",label:"▭",tip:"Rectángulo de vidrio"},
-      {id:"arco",label:"◯",tip:"Arco / Elipse / Círculo"},
-      {id:"poligono",label:"◇",tip:"Polígono libre — click para puntos, doble click para cerrar"},
-    ]},
-    {label:"ENTRANTES",tools:[
-      {id:"bisagra",label:"⊢",tip:"Bisagra (entrante con puntas semicirculares)"},
-      {id:"perf",label:"⊙",tip:"Perforación circular"},
-      {id:"guarda",label:"⊞",tip:"Guarda esmerilada alrededor (dibujá el rectángulo exterior)"},
-    ]},
-    {label:"COTAS",tools:[
-      {id:"cota",label:"↔",tip:"Cota con flechas y medida"},
-      {id:"angulo",label:"⌐",tip:"Símbolo de ángulo recto (90°)"},
-      {id:"linea",label:"—",tip:"Línea recta"},
-      {id:"linea_punteada",label:"╌",tip:"Línea punteada"},
-    ]},
-    {label:"DIBUJO",tools:[
-      {id:"free",label:"✏",tip:"Dibujo libre — arrastrá"},
-    ]},
-    {label:"TEXTO",tools:[
-      {id:"text",label:"123",tip:"Número / Medida (monospace)"},
-      {id:"nota",label:"abc",tip:"Nota / Anotación (cursiva)"},
-    ]},
+    {label:"SEL",tools:[{id:"select",label:"↖",tip:"Seleccionar/Mover · Shift=multi · Rect=selección área"}]},
+    {label:"VIDRIO",tools:[{id:"vidrio",label:"▭",tip:"Rectángulo de vidrio"},{id:"arco",label:"◯",tip:"Arco/Elipse"},{id:"poligono",label:"◇",tip:"Polígono — click puntos, doble click cierra"}]},
+    {label:"ENTRANTES",tools:[{id:"bisagra",label:"⊢",tip:"Bisagra"},{id:"perf",label:"⊙",tip:"Perforación"},{id:"guarda",label:"⊞",tip:"Guarda esmerilada"}]},
+    {label:"COTAS",tools:[{id:"cota",label:"↔",tip:"Cota"},{id:"angulo",label:"⌐",tip:"Ángulo recto 90°"},{id:"linea",label:"—",tip:"Línea"},{id:"linea_punteada",label:"╌",tip:"Línea punteada"}]},
+    {label:"LIBRE",tools:[{id:"free",label:"✏",tip:"Dibujo libre"}]},
+    {label:"TEXTO",tools:[{id:"text",label:"T",tip:"Texto/Medida · Doble click para editar"},{id:"nota",label:"i",tip:"Nota/Anotación"}]},
   ];
 
   const btnS=(active)=>({padding:"3px 7px",borderRadius:4,border:`1px solid ${active?"#4dd0e1":"#21262d"}`,background:active?"rgba(77,208,225,0.15)":"transparent",color:active?"#4dd0e1":"#6a9fb5",cursor:"pointer",fontSize:10,fontFamily:"monospace",fontWeight:active?700:400,minWidth:26,textAlign:"center"});
 
-  // ── PROPERTIES ─────────────────────────────────────────────────────────────
+  // ── PROPERTIES PANEL ────────────────────────────────────────────────────────
   const PropsPanel=()=>{
-    if(!selShape)return null;
-    const inp=(k,opts={})=><input type={opts.type||"text"} value={selShape[k]||""} onChange={e=>updateSel(k,opts.num?+e.target.value:e.target.value)} placeholder={opts.ph||""} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 5px",fontSize:10,fontFamily:"monospace",width:opts.w||52}}/>;
-    const rng=(k,mn,mx2,lbl)=><label style={{display:"flex",alignItems:"center",gap:3,color:"#6a9fb5",fontSize:10}}><span>{lbl}</span><input type="range" min={mn} max={mx2} step="0.5" value={selShape[k]!=null?selShape[k]:mn} onChange={e=>updateSel(k,+e.target.value)} style={{width:52,accentColor:"#4dd0e1"}}/><span style={{color:"#4dd0e1",minWidth:22}}>{selShape[k]!=null?selShape[k]:mn}</span></label>;
-    const chk=(k,lbl,col="#4dd0e1")=><label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:selShape[k]?col:"#6a9fb5",fontSize:10}}><input type="checkbox" checked={!!selShape[k]} onChange={e=>updateSel(k,e.target.checked)} style={{accentColor:col}}/><span>{lbl}</span></label>;
-    return<div style={{display:"flex",flexWrap:"wrap",gap:5,padding:"5px 8px",background:"#161b22",borderRadius:7,marginBottom:5,alignItems:"center",fontSize:10,border:"1px solid #21262d"}}>
-      <span style={{color:"#ffd740",fontWeight:700,fontSize:9,textTransform:"uppercase",letterSpacing:1}}>{selShape.type}</span>
+    if(selIds.length===0)return null;
+    if(selIds.length>1)return<div style={{display:"flex",gap:8,padding:"4px 8px",background:"#161b22",borderRadius:7,marginBottom:4,alignItems:"center",fontSize:10,border:"1px solid #21262d"}}>
+      <span style={{color:"#ffd740"}}>{selIds.length} seleccionados</span>
+      <button onClick={()=>{const dx=+(window.prompt("Mover X:",0)||0),dy=+(window.prompt("Mover Y:",0)||0);commit(shapes.map(s=>selIds.includes(s.id)?moveShape(s,dx,dy):s));}} style={{...btnS(false),color:"#64B5F6"}}>↕ Mover</button>
+      <button onClick={()=>{const d=+(window.prompt("Rotar grados:",90)||0);commit(shapes.map(s=>selIds.includes(s.id)?rotateShape(s,d):s));}} style={{...btnS(false),color:"#CE93D8"}}>↻ Rotar</button>
+      <button onClick={()=>commit(shapes.filter(s=>!selIds.includes(s.id)))} style={{...btnS(false),border:"1px solid #7f2020",color:"#f48fb1"}}>✕ Borrar</button>
+    </div>;
+    const s=shapes.find(sh=>sh.id===selIds[0]);
+    if(!s)return null;
+    const inp=(k,opts={})=><input type={opts.type||"text"} value={s[k]||""} onChange={e=>updateOne(s.id,k,opts.num?+e.target.value:e.target.value)} placeholder={opts.ph||""} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 5px",fontSize:10,fontFamily:"monospace",width:opts.w||52}}/>;
+    const rng=(k,mn,mx2,lbl)=><label style={{display:"flex",alignItems:"center",gap:3,color:"#6a9fb5",fontSize:10}}><span>{lbl}</span><input type="range" min={mn} max={mx2} step="0.5" value={s[k]!=null?s[k]:mn} onChange={e=>updateOne(s.id,k,+e.target.value)} style={{width:48,accentColor:"#4dd0e1"}}/><span style={{color:"#4dd0e1",minWidth:20}}>{s[k]!=null?s[k]:mn}</span></label>;
+    const chk=(k,lbl,col="#4dd0e1")=><label style={{display:"flex",alignItems:"center",gap:3,cursor:"pointer",color:s[k]?col:"#6a9fb5",fontSize:10}}><input type="checkbox" checked={!!s[k]} onChange={e=>updateOne(s.id,k,e.target.checked)} style={{accentColor:col}}/><span>{lbl}</span></label>;
+    return<div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"4px 8px",background:"#161b22",borderRadius:7,marginBottom:4,alignItems:"center",fontSize:10,border:"1px solid #21262d"}}>
+      <span style={{color:"#ffd740",fontWeight:700,fontSize:9,textTransform:"uppercase",letterSpacing:1}}>{s.type}</span>
       {rng("sw",0.3,6,"Grosor")}
-      {selShape.type!=="text"&&selShape.type!=="nota"&&selShape.type!=="angulo"&&selShape.type!=="bisagra"&&<label style={{display:"flex",alignItems:"center",gap:3,color:"#6a9fb5",fontSize:10}}><span>Trazo:</span>
-        <select value={selShape.dash||"0"} onChange={e=>updateSel("dash",e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",color:"#c8e0f8",borderRadius:4,fontSize:10,padding:"1px 3px"}}>
-          <option value="0">Sólido</option><option value="6 3">— — —</option><option value="2 3">· · ·</option><option value="8 3 2 3">— · —</option><option value="1 5">·  ·</option>
-        </select>
-      </label>}
-      {/* Color */}
-      <label style={{display:"flex",alignItems:"center",gap:3,color:"#6a9fb5",fontSize:10}}><span>Color:</span>
-        <input type="color" value={selShape.color||"#4dd0e1"} onChange={e=>updateSel("color",e.target.value)} style={{width:28,height:18,border:"none",background:"none",cursor:"pointer",padding:0}}/>
-      </label>
-      {selShape.type==="vidrio"&&<>
-        <span style={{color:"#6a9fb5",marginLeft:3}}>Esquinas:</span>
-        {[["↖","cornerTL"],["↗","cornerTR"],["↘","cornerBR"],["↙","cornerBL"]].map(([ic,k])=><label key={k} style={{display:"flex",alignItems:"center",gap:2,color:"#6a9fb5"}}><span>{ic}</span>{inp(k,{type:"number",num:true,w:28,ph:"0"})}</label>)}
-        <span style={{color:"#6a9fb5",marginLeft:3}}>Lados:</span>
-        {[["↑","labelT"],["↓","labelB"],["←","labelL"],["→","labelR"],["⊙","labelC"]].map(([ic,k])=><label key={k} style={{display:"flex",alignItems:"center",gap:2,color:"#6a9fb5"}}><span style={{fontSize:11}}>{ic}</span>{inp(k,{w:40,ph:"mm"})}</label>)}
+      {s.type!=="text"&&s.type!=="nota"&&s.type!=="angulo"&&s.type!=="bisagra"&&<><label style={{display:"flex",alignItems:"center",gap:3,color:"#6a9fb5",fontSize:10}}><span>Trazo:</span>
+        <select value={s.dash||"0"} onChange={e=>updateOne(s.id,"dash",e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",color:"#c8e0f8",borderRadius:4,fontSize:10,padding:"1px 3px"}}>
+          <option value="0">Sólido</option><option value="6 3">— — —</option><option value="2 3">· · ·</option><option value="8 3 2 3">— · —</option>
+        </select></label></>}
+      <label style={{display:"flex",alignItems:"center",gap:3,color:"#6a9fb5",fontSize:10}}><span>Color:</span><input type="color" value={s.color||"#4dd0e1"} onChange={e=>updateOne(s.id,"color",e.target.value)} style={{width:26,height:18,border:"none",background:"none",cursor:"pointer",padding:0}}/></label>
+      {/* Rotate */}
+      <label style={{display:"flex",alignItems:"center",gap:3,color:"#6a9fb5",fontSize:10}}><span>↻°</span><input type="number" value={s.rotation||0} onChange={e=>updateOne(s.id,"rotation",+e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 4px",fontSize:10,fontFamily:"monospace",width:38}}/></label>
+      {s.type==="vidrio"&&<>
+        {[["↑","labelT"],["↓","labelB"],["←","labelL"],["→","labelR"],["⊙","labelC"]].map(([ic,k])=><label key={k} style={{display:"flex",alignItems:"center",gap:2,color:"#6a9fb5"}}><span style={{fontSize:11}}>{ic}</span>{inp(k,{w:38,ph:"mm"})}</label>)}
+        {[["↖","cornerTL"],["↗","cornerTR"],["↘","cornerBR"],["↙","cornerBL"]].map(([ic,k])=><label key={k} style={{display:"flex",alignItems:"center",gap:2,color:"#6a9fb5"}}><span>{ic}</span>{inp(k,{type:"number",num:true,w:26,ph:"0"})}</label>)}
         {chk("satinado","Sat.")}
         {chk("esmerilado","Esm.","#a5d6a7")}
       </>}
-      {selShape.type==="bisagra"&&<>{rng("rw",4,30,"Ancho")}{rng("h",16,120,"Alto")}</>}
-      {selShape.type==="perf"&&<>{rng("r",4,80,"Radio")}<span style={{color:"#4dd0e1"}}>⌀{(selShape.r||15)*2}mm</span></>}
-      {selShape.type==="guarda"&&<>{rng("grosorGuarda",4,40,"Grosor guarda")}</>}
-      {selShape.type==="angulo"&&<>{rng("size",8,30,"Tamaño")}</>}
-      {selShape.type==="cota"&&<><span style={{color:"#6a9fb5"}}>Medida:</span>{inp("label",{w:48,ph:"auto"})}{rng("offset",6,50,"Offset")}</>}
-      {(selShape.type==="linea"||selShape.type==="linea_punteada")&&<><span style={{color:"#6a9fb5"}}>Texto:</span>{inp("label",{w:70,ph:"(opcional)"})}</>}
-      {selShape.type==="text"&&<><input value={selShape.text||""} onChange={e=>updateSel("text",e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 5px",fontSize:10,fontFamily:"monospace",width:80}}/>{rng("size",7,20,"Tamaño")}</>}
-      {selShape.type==="nota"&&<input value={selShape.text||""} onChange={e=>updateSel("text",e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#a5d6a7",padding:"2px 5px",fontSize:10,flex:1,minWidth:100}}/>}
-      <button onClick={()=>{commit(shapes.filter(s=>s.id!==selId));setSelId(null);}} style={{marginLeft:"auto",padding:"2px 7px",borderRadius:4,border:"1px solid #7f2020",background:"#1a0808",color:"#f48fb1",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>✕</button>
+      {s.type==="bisagra"&&<>{rng("rw",4,30,"Ancho")}{rng("h",16,120,"Alto")}</>}
+      {s.type==="perf"&&<>{rng("r",2,80,"Radio")}<span style={{color:"#4dd0e1"}}>⌀{Math.round((s.r||6)*2)}mm</span></>}
+      {s.type==="guarda"&&<>{rng("grosorGuarda",4,40,"Grosor")}</>}
+      {s.type==="angulo"&&<>{rng("size",6,40,"Tamaño")}</>}
+      {s.type==="cota"&&<><span style={{color:"#6a9fb5"}}>Medida:</span>{inp("label",{w:48,ph:"auto"})}{rng("offset",5,60,"Offset")}</>}
+      {(s.type==="linea"||s.type==="linea_punteada")&&<><span style={{color:"#6a9fb5"}}>Texto:</span>{inp("label",{w:70,ph:"(opc)"})}</>}
+      {s.type==="text"&&<><input value={s.text||""} onChange={e=>updateOne(s.id,"text",e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 5px",fontSize:10,fontFamily:"monospace",width:80}}/>{rng("size",6,24,"Tamaño")}</>}
+      {s.type==="nota"&&<input value={s.text||""} onChange={e=>updateOne(s.id,"text",e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#a5d6a7",padding:"2px 5px",fontSize:10,flex:1,minWidth:90}}/>}
+      <button onClick={()=>{commit([...shapes,{...JSON.parse(JSON.stringify(s)),id:uid(),x1:s.x1?s.x1+10:undefined,y1:s.y1?s.y1+10:undefined,x2:s.x2?s.x2+10:undefined,y2:s.y2?s.y2+10:undefined,cx:s.cx?s.cx+10:undefined,cy:s.cy?s.cy+10:undefined,x:s.x?s.x+10:undefined,y:s.y?s.y+10:undefined}]);}} style={{...btnS(false),color:"#64B5F6",border:"1px solid #1565C040"}}>⧉ Dup</button>
+      <button onClick={()=>{commit(shapes.filter(sh=>sh.id!==s.id));setSelIds([]);}} style={{...btnS(false),border:"1px solid #7f2020",color:"#f48fb1",marginLeft:"auto"}}>✕</button>
     </div>;
   };
 
-  // Ctrl+Z handler
-  React.useEffect(()=>{
-    const handler=(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==="z"&&open){e.preventDefault();undo();}};
-    window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler);
-  },[histIdx,history,open]);
+  // ── COLORS PALETTE ──────────────────────────────────────────────────────────
+  const COLORS=["#4dd0e1","#ffd740","#ef9a9a","#a5d6a7","#80cbc4","#ce93d8","#64B5F6","#ffcc02","#fff","#888"];
 
-  if(!open)return<button onClick={()=>setOpen(true)} style={{width:"100%",marginTop:6,padding:"5px 0",background:"transparent",border:"1px dashed #21262d",borderRadius:6,color:"#4a6a7a",cursor:"pointer",fontSize:10,fontFamily:"monospace",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>✏ {shapes.length>0?`Plano técnico (${shapes.length} elem.)`:"+ Plano técnico"}</button>;
+  if(!open)return<button onClick={()=>setOpen(true)} style={{width:"100%",marginTop:6,padding:"5px 0",background:"transparent",border:"1px dashed #21262d",borderRadius:6,color:"#4a6a7a",cursor:"pointer",fontSize:10,fontFamily:"monospace",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>✏ {shapes.length>0?`Plano (${shapes.length} elem.)`:"+ Plano técnico"}</button>;
 
-  return<div style={{marginTop:8,background:"#0d1117",borderRadius:9,padding:8,border:"1px solid #21262d"}}>
+  return<div ref={containerRef} style={{marginTop:8,background:"#0d1117",borderRadius:9,padding:8,border:"1px solid #21262d"}}>
     {/* TOOLBAR */}
-    <div style={{display:"flex",gap:3,marginBottom:5,flexWrap:"wrap",alignItems:"center"}}>
-      {TOOL_GROUPS.map(g=><div key={g.label} style={{display:"flex",gap:2,alignItems:"center",marginRight:4}}>
-        <span style={{fontSize:7,color:"#1c2631",fontFamily:"monospace",marginRight:1}}>{g.label}</span>
+    <div style={{display:"flex",gap:3,marginBottom:4,flexWrap:"wrap",alignItems:"center"}}>
+      {TOOL_GROUPS.map(g=><div key={g.label} style={{display:"flex",gap:2,alignItems:"center",marginRight:3}}>
+        <span style={{fontSize:7,color:"#1c2631",fontFamily:"monospace"}}>{g.label}</span>
         {g.tools.map(t=><button key={t.id} onClick={()=>{setTool(t.id);if(t.id!=="poligono")setPolyPts([]);}} title={t.tip} style={btnS(tool===t.id)}>{t.label}</button>)}
       </div>)}
-      <div style={{marginLeft:"auto",display:"flex",gap:3,alignItems:"center"}}>
-        {/* Global stroke width */}
-        <input type="range" min="0.3" max="6" step="0.5" value={strokeW} onChange={e=>setStrokeW(+e.target.value)} title="Grosor" style={{width:44,accentColor:"#4dd0e1"}}/>
+      <div style={{marginLeft:"auto",display:"flex",gap:3,alignItems:"center",flexWrap:"wrap"}}>
+        {/* Stroke */}
+        <input type="range" min="0.3" max="8" step="0.5" value={strokeW} onChange={e=>setStrokeW(+e.target.value)} title="Grosor" style={{width:44,accentColor:"#4dd0e1"}}/>
         <span style={{fontSize:9,color:"#4dd0e1",minWidth:16}}>{strokeW}</span>
-        {/* Global dash */}
         <select value={strokeDash} onChange={e=>setStrokeDash(e.target.value)} style={{background:"#0d1117",border:"1px solid #21262d",color:"#6a9fb5",borderRadius:4,fontSize:9,padding:"1px 2px"}}>
           <option value="0">——</option><option value="6 3">--</option><option value="2 3">···</option><option value="8 3 2 3">-·-</option>
         </select>
-        {/* Global color */}
-        <input type="color" value={strokeColor} onChange={e=>setStrokeColor(e.target.value)} title="Color" style={{width:24,height:18,border:"1px solid #21262d",background:"none",cursor:"pointer",padding:0,borderRadius:3}}/>
-        {/* Palette */}
-        {COLORS.map(c=><div key={c} onClick={()=>setStrokeColor(c)} title={c} style={{width:12,height:12,borderRadius:3,background:c,cursor:"pointer",border:strokeColor===c?"2px solid #fff":"1px solid #21262d",flexShrink:0}}/>)}
-        {shapes.length>0&&<><button onClick={()=>{if(window.confirm("¿Limpiar plano?"))commit([]);setSelId(null);setPolyPts([]);}} style={{...btnS(false),color:"#5a3a3a",marginLeft:2}}>Limpiar</button>
-        <button onClick={undo} disabled={histIdx<=0} title="Ctrl+Z" style={{...btnS(false),border:"1px solid #1e3a5a",color:histIdx<=0?"#1e3a5a":"#6a9fb5",cursor:histIdx<=0?"default":"pointer"}}>↩ Z</button>
-        <button onClick={printPlano} style={{...btnS(false),border:"1px solid #26A69A",color:"#26A69A",fontWeight:700}}>🖨</button></>}
+        <input type="color" value={strokeColor} onChange={e=>setStrokeColor(e.target.value)} style={{width:22,height:18,border:"1px solid #21262d",background:"none",cursor:"pointer",padding:0,borderRadius:3}}/>
+        {COLORS.map(c=><div key={c} onClick={()=>setStrokeColor(c)} style={{width:11,height:11,borderRadius:2,background:c,cursor:"pointer",border:strokeColor===c?"2px solid #fff":"1px solid #21262d",flexShrink:0}}/>)}
+        {/* Zoom controls */}
+        <button onClick={()=>setZoom(z=>Math.min(10,z*1.3))} style={{...btnS(false),padding:"2px 5px"}}>+</button>
+        <span style={{fontSize:9,color:"#4dd0e1",minWidth:28,textAlign:"center"}}>{Math.round(zoom*100)}%</span>
+        <button onClick={()=>setZoom(z=>Math.max(0.2,z/1.3))} style={{...btnS(false),padding:"2px 5px"}}>−</button>
+        <button onClick={()=>{setZoom(1);setPan({x:0,y:0});}} style={{...btnS(false),padding:"2px 5px",fontSize:8}}>⊡</button>
+        {shapes.length>0&&<>
+          <button onClick={()=>{if(window.confirm("¿Limpiar plano?"))commit([]);setSelIds([]);setPolyPts([]);}} style={{...btnS(false),color:"#5a3a3a"}}>Limpiar</button>
+          <button onClick={undo} disabled={histIdx<=0} title="Ctrl+Z" style={{...btnS(false),color:histIdx<=0?"#1e3a5a":"#6a9fb5"}}>↩</button>
+          <button onClick={redo} disabled={histIdx>=history.length-1} title="Ctrl+Shift+Z" style={{...btnS(false),color:histIdx>=history.length-1?"#1e3a5a":"#6a9fb5"}}>↪</button>
+          <button onClick={printPlano} style={{...btnS(false),border:"1px solid #26A69A",color:"#26A69A",fontWeight:700}}>🖨</button>
+        </>}
         <button onClick={()=>setOpen(false)} style={btnS(false)}>▲</button>
       </div>
     </div>
 
-    {/* POLYGON IN PROGRESS indicator */}
-    {tool==="poligono"&&polyPts.length>0&&<div style={{padding:"3px 8px",background:"#0a1828",borderRadius:5,marginBottom:4,fontSize:9,color:"#ffd740",fontFamily:"monospace"}}>
-      ◇ {polyPts.length} punto{polyPts.length>1?"s":""} · Doble click para cerrar · Esc para cancelar
-    </div>}
+    {polyPts.length>0&&<div style={{padding:"2px 7px",background:"#0a1020",borderRadius:4,marginBottom:3,fontSize:8,color:"#ffd740",fontFamily:"monospace"}}>◇ {polyPts.length} puntos · Doble click cierra · Esc cancela</div>}
 
     <PropsPanel/>
 
     {/* CANVAS */}
-    <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${H}`}
-      style={{display:"block",background:"#0d1117",borderRadius:6,border:"1px solid #21262d",cursor:tool==="select"?"default":"crosshair",touchAction:"none",minHeight:200}}
-      onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
-      onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
-      onKeyDown={e=>{if(e.key==="Escape"){setPolyPts([]);setPolyPreview(null);}}} tabIndex="0">
+    <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${H}`} tabIndex="0"
+      style={{display:"block",background:"#0d1117",borderRadius:6,border:"1px solid #21262d",cursor:panning||isSpaceRef.current?"grab":tool==="select"?"default":"crosshair",touchAction:"none",minHeight:220,outline:"none"}}
+      onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onWheel={onWheel} onDoubleClick={onDblClick}
+      onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}>
+      {/* Grid in world space */}
       <defs>
-        <pattern id={`mn${itemIdx||0}`} width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="#161b22" strokeWidth="0.5"/></pattern>
-        <pattern id={`mj${itemIdx||0}`} width="50" height="50" patternUnits="userSpaceOnUse"><rect width="50" height="50" fill={`url(#mn${itemIdx||0})`}/><path d="M 50 0 L 0 0 0 50" fill="none" stroke="#1c2631" strokeWidth="0.8"/></pattern>
+        <pattern id={`mn${itemIdx||0}`} width={10*zoom} height={10*zoom} x={pan.x%( 10*zoom)} y={pan.y%(10*zoom)} patternUnits="userSpaceOnUse">
+          <path d={`M ${10*zoom} 0 L 0 0 0 ${10*zoom}`} fill="none" stroke="#161b22" strokeWidth="0.5"/>
+        </pattern>
+        <pattern id={`mj${itemIdx||0}`} width={50*zoom} height={50*zoom} x={pan.x%(50*zoom)} y={pan.y%(50*zoom)} patternUnits="userSpaceOnUse">
+          <rect width={50*zoom} height={50*zoom} fill={`url(#mn${itemIdx||0})`}/>
+          <path d={`M ${50*zoom} 0 L 0 0 0 ${50*zoom}`} fill="none" stroke="#1c2631" strokeWidth="0.8"/>
+        </pattern>
       </defs>
       <rect width={W} height={H} fill={`url(#mj${itemIdx||0})`}/>
-      {/* Polygon in progress */}
-      {polyPts.length>0&&<>
-        <polyline points={polyPts.map(([x,y])=>`${x},${y}`).join(" ")} fill="none" stroke="#ffd740" strokeWidth={strokeW} strokeLinecap="round" strokeDasharray="4 2" opacity="0.7"/>
-        {polyPreview&&polyPts.length>0&&<line x1={polyPts[polyPts.length-1][0]} y1={polyPts[polyPts.length-1][1]} x2={polyPreview[0]} y2={polyPreview[1]} stroke="#ffd740" strokeWidth="1" strokeDasharray="3 2" opacity="0.5"/>}
-        {polyPts.map(([x,y],i)=><circle key={i} cx={x} cy={y} r="3" fill="#ffd740" opacity="0.8"/>)}
-      </>}
-      {/* Free draw preview */}
-      {freePath.length>1&&<polyline points={freePath.map(([x,y])=>`${x},${y}`).join(" ")} fill="none" stroke="#00bfff" strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>}
-      {shapes.map(s=>renderShape(s,false))}
-      {drawing&&renderShape(drawing,true)}
+
+      {/* All shapes in world transform */}
+      <g transform={tx}>
+        {/* Polygon preview */}
+        {polyPts.length>0&&<>
+          <polyline points={polyPts.map(([x,y])=>`${x},${y}`).join(" ")} fill="none" stroke="#ffd740" strokeWidth={1.5/zoom} strokeDasharray={`${4/zoom} ${2/zoom}`} opacity="0.7"/>
+          {polyPreview&&<line x1={polyPts[polyPts.length-1][0]} y1={polyPts[polyPts.length-1][1]} x2={polyPreview[0]} y2={polyPreview[1]} stroke="#ffd740" strokeWidth={1/zoom} strokeDasharray={`${3/zoom} ${2/zoom}`} opacity="0.5"/>}
+          {polyPts.map(([x,y],i)=><circle key={i} cx={x} cy={y} r={3/zoom} fill="#ffd740" opacity="0.8"/>)}
+        </>}
+        {/* Free draw */}
+        {freePath.length>1&&<polyline points={freePath.map(([x,y])=>`${x},${y}`).join(" ")} fill="none" stroke="#00bfff" strokeWidth={strokeW/zoom} strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>}
+        {shapes.map(s=>renderShape(s,false))}
+        {drawing&&renderShape(drawing,true)}
+        {renderSelBox()}
+        {renderRotHandles()}
+      </g>
+
+      {/* Zoom indicator */}
+      <text x={W-4} y={H-4} textAnchor="end" fontSize="9" fill="#21262d" fontFamily="monospace">{Math.round(zoom*100)}% · {shapes.length}el</text>
     </svg>
     <div style={{fontSize:8,color:"#1c2631",marginTop:2,display:"flex",justifyContent:"space-between",fontFamily:"monospace"}}>
-      <span>Shift=sin snap</span>
-      <span>{tool==="select"&&"↖ Click selecciona · Arrastrá mueve"}{tool==="vidrio"&&"▭ Arrastrá · Seleccioná: lados, esquinas, sat/esm"}{tool==="poligono"&&"◇ Click=punto · Doble click=cerrar · Esc=cancelar"}{tool==="bisagra"&&"⊢ Click coloca bisagra"}{tool==="perf"&&"⊙ Click → ingresá diámetro"}{tool==="guarda"&&"⊞ Arrastrá el rectángulo exterior de la guarda"}{tool==="cota"&&"↔ Arrastrá para cotar"}{tool==="angulo"&&"⌐ Click coloca símbolo 90°"}{tool==="linea"&&"— Arrastrá línea"}{tool==="linea_punteada"&&"╌ Arrastrá línea punteada"}{tool==="free"&&"✏ Arrastrá libremente"}{tool==="text"&&"123 Click para ingresar texto"}{tool==="nota"&&"abc Click para anotación"}{tool==="arco"&&"◯ Arrastrá arco/elipse"}</span>
+      <span>Rueda=zoom · Espacio+arrastrar=mover · Shift=sin snap · ↑↓←→=nudge · Del=borrar sel.</span>
+      <span>{tool==="select"&&"↖ Click·Shift multi·Rect=área"}{tool==="vidrio"&&"▭ Arrastrá · Panel props"}{tool==="poligono"&&"◇ Click puntos · Dbl=cerrar"}{tool==="bisagra"&&"⊢ Click"}{tool==="perf"&&"⊙ Click"}{tool==="guarda"&&"⊞ Arrastrá"}{tool==="cota"&&"↔ Arrastrá"}{tool==="angulo"&&"⌐ Click"}{tool==="linea"&&"— Arrastrá"}{tool==="linea_punteada"&&"╌ Arrastrá"}{tool==="free"&&"✏ Arrastrá"}{tool==="text"&&"T Click · Dbl=editar"}{tool==="nota"&&"i Click · Dbl=editar"}{tool==="arco"&&"◯ Arrastrá"}</span>
     </div>
   </div>;
 };
