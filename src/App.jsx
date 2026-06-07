@@ -362,583 +362,70 @@ const buildSVGStr=(shapes)=>{
   return `<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:260px;border:1.5px solid #1a4a6e;border-radius:4px;background:#f0f8ff;display:block">${shapes.map(toStr).join("")}</svg>`;
 };
 // ─── COTIZACION / ORDEN FORM ─────────────────────────────────────────────────
-// ─── ITEM CANVAS v5 ──────────────────────────────────────────────────────────
+// ─── ITEM PLANO (upload PDF/JPG) ────────────────────────────────────────────
 const ItemCanvas=({value,onChange,label,itemIdx})=>{
-  const svgRef=useRef(null);
-  const containerRef=useRef(null);
-  const [tool,setTool]=useState("select");
-  const [shapes,setShapes]=useState(value||[]);
-  const [drawing,setDrawing]=useState(null);
-  const [freePath,setFreePath]=useState([]);
-  const [polyPts,setPolyPts]=useState([]);
-  const [polyPreview,setPolyPreview]=useState(null);
-  const [selIds,setSelIds]=useState([]); // multi-select
-  const [selBox,setSelBox]=useState(null); // {x1,y1,x2,y2} rubber band
-  const [drag,setDrag]=useState(null);
-  const [rotating,setRotating]=useState(null);
-  const [editingText,setEditingText]=useState(null); // {id, x, y}
   const [open,setOpen]=useState(!!(value&&value.length));
-  // Canvas transform
-  const [zoom,setZoom]=useState(1);
-  const [pan,setPan]=useState({x:0,y:0});
-  const [panning,setPanning]=useState(false);
-  const [panStart,setPanStart]=useState(null);
-  // Stroke options
-  const [strokeW,setStrokeW]=useState(1.5);
-  const [strokeDash,setStrokeDash]=useState("0");
-  const [strokeColor,setStrokeColor]=useState("#4dd0e1");
-  // History
-  const [history,setHistory]=useState([value||[]]);
-  const [histIdx,setHistIdx]=useState(0);
+  const archivos=value||[];
+  const commit=(arr)=>{onChange(arr);};
 
-  const uid=()=>Math.random().toString(36).slice(2,8);
-  const W=600,H=380;
-  const SNAP=5;
-
-  const commit=(sh)=>{
-    const next=JSON.parse(JSON.stringify(sh));
-    setShapes(next);onChange(next);
-    setHistory(h=>{const t=h.slice(0,histIdx+1);return [...t,next].slice(-40);});
-    setHistIdx(i=>Math.min(i+1,39));
-  };
-  const undo=()=>{if(histIdx<=0)return;const p=history[histIdx-1];setShapes(p);onChange(p);setHistIdx(i=>i-1);};
-  const redo=()=>{if(histIdx>=history.length-1)return;const n=history[histIdx+1];setShapes(n);onChange(n);setHistIdx(i=>i+1);};
-
-  // ── COORDINATE TRANSFORMS ───────────────────────────────────────────────────
-  const svgToWorld=(sx,sy)=>({x:(sx-pan.x)/zoom, y:(sy-pan.y)/zoom});
-  const worldToSvg=(wx,wy)=>({x:wx*zoom+pan.x, y:wy*zoom+pan.y});
-  const snapPt=(x,y,shift)=>{
-    if(shift) return {x,y};
-    // snap to grid
-    let sx=Math.round(x/SNAP)*SNAP, sy=Math.round(y/SNAP)*SNAP;
-    // snap to existing shape endpoints
-    let bestD=8/zoom;
-    for(const s of shapes){
-      const pts=shapeKeyPts(s);
-      for(const [px,py] of pts){
-        const d=Math.hypot(x-px,y-py);
-        if(d<bestD){bestD=d;sx=px;sy=py;}
-      }
-    }
-    return{x:sx,y:sy};
-  };
-
-  const shapeKeyPts=(s)=>{
-    if(s.cx!=null) return [[s.cx,s.cy]];
-    if(s.type==="text"||s.type==="nota") return [[s.x,s.y]];
-    if(s.type==="angulo") return [[s.x,s.y]];
-    if((s.type==="free"||s.type==="poligono")&&s.pts) return s.pts;
-    if(s.x1!=null){
-      const mx=(s.x1+s.x2)/2,my=(s.y1+s.y2)/2;
-      return[[s.x1,s.y1],[s.x2,s.y2],[mx,my]];
-    }
-    return[];
-  };
-
-  const getPos=(e,noSnap)=>{
-    if(!svgRef.current)return{x:0,y:0};
-    const r=svgRef.current.getBoundingClientRect();
-    const src=e.touches?e.touches[0]:e;
-    const sx=(src.clientX-r.left)*(W/r.width);
-    const sy=(src.clientY-r.top)*(H/r.height);
-    const w=svgToWorld(sx,sy);
-    if(noSnap||e.shiftKey) return w;
-    return snapPt(w.x,w.y,false);
-  };
-
-  // ── HIT TEST (world coords) ──────────────────────────────────────────────────
-  const hitTest=(s,p,thresh=8)=>{
-    const t=thresh/zoom;
-    if(s.type==="text"||s.type==="nota") return Math.abs(p.x-s.x)<55&&Math.abs(p.y-s.y)<16;
-    if(s.type==="angulo") return Math.abs(p.x-s.x)<20&&Math.abs(p.y-s.y)<20;
-    if(s.cx!=null){
-      if(s.type==="perf"){const r=s.r||15;return Math.abs(Math.hypot(p.x-s.cx,p.y-s.cy)-r)<t;}
-      if(s.type==="bisagra"){const hw=s.rw||12,hh=(s.h||46)/2;return p.x>=s.cx-hw-t&&p.x<=s.cx+hw+t&&p.y>=s.cy-hh-t&&p.y<=s.cy+hh+t;}
-      return Math.hypot(p.x-s.cx,p.y-s.cy)<t;
-    }
-    if((s.type==="free"||s.type==="poligono")&&s.pts){
-      for(let i=0;i<s.pts.length-1;i++){const [ax,ay]=s.pts[i],[bx,by]=s.pts[i+1];const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy);if(!len)continue;const tt=Math.max(0,Math.min(1,((p.x-ax)*dx+(p.y-ay)*dy)/(len*len)));if(Math.hypot(p.x-ax-tt*dx,p.y-ay-tt*dy)<t)return true;}
-      return false;
-    }
-    if(s.x1!=null){
-      if(s.type==="vidrio"||s.type==="arco"||s.type==="guarda"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);return p.x>=x-t&&p.x<=x+w+t&&p.y>=y-t&&p.y<=y+h+t;}
-      const dx=s.x2-s.x1,dy=s.y2-s.y1,len=Math.hypot(dx,dy);if(!len)return false;const tt=Math.max(0,Math.min(1,((p.x-s.x1)*dx+(p.y-s.y1)*dy)/(len*len)));return Math.hypot(p.x-s.x1-tt*dx,p.y-s.y1-tt*dy)<t;
-    }
-    return false;
-  };
-
-  // ── MOVE SHAPE ──────────────────────────────────────────────────────────────
-  const moveShape=(s,dx,dy)=>{
-    if(s.type==="text"||s.type==="nota")return{...s,x:s.x+dx,y:s.y+dy};
-    if(s.cx!=null)return{...s,cx:s.cx+dx,cy:s.cy+dy};
-    if(s.type==="angulo")return{...s,x:s.x+dx,y:s.y+dy};
-    if((s.type==="free"||s.type==="poligono")&&s.pts)return{...s,pts:s.pts.map(([x,y])=>[x+dx,y+dy])};
-    return{...s,x1:s.x1+dx,y1:s.y1+dy,x2:s.x2+dx,y2:s.y2+dy};
-  };
-
-  // ── ROTATE SHAPE ────────────────────────────────────────────────────────────
-  const rotatePt=(x,y,cx,cy,deg)=>{const r=deg*Math.PI/180;return[cx+(x-cx)*Math.cos(r)-(y-cy)*Math.sin(r),cy+(x-cx)*Math.sin(r)+(y-cy)*Math.cos(r)];};
-  const shapeCenter=(s)=>{
-    if(s.cx!=null)return[s.cx,s.cy];
-    if(s.type==="text"||s.type==="nota"||s.type==="angulo")return[s.x,s.y];
-    if((s.type==="free"||s.type==="poligono")&&s.pts){const xs=s.pts.map(p=>p[0]),ys=s.pts.map(p=>p[1]);return[(Math.min(...xs)+Math.max(...xs))/2,(Math.min(...ys)+Math.max(...ys))/2];}
-    if(s.x1!=null)return[(s.x1+s.x2)/2,(s.y1+s.y2)/2];
-    return[0,0];
-  };
-  const rotateShape=(s,deg)=>{
-    const [cx,cy]=shapeCenter(s);
-    const cur=s.rotation||0;
-    const nd=cur+deg;
-    if(s.cx!=null)return{...s,rotation:nd};
-    if(s.type==="text"||s.type==="nota"||s.type==="angulo")return{...s,rotation:nd};
-    if((s.type==="free"||s.type==="poligono")&&s.pts)return{...s,pts:s.pts.map(([x,y])=>{const[nx,ny]=rotatePt(x,y,cx,cy,deg);return[nx,ny];})};
-    if(s.x1!=null){const pts=[[s.x1,s.y1],[s.x2,s.y2]].map(([x,y])=>rotatePt(x,y,cx,cy,deg));return{...s,x1:pts[0][0],y1:pts[0][1],x2:pts[1][0],y2:pts[1][1]};}
-    return s;
-  };
-
-  // ── EVENTS ──────────────────────────────────────────────────────────────────
-  const isSpaceRef=useRef(false);
-  React.useEffect(()=>{
-    if(!open)return;
-    const kd=(e)=>{
-      if(e.code==="Space"&&e.target===svgRef.current){e.preventDefault();isSpaceRef.current=true;}
-      if((e.ctrlKey||e.metaKey)&&e.key==="z"){e.preventDefault();if(e.shiftKey)redo();else undo();}
-      if(e.key==="Escape"){setPolyPts([]);setPolyPreview(null);setSelBox(null);}
-      if(e.key==="Delete"||e.key==="Backspace"){
-        if(selIds.length>0&&document.activeElement===svgRef.current){
-          commit(shapes.filter(s=>!selIds.includes(s.id)));setSelIds([]);
-        }
-      }
-      // Arrow keys to nudge
-      if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)&&selIds.length>0){
-        e.preventDefault();
-        const d=e.shiftKey?10:1;
-        const dx=e.key==="ArrowLeft"?-d:e.key==="ArrowRight"?d:0;
-        const dy=e.key==="ArrowUp"?-d:e.key==="ArrowDown"?d:0;
-        commit(shapes.map(s=>selIds.includes(s.id)?moveShape(s,dx,dy):s));
-      }
-    };
-    const ku=(e)=>{if(e.code==="Space")isSpaceRef.current=false;};
-    window.addEventListener("keydown",kd);window.addEventListener("keyup",ku);
-    return()=>{window.removeEventListener("keydown",kd);window.removeEventListener("keyup",ku);};
-  },[open,selIds,shapes,histIdx,history,undo,redo]);
-
-  // Wheel zoom
-  const onWheel=(e)=>{
-    e.preventDefault();
-    const r=svgRef.current.getBoundingClientRect();
-    const mx=(e.clientX-r.left)*(W/r.width);
-    const my=(e.clientY-r.top)*(H/r.height);
-    const factor=e.deltaY<0?1.12:1/1.12;
-    const nz=Math.max(0.2,Math.min(10,zoom*factor));
-    setPan(p=>({x:mx-(mx-p.x)*(nz/zoom),y:my-(my-p.y)*(nz/zoom)}));
-    setZoom(nz);
-  };
-
-  const onDown=(e)=>{
-    e.preventDefault();
-    svgRef.current?.focus();
-    const rawPos=getPos(e,true);
-    const p=getPos(e);
-
-    // Pan with space or middle mouse
-    if(isSpaceRef.current||e.button===1){
-      setPanning(true);setPanStart({mx:rawPos.x,my:rawPos.y,px:pan.x,py:pan.y});return;
-    }
-
-    if(tool==="select"){
-      // Check if clicking a rotation handle
-      if(selIds.length===1){
-        const s=shapes.find(s=>s.id===selIds[0]);
-        if(s){const[cx,cy]=shapeCenter(s);const rh=worldToSvg(cx,cy);
-          // rotation handle is 30px above center in SVG space
-          const rhx=(rh.x)/zoom*zoom,rhy=rh.y-30/zoom*zoom;
-          // simplified check
-        }
-      }
-      const hit=[...shapes].reverse().find(s=>hitTest(s,p));
-      if(hit){
-        if(e.shiftKey){// toggle in multi-select
-          setSelIds(ids=>ids.includes(hit.id)?ids.filter(i=>i!==hit.id):[...ids,hit.id]);
-        } else {
-          if(!selIds.includes(hit.id))setSelIds([hit.id]);
-          setDrag({ids:selIds.includes(hit.id)?selIds:[hit.id],px:p.x,py:p.y,orig:shapes.map(s=>({...s}))});
-        }
-      } else {
-        setSelIds([]);
-        setSelBox({x1:p.x,y1:p.y,x2:p.x,y2:p.y,orig:shapes.map(s=>({...s}))});
-      }
-      return;
-    }
-
-    if(tool==="poligono"){
-      if(e.detail===2&&polyPts.length>=2){
-        commit([...shapes,{id:uid(),type:"poligono",pts:[...polyPts],closed:true,sw:strokeW,dash:strokeDash,color:strokeColor}]);
-        setPolyPts([]);setPolyPreview(null);
-      } else setPolyPts(pp=>[...pp,[p.x,p.y]]);
-      return;
-    }
-    if(tool==="bisagra"){commit([...shapes,{id:uid(),type:"bisagra",cx:p.x,cy:p.y,rw:12,h:46,sw:strokeW,color:strokeColor}]);return;}
-    if(tool==="perf"){
-      const d=window.prompt("Diámetro en mm (ej: 12, 19, 30)","12");
-      if(d)commit([...shapes,{id:uid(),type:"perf",cx:p.x,cy:p.y,r:Math.max(3,+d/2)||6,sw:strokeW,color:strokeColor}]);
-      return;
-    }
-    if(tool==="text"||tool==="nota"){
-      const t=window.prompt(tool==="text"?"Medida o número:":"Anotación:");
-      if(t)commit([...shapes,{id:uid(),type:tool,x:p.x,y:p.y,text:t,size:tool==="text"?11:10,color:strokeColor,rotation:0}]);
-      return;
-    }
-    if(tool==="angulo"){commit([...shapes,{id:uid(),type:"angulo",x:p.x,y:p.y,size:14,color:strokeColor}]);return;}
-    if(tool==="free"){setFreePath([[p.x,p.y]]);return;}
-    if(tool==="guarda")setDrawing({id:uid(),type:"guarda",x1:p.x,y1:p.y,x2:p.x,y2:p.y,grosorGuarda:12,sw:strokeW,color:strokeColor});
-    else setDrawing({id:uid(),type:tool,x1:p.x,y1:p.y,x2:p.x,y2:p.y,sw:strokeW,dash:strokeDash,color:strokeColor,
-      ...(tool==="vidrio"?{cornerTL:0,cornerTR:0,cornerBR:0,cornerBL:0,satinado:false,esmerilado:false,labelT:"",labelB:"",labelL:"",labelR:"",labelC:""}:{}),
-      ...(tool==="cota"?{label:"",offset:20}:{}),
+  const subirArchivo=(e)=>{
+    Array.from(e.target.files).forEach(f=>{
+      if(f.size>8*1024*1024){alert("Máx 8MB por archivo");return;}
+      const r=new FileReader();
+      r.onload=ev=>commit([...archivos,{data:ev.target.result,nombre:f.name,tipo:f.type,fecha:new Date().toISOString()}]);
+      r.readAsDataURL(f);
     });
   };
 
-  const onMove=(e)=>{
-    e.preventDefault();
-    const rawP=getPos(e,true);
-    const p=getPos(e);
-    if(panning&&panStart){setPan({x:panStart.px+(rawP.x-panStart.mx)*zoom,y:panStart.py+(rawP.y-panStart.my)*zoom});return;}
-    if(tool==="poligono"&&polyPts.length>0){setPolyPreview([p.x,p.y]);return;}
-    if(tool==="free"&&freePath.length>0){setFreePath(fp=>[...fp,[p.x,p.y]]);return;}
-    if(selBox){setSelBox(b=>({...b,x2:p.x,y2:p.y}));return;}
-    if(drawing){setDrawing(d=>({...d,x2:p.x,y2:p.y}));return;}
-    if(drag){
-      const dx=p.x-drag.px,dy=p.y-drag.py;
-      commit(drag.orig.map(s=>drag.ids.includes(s.id)?moveShape(s,dx,dy):s));
-    }
-  };
+  const eliminar=(i)=>commit(archivos.filter((_,idx)=>idx!==i));
+  const ver=(a)=>window.open(a.data,"_blank");
 
-  const onUp=()=>{
-    if(panning){setPanning(false);setPanStart(null);return;}
-    if(tool==="free"&&freePath.length>2){
-      commit([...shapes,{id:uid(),type:"free",pts:freePath,sw:strokeW,dash:strokeDash,color:strokeColor}]);
-      setFreePath([]);return;
-    }
-    if(selBox){
-      const {x1,y1,x2,y2}=selBox;
-      const bx=Math.min(x1,x2),by=Math.min(y1,y2),bw=Math.abs(x2-x1),bh=Math.abs(y2-y1);
-      if(bw>4&&bh>4){
-        const inBox=shapes.filter(s=>{
-          const[cx,cy]=shapeCenter(s);
-          return cx>=bx&&cx<=bx+bw&&cy>=by&&cy<=by+bh;
-        });
-        setSelIds(inBox.map(s=>s.id));
-      }
-      setSelBox(null);return;
-    }
-    if(drawing){
-      if(Math.abs(drawing.x2-drawing.x1)>4/zoom||Math.abs(drawing.y2-drawing.y1)>4/zoom)commit([...shapes,drawing]);
-      setDrawing(null);
-    }
-    setDrag(null);
-  };
+  if(!open) return(
+    <button onClick={()=>setOpen(true)} style={{width:"100%",marginTop:6,padding:"5px 0",background:"transparent",border:"1px dashed #21262d",borderRadius:6,color:"#4a6a7a",cursor:"pointer",fontSize:10,fontFamily:"monospace",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+      📎 {archivos.length>0?`Plano adjunto (${archivos.length})`:"+ Adjuntar plano (PDF/JPG)"}
+    </button>
+  );
 
-  // Double click to edit text
-  const onDblClick=(e)=>{
-    const p=getPos(e);
-    const hit=[...shapes].reverse().find(s=>hitTest(s,p)&&(s.type==="text"||s.type==="nota"));
-    if(hit){
-      const t=window.prompt("Editar texto:",hit.text||"");
-      if(t!==null)commit(shapes.map(s=>s.id===hit.id?{...s,text:t}:s));
-    }
-  };
+  return(
+    <div style={{marginTop:8,background:"#0a1020",borderRadius:8,padding:10,border:"1px solid #1e3a5a"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <span style={{fontSize:10,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",letterSpacing:1}}>📐 Plano técnico</span>
+        <div style={{display:"flex",gap:6}}>
+          <label style={{padding:"3px 10px",borderRadius:6,border:"1px solid #1565C040",background:"#0a1828",color:"#64B5F6",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:600}}>
+            + Subir
+            <input type="file" accept="image/*,application/pdf" multiple style={{display:"none"}} onChange={subirArchivo}/>
+          </label>
+          <button onClick={()=>setOpen(false)} style={{background:"none",border:"1px solid #21262d",color:"#3a6a9a",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>▲</button>
+        </div>
+      </div>
 
-  const selShapes=shapes.filter(s=>selIds.includes(s.id));
-  const updateSel=(k,v)=>commit(shapes.map(s=>selIds.includes(s.id)?{...s,[k]:v}:s));
-  const updateOne=(id,k,v)=>commit(shapes.map(s=>s.id===id?{...s,[k]:v}:s));
+      {archivos.length===0&&(
+        <div style={{textAlign:"center",padding:"20px 0",color:"#2a4a6a",fontSize:12}}>
+          <div style={{fontSize:24,marginBottom:6}}>📎</div>
+          Subí el plano en PDF o imagen (JPG, PNG)
+        </div>
+      )}
 
-  // ── SNAP INDICATORS ─────────────────────────────────────────────────────────
-  const [snapIndicator,setSnapIndicator]=useState(null);
-
-  // ── RENDER TRANSFORM ────────────────────────────────────────────────────────
-  const tx=`translate(${pan.x},${pan.y}) scale(${zoom})`;
-
-  // ── RENDER SHAPE ────────────────────────────────────────────────────────────
-  const renderShape=(s,isGhost)=>{
-    const sel=!isGhost&&selIds.includes(s.id);
-    const baseCol=s.color||"#4dd0e1";
-    const sc=isGhost?"#00bfff":sel?"#ff9500":baseCol;
-    const sw=(s.sw||1.5)/zoom; // scale-independent stroke
-    const dashArr=s.dash&&s.dash!=="0"?s.dash.split(" ").map(n=>+n/zoom).join(" "):"none";
-    const cur=tool==="select"?"pointer":"crosshair";
-    const onClick=isGhost?undefined:(e)=>{if(tool==="select"){e.stopPropagation();if(e.shiftKey){setSelIds(ids=>ids.includes(s.id)?ids.filter(i=>i!==s.id):[...ids,s.id]);}else{setSelIds([s.id]);setDrag({ids:[s.id],px:getPos(e).x,py:getPos(e).y,orig:shapes.map(sh=>({...sh}))});}}};
-    const rot=s.rotation?`rotate(${s.rotation},${shapeCenter(s).join(",")})`:undefined;
-    const wrap=(el)=>rot?<g key={s.id} transform={rot}>{el}</g>:<React.Fragment key={s.id}>{el}</React.Fragment>;
-
-    if(s.type==="text")return wrap(<text x={s.x} y={s.y} fontSize={(s.size||11)/zoom} fill={sel?"#ff9500":s.color||"#ffd740"} fontFamily="monospace" fontWeight="700" style={{cursor:cur,userSelect:"none"}} onClick={onClick} onDoubleClick={()=>{const t=window.prompt("Editar:",s.text);if(t!==null)commit(shapes.map(sh=>sh.id===s.id?{...sh,text:t}:sh));}}>{s.text}</text>);
-    if(s.type==="nota")return wrap(<text x={s.x} y={s.y} fontSize={10/zoom} fill={sel?"#ff9500":"#a5d6a7"} fontFamily="Arial" fontStyle="italic" style={{cursor:cur,userSelect:"none"}} onClick={onClick} onDoubleClick={()=>{const t=window.prompt("Editar:",s.text);if(t!==null)commit(shapes.map(sh=>sh.id===s.id?{...sh,text:t}:sh));}}>{s.text}</text>);
-
-    if(s.type==="angulo"){const sz=(s.size||14);return wrap(<g style={{cursor:cur}} onClick={onClick}><polyline points={`${s.x},${s.y+sz} ${s.x},${s.y} ${s.x+sz},${s.y}`} fill="none" stroke={sc} strokeWidth={sw}/><rect x={s.x+sw} y={s.y+sw} width={sz*0.42} height={sz*0.42} fill="none" stroke={sc} strokeWidth={sw*0.7}/></g>);}
-
-    if(s.type==="free"&&s.pts&&s.pts.length>1){const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ");return wrap(<path d={d} fill="none" stroke={sc} strokeWidth={sw} strokeDasharray={dashArr} strokeLinecap="round" strokeLinejoin="round" style={{cursor:cur}} onClick={onClick}/>);}
-
-    if(s.type==="poligono"&&s.pts&&s.pts.length>1){const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ")+(s.closed?" Z":"");return wrap(<path d={d} fill={s.closed?"rgba(0,40,60,0.3)":"none"} stroke={sc} strokeWidth={sw} strokeDasharray={dashArr} strokeLinecap="round" style={{cursor:cur}} onClick={onClick}/>);}
-
-    if(s.type==="perf"){const r=s.r||6;const llen=r+6/zoom;return wrap(<g style={{cursor:cur}} onClick={onClick}>
-      <circle cx={s.cx} cy={s.cy} r={r} fill="none" stroke={sc} strokeWidth={sw}/>
-      <line x1={s.cx-llen} y1={s.cy} x2={s.cx+llen} y2={s.cy} stroke={sc} strokeWidth={sw*0.5} strokeDasharray={`${3/zoom} ${2/zoom}`}/>
-      <line x1={s.cx} y1={s.cy-llen} x2={s.cx} y2={s.cy+llen} stroke={sc} strokeWidth={sw*0.5} strokeDasharray={`${3/zoom} ${2/zoom}`}/>
-      <text x={s.cx+r+5/zoom} y={s.cy-2/zoom} fontSize={9/zoom} fill="#ffd740" fontFamily="monospace" fontWeight="700">⌀{Math.round(r*2)}</text>
-      {sel&&<circle cx={s.cx} cy={s.cy} r={r+5/zoom} fill="none" stroke="#ff9500" strokeWidth={sw*0.7} strokeDasharray={`${3/zoom} ${2/zoom}`}/>}
-    </g>);}
-
-    if(s.type==="bisagra"){const rw=s.rw||12,hh=(s.h||46)/2,rh=rw;const path=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;return wrap(<g style={{cursor:cur}} onClick={onClick}><path d={path} fill="rgba(128,203,196,0.12)" stroke={sc} strokeWidth={sw}/><line x1={s.cx-4/zoom} y1={s.cy} x2={s.cx+4/zoom} y2={s.cy} stroke={sc} strokeWidth={sw*0.5}/><line x1={s.cx} y1={s.cy-4/zoom} x2={s.cx} y2={s.cy+4/zoom} stroke={sc} strokeWidth={sw*0.5}/></g>);}
-
-    if(s.type==="guarda"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const g=s.grosorGuarda||12;const pid=`gd${s.id}${isGhost?"g":""}`;return wrap(<g style={{cursor:cur}} onClick={onClick}>
-      <defs><pattern id={pid} width={4/zoom} height={4/zoom} patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2={4/zoom} stroke={sc} strokeWidth={1/zoom} opacity="0.45"/></pattern></defs>
-      <rect x={x} y={y} width={w} height={h} fill={`url(#${pid})`} stroke={sc} strokeWidth={sw}/>
-      <rect x={x+g} y={y+g} width={Math.max(0,w-g*2)} height={Math.max(0,h-g*2)} fill="#0d1117" stroke={sc} strokeWidth={sw*0.6}/>
-    </g>);}
-
-    if(s.type==="vidrio"){
-      const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);
-      if(w<2/zoom||h<2/zoom)return null;
-      const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;
-      const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;
-      const pid=`vp${s.id}${isGhost?"g":""}`;
-      let patDef=null;let fillColor="rgba(0,40,60,0.45)";
-      if(s.esmerilado){patDef=<defs><pattern id={pid} width={4/zoom} height={4/zoom} patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2={4/zoom} stroke={sc} strokeWidth={1.2/zoom} opacity="0.4"/><line x1={2/zoom} y1="0" x2={2/zoom} y2={4/zoom} stroke={sc} strokeWidth={0.5/zoom} opacity="0.2"/></pattern></defs>;fillColor=`url(#${pid})`;}
-      else if(s.satinado){patDef=<defs><pattern id={pid} width={5/zoom} height={5/zoom} patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><line x1="0" y1="0" x2="0" y2={5/zoom} stroke={sc} strokeWidth={1/zoom} opacity="0.3"/></pattern></defs>;fillColor=`url(#${pid})`;}
-      const fs=10/zoom;
-      return wrap(<g style={{cursor:cur}} onClick={onClick}>
-        {patDef}
-        <clipPath id={`cp${s.id}`}><path d={d}/></clipPath>
-        <path d={d} fill={fillColor} stroke={sc} strokeWidth={sw} strokeDasharray={dashArr}/>
-        <line x1={x} y1={y} x2={x+w} y2={y+h} stroke={sc} strokeWidth={0.4/zoom} opacity="0.15" clipPath={`url(#cp${s.id})`}/>
-        <line x1={x+w} y1={y} x2={x} y2={y+h} stroke={sc} strokeWidth={0.4/zoom} opacity="0.15" clipPath={`url(#cp${s.id})`}/>
-        {s.esmerilado&&<text x={x+w/2} y={y+h/2+fs*0.4} textAnchor="middle" fontSize={fs*0.75} fill={sc} fontFamily="monospace" opacity="0.6">ESM</text>}
-        {s.satinado&&!s.esmerilado&&<text x={x+w/2} y={y+h/2+fs*0.4} textAnchor="middle" fontSize={fs*0.75} fill={sc} fontFamily="monospace" opacity="0.6">SAT</text>}
-        {s.labelT&&<text x={x+w/2} y={y-6/zoom} textAnchor="middle" fontSize={fs} fill="#ffd740" fontFamily="monospace">{s.labelT}</text>}
-        {s.labelB&&<text x={x+w/2} y={y+h+14/zoom} textAnchor="middle" fontSize={fs} fill="#ffd740" fontFamily="monospace">{s.labelB}</text>}
-        {s.labelL&&<text x={x-6/zoom} y={y+h/2} textAnchor="end" dominantBaseline="middle" fontSize={fs} fill="#ffd740" fontFamily="monospace">{s.labelL}</text>}
-        {s.labelR&&<text x={x+w+6/zoom} y={y+h/2} dominantBaseline="middle" fontSize={fs} fill="#ffd740" fontFamily="monospace">{s.labelR}</text>}
-        {s.labelC&&<text x={x+w/2} y={y+h/2+fs*0.4} textAnchor="middle" fontSize={fs} fill="#ffd740" fontFamily="monospace" fontWeight="700">{s.labelC}</text>}
-        {sel&&<path d={d} fill="none" stroke="#ff9500" strokeWidth={1.5/zoom} strokeDasharray={`${4/zoom} ${2/zoom}`}/>}
-      </g>);
-    }
-
-    if(s.type==="cota"){const off=s.offset||20;const dx=s.x2-s.x1,dy=s.y2-s.y1;const len=Math.hypot(dx,dy);if(len<2/zoom)return null;const px=-dy/len,py=dx/len;const ox1=s.x1+px*off,oy1=s.y1+py*off,ox2=s.x2+px*off,oy2=s.y2+py*off;const ux=dx/len,uy=dy/len,as=6/zoom;const lbl=s.label||(Math.round(len)+"");const ang=Math.atan2(dy,dx)*180/Math.PI;const mx=(ox1+ox2)/2,my=(oy1+oy2)/2;const col=sel?"#ff9500":"#ffd740";const fs=10/zoom;return wrap(<g style={{cursor:cur}} onClick={onClick}><line x1={s.x1+px*3/zoom} y1={s.y1+py*3/zoom} x2={ox1+px*4/zoom} y2={oy1+py*4/zoom} stroke={col} strokeWidth={sw*0.7} strokeDasharray={`${2/zoom} ${2/zoom}`}/><line x1={s.x2+px*3/zoom} y1={s.y2+py*3/zoom} x2={ox2+px*4/zoom} y2={oy2+py*4/zoom} stroke={col} strokeWidth={sw*0.7} strokeDasharray={`${2/zoom} ${2/zoom}`}/><line x1={ox1} y1={oy1} x2={ox2} y2={oy2} stroke={col} strokeWidth={sw}/><polygon points={`${ox1},${oy1} ${ox1+ux*as-uy*as*0.4},${oy1+uy*as+ux*as*0.4} ${ox1+ux*as+uy*as*0.4},${oy1+uy*as-ux*as*0.4}`} fill={col}/><polygon points={`${ox2},${oy2} ${ox2-ux*as-uy*as*0.4},${oy2-uy*as+ux*as*0.4} ${ox2-ux*as+uy*as*0.4},${oy2-uy*as-ux*as*0.4}`} fill={col}/><rect x={mx-lbl.length*fs*0.35} y={my-fs*0.85} width={lbl.length*fs*0.7} height={fs*1.3} fill="#0d1117" rx={2/zoom}/><text x={mx} y={my+fs*0.35} textAnchor="middle" fontSize={fs} fill={col} fontFamily="monospace" fontWeight="700" transform={`rotate(${ang},${mx},${my})`}>{lbl}</text></g>);}
-
-    if(s.type==="linea"||s.type==="linea_punteada"){const dArr=s.dash&&s.dash!=="0"?dashArr:s.type==="linea_punteada"?`${6/zoom} ${4/zoom}`:"none";const mx=(s.x1+s.x2)/2,my=(s.y1+s.y2)/2;const ang=Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI;return wrap(<g style={{cursor:cur}} onClick={onClick}><line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={sc} strokeWidth={sw} strokeDasharray={dArr} strokeLinecap="round"/>{s.label&&<text x={mx} y={my-5/zoom} textAnchor="middle" fontSize={10/zoom} fill="#ffd740" fontFamily="monospace" transform={`rotate(${ang},${mx},${my})`}>{s.label}</text>}</g>);}
-
-    if(s.type==="arco"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;if(rx<1/zoom||ry<1/zoom)return null;return wrap(<g style={{cursor:cur}} onClick={onClick}><ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="rgba(0,40,60,0.3)" stroke={sc} strokeWidth={sw} strokeDasharray={dashArr}/><line x1={cx-4/zoom} y1={cy} x2={cx+4/zoom} y2={cy} stroke={sc} strokeWidth={sw*0.5}/><line x1={cx} y1={cy-4/zoom} x2={cx} y2={cy+4/zoom} stroke={sc} strokeWidth={sw*0.5}/><text x={cx+rx+5/zoom} y={cy} dominantBaseline="middle" fontSize={9/zoom} fill="#ffd740" fontFamily="monospace">R{Math.round(Math.min(rx,ry))}</text></g>);}
-
-    return null;
-  };
-
-  // ── SELECTION BOX OVERLAY ───────────────────────────────────────────────────
-  const renderSelBox=()=>{
-    if(!selBox)return null;
-    const x=Math.min(selBox.x1,selBox.x2),y=Math.min(selBox.y1,selBox.y2),w=Math.abs(selBox.x2-selBox.x1),h=Math.abs(selBox.y2-selBox.y1);
-    return<rect x={x} y={y} width={w} height={h} fill="rgba(100,181,246,0.08)" stroke="#64B5F6" strokeWidth={1/zoom} strokeDasharray={`${4/zoom} ${2/zoom}`}/>;
-  };
-
-  // ── ROTATION HANDLES ────────────────────────────────────────────────────────
-  const renderRotHandles=()=>{
-    if(selIds.length!==1)return null;
-    const s=shapes.find(sh=>sh.id===selIds[0]);
-    if(!s)return null;
-    const[cx,cy]=shapeCenter(s);
-    const hr=20/zoom;
-    return<g>
-      <line x1={cx} y1={cy} x2={cx} y2={cy-hr} stroke="#ff9500" strokeWidth={1/zoom} strokeDasharray={`${2/zoom} ${2/zoom}`}/>
-      <circle cx={cx} cy={cy-hr} r={5/zoom} fill="#ff9500" stroke="#fff" strokeWidth={1/zoom} style={{cursor:"crosshair"}}
-        onMouseDown={e=>{e.stopPropagation();e.preventDefault();
-          const orig=shapes.map(sh=>({...sh}));
-          const startAngle=Math.atan2(getPos(e).y-cy,getPos(e).x-cx)*180/Math.PI;
-          const origRot=s.rotation||0;
-          const mm=(ev)=>{const a=Math.atan2(getPos(ev).y-cy,getPos(ev).x-cx)*180/Math.PI;const delta=a-startAngle;commit(shapes.map(sh=>sh.id===s.id?rotateShape(sh,delta-(sh.rotation||0)+origRot):sh));};
-          const mu=()=>{window.removeEventListener("mousemove",mm);window.removeEventListener("mouseup",mu);};
-          window.addEventListener("mousemove",mm);window.addEventListener("mouseup",mu);
-        }}/>
-    </g>;
-  };
-
-  // ── PDF STRING ──────────────────────────────────────────────────────────────
-  const shapeToStr=(s)=>{
-    const sw=s.sw||1.5;const dash=s.dash&&s.dash!=="0"?s.dash:"none";
-    const DIM="#333",GLASS="#1a4a6e",NOTE="#2d6a2d";
-    const rot=s.rotation?` transform="rotate(${s.rotation},${shapeCenter(s).join(",")})"` :"";
-    if(s.type==="text")return`<text x="${s.x}" y="${s.y}" font-size="${s.size||11}" fill="${DIM}" font-family="monospace" font-weight="700"${rot}>${s.text||""}</text>`;
-    if(s.type==="nota")return`<text x="${s.x}" y="${s.y}" font-size="10" fill="${NOTE}" font-family="Arial" font-style="italic"${rot}>${s.text||""}</text>`;
-    if(s.type==="angulo"){const sz=s.size||14;return`<g${rot}><polyline points="${s.x},${s.y+sz} ${s.x},${s.y} ${s.x+sz},${s.y}" fill="none" stroke="${DIM}" stroke-width="${sw}"/><rect x="${s.x+1}" y="${s.y+1}" width="${sz*0.42}" height="${sz*0.42}" fill="none" stroke="${DIM}" stroke-width="${sw*0.7}"/></g>`;}
-    if(s.type==="free"&&s.pts&&s.pts.length>1){const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ");return`<path d="${d}" fill="none" stroke="#555" stroke-width="${sw}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round"${rot}/>`;}
-    if(s.type==="poligono"&&s.pts&&s.pts.length>1){const d="M "+s.pts.map(([x,y])=>`${x},${y}`).join(" L ")+(s.closed?" Z":"");return`<path d="${d}" fill="${s.closed?"#e8f4ff":"none"}" stroke="${GLASS}" stroke-width="${sw}" stroke-dasharray="${dash}" stroke-linecap="round"${rot}/>`;}
-    if(s.type==="perf"){const r=s.r||6;return`<g${rot}><circle cx="${s.cx}" cy="${s.cy}" r="${r}" fill="none" stroke="#c62828" stroke-width="${sw}"/><line x1="${s.cx-r-5}" y1="${s.cy}" x2="${s.cx+r+5}" y2="${s.cy}" stroke="#c62828" stroke-width="0.6" stroke-dasharray="3 2"/><line x1="${s.cx}" y1="${s.cy-r-5}" x2="${s.cx}" y2="${s.cy+r+5}" stroke="#c62828" stroke-width="0.6" stroke-dasharray="3 2"/><text x="${s.cx+r+4}" y="${s.cy-1}" font-size="8" fill="${DIM}" font-family="monospace" font-weight="700">⌀${Math.round(r*2)}</text></g>`;}
-    if(s.type==="bisagra"){const rw=s.rw||12,hh=(s.h||46)/2,rh=rw;const p=`M ${s.cx-rw} ${s.cy-hh+rh} L ${s.cx-rw} ${s.cy+hh-rh} A ${rw} ${rh} 0 0 0 ${s.cx+rw} ${s.cy+hh-rh} L ${s.cx+rw} ${s.cy-hh+rh} A ${rw} ${rh} 0 0 0 ${s.cx-rw} ${s.cy-hh+rh} Z`;return`<g${rot}><path d="${p}" fill="white" stroke="#006064" stroke-width="${sw}"/><line x1="${s.cx-3}" y1="${s.cy}" x2="${s.cx+3}" y2="${s.cy}" stroke="#006064" stroke-width="0.6"/><line x1="${s.cx}" y1="${s.cy-3}" x2="${s.cx}" y2="${s.cy+3}" stroke="#006064" stroke-width="0.6"/></g>`;}
-    if(s.type==="guarda"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const g=s.grosorGuarda||12;const pid=`gd${x}${y}`;return`<defs><pattern id="${pid}" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="${GLASS}" stroke-width="1.2" opacity="0.45"/></pattern></defs><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${pid})" stroke="${GLASS}" stroke-width="${sw}"${rot}/><rect x="${x+g}" y="${y+g}" width="${Math.max(0,w-g*2)}" height="${Math.max(0,h-g*2)}" fill="white" stroke="${GLASS}" stroke-width="0.7"/>`;}
-    if(s.type==="vidrio"){const x=Math.min(s.x1,s.x2),y=Math.min(s.y1,s.y2),w=Math.abs(s.x2-s.x1),h=Math.abs(s.y2-s.y1);const tl=s.cornerTL||0,tr=s.cornerTR||0,br=s.cornerBR||0,bl=s.cornerBL||0;const d=`M ${x+tl} ${y} L ${x+w-tr} ${y} Q ${x+w} ${y} ${x+w} ${y+tr} L ${x+w} ${y+h-br} Q ${x+w} ${y+h} ${x+w-br} ${y+h} L ${x+bl} ${y+h} Q ${x} ${y+h} ${x} ${y+h-bl} L ${x} ${y+tl} Q ${x} ${y} ${x+tl} ${y} Z`;const pid=`vp${x}${y}`;const satDef=s.esmerilado?`<defs><pattern id="${pid}" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="${GLASS}" stroke-width="1.2" opacity="0.4"/><line x1="2" y1="0" x2="2" y2="4" stroke="${GLASS}" stroke-width="0.5" opacity="0.2"/></pattern></defs>`:s.satinado?`<defs><pattern id="${pid}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><line x1="0" y1="0" x2="0" y2="5" stroke="${GLASS}" stroke-width="1" opacity="0.3"/></pattern></defs>`:"";const fill=s.esmerilado||s.satinado?`url(#${pid})`:"#e8f4ff";const lT=s.labelT?`<text x="${x+w/2}" y="${y-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelT}</text>`:"";const lB=s.labelB?`<text x="${x+w/2}" y="${y+h+13}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelB}</text>`:"";const lL=s.labelL?`<text x="${x-5}" y="${y+h/2}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelL}</text>`:"";const lR=s.labelR?`<text x="${x+w+5}" y="${y+h/2}" dominant-baseline="middle" font-size="10" fill="${DIM}" font-family="monospace">${s.labelR}</text>`:"";const lC=s.labelC?`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-size="11" fill="${GLASS}" font-family="monospace" font-weight="700">${s.labelC}</text>`:"";return`${satDef}<path d="${d}" fill="${fill}" stroke="${GLASS}" stroke-width="${sw}" stroke-dasharray="${dash}"${rot}/>${lT}${lB}${lL}${lR}${lC}`;}
-    if(s.type==="cota"){const off=s.offset||20;const dx=s.x2-s.x1,dy=s.y2-s.y1;const len=Math.hypot(dx,dy);if(!len)return"";const px=-dy/len,py=dx/len;const ox1=s.x1+px*off,oy1=s.y1+py*off,ox2=s.x2+px*off,oy2=s.y2+py*off;const ux=dx/len,uy=dy/len,as=6;const lbl=s.label||(Math.round(len)+"");const ang=Math.atan2(dy,dx)*180/Math.PI;const mmx=(ox1+ox2)/2,mmy=(oy1+oy2)/2;return`<line x1="${s.x1+px*3}" y1="${s.y1+py*3}" x2="${ox1+px*4}" y2="${oy1+py*4}" stroke="${DIM}" stroke-width="0.8" stroke-dasharray="2 2"/><line x1="${s.x2+px*3}" y1="${s.y2+py*3}" x2="${ox2+px*4}" y2="${oy2+py*4}" stroke="${DIM}" stroke-width="0.8" stroke-dasharray="2 2"/><line x1="${ox1}" y1="${oy1}" x2="${ox2}" y2="${oy2}" stroke="${DIM}" stroke-width="1.2"/><polygon points="${ox1},${oy1} ${ox1+ux*as-uy*as*0.4},${oy1+uy*as+ux*as*0.4} ${ox1+ux*as+uy*as*0.4},${oy1+uy*as-ux*as*0.4}" fill="${DIM}"/><polygon points="${ox2},${oy2} ${ox2-ux*as-uy*as*0.4},${oy2-uy*as+ux*as*0.4} ${ox2-ux*as+uy*as*0.4},${oy2-uy*as-ux*as*0.4}" fill="${DIM}"/><text x="${mmx}" y="${mmy-4}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" font-weight="700" transform="rotate(${ang},${mmx},${mmy})">${lbl}</text>`;}
-    if(s.type==="linea"||s.type==="linea_punteada"){const dArr=s.dash&&s.dash!=="0"?s.dash:s.type==="linea_punteada"?"6 4":"none";const mx2=(s.x1+s.x2)/2,my2=(s.y1+s.y2)/2;const ang=Math.atan2(s.y2-s.y1,s.x2-s.x1)*180/Math.PI;return`<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#555" stroke-width="${sw}" stroke-dasharray="${dArr}" stroke-linecap="round"${rot}/>${s.label?`<text x="${mx2}" y="${my2-5}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="monospace" transform="rotate(${ang},${mx2},${my2})">${s.label}</text>`:""}`;}
-    if(s.type==="arco"){const cx=(s.x1+s.x2)/2,cy=(s.y1+s.y2)/2,rx=Math.abs(s.x2-s.x1)/2,ry=Math.abs(s.y2-s.y1)/2;return`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#e8f4ff" stroke="${GLASS}" stroke-width="${sw}"${rot}/><text x="${cx+rx+5}" y="${cy}" dominant-baseline="middle" font-size="9" fill="${DIM}" font-family="monospace">R${Math.round(Math.min(rx,ry))}</text>`;}
-    return"";
-  };
-
-  const getSVGForPDF=()=>{
-    if(!shapes.length)return"";
-    const allPts=shapes.flatMap(s=>{
-      if(s.cx!=null){const r=s.r||s.rw||20;return[[s.cx-r-15,s.cy-r-15],[s.cx+r+15,s.cy+r+15]];}
-      if((s.type==="free"||s.type==="poligono")&&s.pts)return s.pts.map(([x,y])=>[x,y]);
-      if(s.x!=null&&s.x1==null)return[[s.x-5,s.y-14],[s.x+120,s.y+5]];
-      if(s.type==="angulo")return[[s.x,s.y],[s.x+30,s.y+30]];
-      return[[s.x1||0,s.y1||0],[s.x2||0,s.y2||0]];
-    });
-    if(!allPts.length)return"";
-    const xs=allPts.map(p=>p[0]),ys=allPts.map(p=>p[1]);
-    const mx=Math.min(...xs)-25,my=Math.min(...ys)-25,Mx=Math.max(...xs)+25,My=Math.max(...ys)+25;
-    return`<svg viewBox="${mx} ${my} ${Mx-mx} ${My-my}" width="100%" style="max-height:220px;border:1.5px solid #1a4a6e;border-radius:4px;background:#f0f8ff;display:block">${shapes.map(shapeToStr).join("")}</svg>`;
-  };
-
-  const printPlano=()=>{
-    if(!shapes.length){alert("El plano está vacío.");return;}
-    const svg=getSVGForPDF().replace('max-height:220px;','max-height:80vh;').replace('display:block','display:block;width:100%');
-    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Plano</title><style>body{margin:16px 20px;font-family:Arial}h2{color:#1a4a6e;font-size:15px;margin-bottom:4px}p{color:#555;font-size:11px;margin-bottom:12px}@media print{body{-webkit-print-color-adjust:exact}@page{margin:8mm}}</style></head><body><h2>Plano Técnico — La Vidriería Rosario</h2><p>${label||""}</p>${svg}</body></html>`;
-    const w=window.open("","_blank","width=900,height=750");
-    if(w){w.document.write(html);w.document.close();w.onload=()=>{w.focus();w.print();};}
-  };
-
-  // ── TOOLS ───────────────────────────────────────────────────────────────────
-  const TOOL_GROUPS=[
-    {label:"SEL",tools:[{id:"select",label:"↖",tip:"Seleccionar/Mover · Shift=multi · Rect=selección área"}]},
-    {label:"VIDRIO",tools:[{id:"vidrio",label:"▭",tip:"Rectángulo de vidrio"},{id:"arco",label:"◯",tip:"Arco/Elipse"},{id:"poligono",label:"◇",tip:"Polígono — click puntos, doble click cierra"}]},
-    {label:"ENTRANTES",tools:[{id:"bisagra",label:"⊢",tip:"Bisagra"},{id:"perf",label:"⊙",tip:"Perforación"},{id:"guarda",label:"⊞",tip:"Guarda esmerilada"}]},
-    {label:"COTAS",tools:[{id:"cota",label:"↔",tip:"Cota"},{id:"angulo",label:"⌐",tip:"Ángulo recto 90°"},{id:"linea",label:"—",tip:"Línea"},{id:"linea_punteada",label:"╌",tip:"Línea punteada"}]},
-    {label:"LIBRE",tools:[{id:"free",label:"✏",tip:"Dibujo libre"}]},
-    {label:"TEXTO",tools:[{id:"text",label:"T",tip:"Texto/Medida · Doble click para editar"},{id:"nota",label:"i",tip:"Nota/Anotación"}]},
-  ];
-
-  const btnS=(active)=>({padding:"3px 7px",borderRadius:4,border:`1px solid ${active?"#4dd0e1":"#21262d"}`,background:active?"rgba(77,208,225,0.15)":"transparent",color:active?"#4dd0e1":"#6a9fb5",cursor:"pointer",fontSize:10,fontFamily:"monospace",fontWeight:active?700:400,minWidth:26,textAlign:"center"});
-
-  // ── PROPERTIES PANEL ────────────────────────────────────────────────────────
-  const PropsPanel=()=>{
-    if(selIds.length===0)return null;
-    if(selIds.length>1)return<div style={{display:"flex",gap:8,padding:"4px 8px",background:"#161b22",borderRadius:7,marginBottom:4,alignItems:"center",fontSize:10,border:"1px solid #21262d"}}>
-      <span style={{color:"#ffd740"}}>{selIds.length} seleccionados</span>
-      <button onClick={()=>{const dx=+(window.prompt("Mover X:",0)||0),dy=+(window.prompt("Mover Y:",0)||0);commit(shapes.map(s=>selIds.includes(s.id)?moveShape(s,dx,dy):s));}} style={{...btnS(false),color:"#64B5F6"}}>↕ Mover</button>
-      <button onClick={()=>{const d=+(window.prompt("Rotar grados:",90)||0);commit(shapes.map(s=>selIds.includes(s.id)?rotateShape(s,d):s));}} style={{...btnS(false),color:"#CE93D8"}}>↻ Rotar</button>
-      <button onClick={()=>commit(shapes.filter(s=>!selIds.includes(s.id)))} style={{...btnS(false),border:"1px solid #7f2020",color:"#f48fb1"}}>✕ Borrar</button>
-    </div>;
-    const s=shapes.find(sh=>sh.id===selIds[0]);
-    if(!s)return null;
-    const inp=(k,opts={})=><input type={opts.type||"text"} value={s[k]||""} onChange={e=>updateOne(s.id,k,opts.num?+e.target.value:e.target.value)} placeholder={opts.ph||""} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 5px",fontSize:10,fontFamily:"monospace",width:opts.w||52}}/>;
-    const rng=(k,mn,mx2,lbl)=><label style={{display:"flex",alignItems:"center",gap:3,color:"#6a9fb5",fontSize:10}}><span>{lbl}</span><input type="range" min={mn} max={mx2} step="0.5" value={s[k]!=null?s[k]:mn} onChange={e=>updateOne(s.id,k,+e.target.value)} style={{width:48,accentColor:"#4dd0e1"}}/><span style={{color:"#4dd0e1",minWidth:20}}>{s[k]!=null?s[k]:mn}</span></label>;
-    const chk=(k,lbl,col="#4dd0e1")=><label style={{display:"flex",alignItems:"center",gap:3,cursor:"pointer",color:s[k]?col:"#6a9fb5",fontSize:10}}><input type="checkbox" checked={!!s[k]} onChange={e=>updateOne(s.id,k,e.target.checked)} style={{accentColor:col}}/><span>{lbl}</span></label>;
-    return<div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"4px 8px",background:"#161b22",borderRadius:7,marginBottom:4,alignItems:"center",fontSize:10,border:"1px solid #21262d"}}>
-      <span style={{color:"#ffd740",fontWeight:700,fontSize:9,textTransform:"uppercase",letterSpacing:1}}>{s.type}</span>
-      {rng("sw",0.3,6,"Grosor")}
-      {s.type!=="text"&&s.type!=="nota"&&s.type!=="angulo"&&s.type!=="bisagra"&&<><label style={{display:"flex",alignItems:"center",gap:3,color:"#6a9fb5",fontSize:10}}><span>Trazo:</span>
-        <select value={s.dash||"0"} onChange={e=>updateOne(s.id,"dash",e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",color:"#c8e0f8",borderRadius:4,fontSize:10,padding:"1px 3px"}}>
-          <option value="0">Sólido</option><option value="6 3">— — —</option><option value="2 3">· · ·</option><option value="8 3 2 3">— · —</option>
-        </select></label></>}
-      <label style={{display:"flex",alignItems:"center",gap:3,color:"#6a9fb5",fontSize:10}}><span>Color:</span><input type="color" value={s.color||"#4dd0e1"} onChange={e=>updateOne(s.id,"color",e.target.value)} style={{width:26,height:18,border:"none",background:"none",cursor:"pointer",padding:0}}/></label>
-      {/* Rotate */}
-      <label style={{display:"flex",alignItems:"center",gap:3,color:"#6a9fb5",fontSize:10}}><span>↻°</span><input type="number" value={s.rotation||0} onChange={e=>updateOne(s.id,"rotation",+e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 4px",fontSize:10,fontFamily:"monospace",width:38}}/></label>
-      {s.type==="vidrio"&&<>
-        {[["↑","labelT"],["↓","labelB"],["←","labelL"],["→","labelR"],["⊙","labelC"]].map(([ic,k])=><label key={k} style={{display:"flex",alignItems:"center",gap:2,color:"#6a9fb5"}}><span style={{fontSize:11}}>{ic}</span>{inp(k,{w:38,ph:"mm"})}</label>)}
-        {[["↖","cornerTL"],["↗","cornerTR"],["↘","cornerBR"],["↙","cornerBL"]].map(([ic,k])=><label key={k} style={{display:"flex",alignItems:"center",gap:2,color:"#6a9fb5"}}><span>{ic}</span>{inp(k,{type:"number",num:true,w:26,ph:"0"})}</label>)}
-        {chk("satinado","Sat.")}
-        {chk("esmerilado","Esm.","#a5d6a7")}
-      </>}
-      {s.type==="bisagra"&&<>{rng("rw",4,30,"Ancho")}{rng("h",16,120,"Alto")}</>}
-      {s.type==="perf"&&<>{rng("r",2,80,"Radio")}<span style={{color:"#4dd0e1"}}>⌀{Math.round((s.r||6)*2)}mm</span></>}
-      {s.type==="guarda"&&<>{rng("grosorGuarda",4,40,"Grosor")}</>}
-      {s.type==="angulo"&&<>{rng("size",6,40,"Tamaño")}</>}
-      {s.type==="cota"&&<><span style={{color:"#6a9fb5"}}>Medida:</span>{inp("label",{w:48,ph:"auto"})}{rng("offset",5,60,"Offset")}</>}
-      {(s.type==="linea"||s.type==="linea_punteada")&&<><span style={{color:"#6a9fb5"}}>Texto:</span>{inp("label",{w:70,ph:"(opc)"})}</>}
-      {s.type==="text"&&<><input value={s.text||""} onChange={e=>updateOne(s.id,"text",e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#c8e0f8",padding:"2px 5px",fontSize:10,fontFamily:"monospace",width:80}}/>{rng("size",6,24,"Tamaño")}</>}
-      {s.type==="nota"&&<input value={s.text||""} onChange={e=>updateOne(s.id,"text",e.target.value)} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:4,color:"#a5d6a7",padding:"2px 5px",fontSize:10,flex:1,minWidth:90}}/>}
-      <button onClick={()=>{commit([...shapes,{...JSON.parse(JSON.stringify(s)),id:uid(),x1:s.x1?s.x1+10:undefined,y1:s.y1?s.y1+10:undefined,x2:s.x2?s.x2+10:undefined,y2:s.y2?s.y2+10:undefined,cx:s.cx?s.cx+10:undefined,cy:s.cy?s.cy+10:undefined,x:s.x?s.x+10:undefined,y:s.y?s.y+10:undefined}]);}} style={{...btnS(false),color:"#64B5F6",border:"1px solid #1565C040"}}>⧉ Dup</button>
-      <button onClick={()=>{commit(shapes.filter(sh=>sh.id!==s.id));setSelIds([]);}} style={{...btnS(false),border:"1px solid #7f2020",color:"#f48fb1",marginLeft:"auto"}}>✕</button>
-    </div>;
-  };
-
-  // ── COLORS PALETTE ──────────────────────────────────────────────────────────
-  const COLORS=["#4dd0e1","#ffd740","#ef9a9a","#a5d6a7","#80cbc4","#ce93d8","#64B5F6","#ffcc02","#fff","#888"];
-
-  if(!open)return<button onClick={()=>setOpen(true)} style={{width:"100%",marginTop:6,padding:"5px 0",background:"transparent",border:"1px dashed #21262d",borderRadius:6,color:"#4a6a7a",cursor:"pointer",fontSize:10,fontFamily:"monospace",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>✏ {shapes.length>0?`Plano (${shapes.length} elem.)`:"+ Plano técnico"}</button>;
-
-  return<div ref={containerRef} style={{marginTop:8,background:"#0d1117",borderRadius:9,padding:8,border:"1px solid #21262d"}}>
-    {/* TOOLBAR */}
-    <div style={{display:"flex",gap:3,marginBottom:4,flexWrap:"wrap",alignItems:"center"}}>
-      {TOOL_GROUPS.map(g=><div key={g.label} style={{display:"flex",gap:2,alignItems:"center",marginRight:3}}>
-        <span style={{fontSize:7,color:"#1c2631",fontFamily:"monospace"}}>{g.label}</span>
-        {g.tools.map(t=><button key={t.id} onClick={()=>{setTool(t.id);if(t.id!=="poligono")setPolyPts([]);}} title={t.tip} style={btnS(tool===t.id)}>{t.label}</button>)}
-      </div>)}
-      <div style={{marginLeft:"auto",display:"flex",gap:3,alignItems:"center",flexWrap:"wrap"}}>
-        {/* Stroke */}
-        <input type="range" min="0.3" max="8" step="0.5" value={strokeW} onChange={e=>setStrokeW(+e.target.value)} title="Grosor" style={{width:44,accentColor:"#4dd0e1"}}/>
-        <span style={{fontSize:9,color:"#4dd0e1",minWidth:16}}>{strokeW}</span>
-        <select value={strokeDash} onChange={e=>setStrokeDash(e.target.value)} style={{background:"#0d1117",border:"1px solid #21262d",color:"#6a9fb5",borderRadius:4,fontSize:9,padding:"1px 2px"}}>
-          <option value="0">——</option><option value="6 3">--</option><option value="2 3">···</option><option value="8 3 2 3">-·-</option>
-        </select>
-        <input type="color" value={strokeColor} onChange={e=>setStrokeColor(e.target.value)} style={{width:22,height:18,border:"1px solid #21262d",background:"none",cursor:"pointer",padding:0,borderRadius:3}}/>
-        {COLORS.map(c=><div key={c} onClick={()=>setStrokeColor(c)} style={{width:11,height:11,borderRadius:2,background:c,cursor:"pointer",border:strokeColor===c?"2px solid #fff":"1px solid #21262d",flexShrink:0}}/>)}
-        {/* Zoom controls */}
-        <button onClick={()=>setZoom(z=>Math.min(10,z*1.3))} style={{...btnS(false),padding:"2px 5px"}}>+</button>
-        <span style={{fontSize:9,color:"#4dd0e1",minWidth:28,textAlign:"center"}}>{Math.round(zoom*100)}%</span>
-        <button onClick={()=>setZoom(z=>Math.max(0.2,z/1.3))} style={{...btnS(false),padding:"2px 5px"}}>−</button>
-        <button onClick={()=>{setZoom(1);setPan({x:0,y:0});}} style={{...btnS(false),padding:"2px 5px",fontSize:8}}>⊡</button>
-        {shapes.length>0&&<>
-          <button onClick={()=>{if(window.confirm("¿Limpiar plano?"))commit([]);setSelIds([]);setPolyPts([]);}} style={{...btnS(false),color:"#5a3a3a"}}>Limpiar</button>
-          <button onClick={undo} disabled={histIdx<=0} title="Ctrl+Z" style={{...btnS(false),color:histIdx<=0?"#1e3a5a":"#6a9fb5"}}>↩</button>
-          <button onClick={redo} disabled={histIdx>=history.length-1} title="Ctrl+Shift+Z" style={{...btnS(false),color:histIdx>=history.length-1?"#1e3a5a":"#6a9fb5"}}>↪</button>
-          <button onClick={printPlano} style={{...btnS(false),border:"1px solid #26A69A",color:"#26A69A",fontWeight:700}}>🖨</button>
-        </>}
-        <button onClick={()=>setOpen(false)} style={btnS(false)}>▲</button>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {archivos.map((a,i)=>(
+          <div key={i} style={{position:"relative",width:90}}>
+            {a.tipo==="application/pdf"
+              ?<div onClick={()=>ver(a)} style={{width:90,height:90,background:"#0a1828",borderRadius:7,border:"1px solid #1e3a5a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",gap:4}}>
+                <span style={{fontSize:24}}>📄</span>
+                <span style={{fontSize:8,color:"#5a8ab8",textAlign:"center",padding:"0 4px",wordBreak:"break-all"}}>{a.nombre.slice(0,20)}</span>
+              </div>
+              :<img src={a.data} alt="" style={{width:90,height:90,objectFit:"cover",borderRadius:7,border:"1px solid #1e3a5a",cursor:"pointer",display:"block"}} onClick={()=>ver(a)}/>
+            }
+            <button onClick={()=>eliminar(i)} style={{position:"absolute",top:-5,right:-5,width:18,height:18,borderRadius:"50%",background:"#7f2020",border:"none",color:"#fff",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>✕</button>
+            <div style={{fontSize:8,color:"#3a6a9a",marginTop:2,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.nombre}</div>
+          </div>
+        ))}
       </div>
     </div>
-
-    {polyPts.length>0&&<div style={{padding:"2px 7px",background:"#0a1020",borderRadius:4,marginBottom:3,fontSize:8,color:"#ffd740",fontFamily:"monospace"}}>◇ {polyPts.length} puntos · Doble click cierra · Esc cancela</div>}
-
-    <PropsPanel/>
-
-    {/* CANVAS */}
-    <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${H}`} tabIndex="0"
-      style={{display:"block",background:"#0d1117",borderRadius:6,border:"1px solid #21262d",cursor:panning||isSpaceRef.current?"grab":tool==="select"?"default":"crosshair",touchAction:"none",minHeight:220,outline:"none"}}
-      onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onWheel={onWheel} onDoubleClick={onDblClick}
-      onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}>
-      {/* Grid in world space */}
-      <defs>
-        <pattern id={`mn${itemIdx||0}`} width={10*zoom} height={10*zoom} x={pan.x%( 10*zoom)} y={pan.y%(10*zoom)} patternUnits="userSpaceOnUse">
-          <path d={`M ${10*zoom} 0 L 0 0 0 ${10*zoom}`} fill="none" stroke="#161b22" strokeWidth="0.5"/>
-        </pattern>
-        <pattern id={`mj${itemIdx||0}`} width={50*zoom} height={50*zoom} x={pan.x%(50*zoom)} y={pan.y%(50*zoom)} patternUnits="userSpaceOnUse">
-          <rect width={50*zoom} height={50*zoom} fill={`url(#mn${itemIdx||0})`}/>
-          <path d={`M ${50*zoom} 0 L 0 0 0 ${50*zoom}`} fill="none" stroke="#1c2631" strokeWidth="0.8"/>
-        </pattern>
-      </defs>
-      <rect width={W} height={H} fill={`url(#mj${itemIdx||0})`}/>
-
-      {/* All shapes in world transform */}
-      <g transform={tx}>
-        {/* Polygon preview */}
-        {polyPts.length>0&&<>
-          <polyline points={polyPts.map(([x,y])=>`${x},${y}`).join(" ")} fill="none" stroke="#ffd740" strokeWidth={1.5/zoom} strokeDasharray={`${4/zoom} ${2/zoom}`} opacity="0.7"/>
-          {polyPreview&&<line x1={polyPts[polyPts.length-1][0]} y1={polyPts[polyPts.length-1][1]} x2={polyPreview[0]} y2={polyPreview[1]} stroke="#ffd740" strokeWidth={1/zoom} strokeDasharray={`${3/zoom} ${2/zoom}`} opacity="0.5"/>}
-          {polyPts.map(([x,y],i)=><circle key={i} cx={x} cy={y} r={3/zoom} fill="#ffd740" opacity="0.8"/>)}
-        </>}
-        {/* Free draw */}
-        {freePath.length>1&&<polyline points={freePath.map(([x,y])=>`${x},${y}`).join(" ")} fill="none" stroke="#00bfff" strokeWidth={strokeW/zoom} strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>}
-        {shapes.map(s=>renderShape(s,false))}
-        {drawing&&renderShape(drawing,true)}
-        {renderSelBox()}
-        {renderRotHandles()}
-      </g>
-
-      {/* Zoom indicator */}
-      <text x={W-4} y={H-4} textAnchor="end" fontSize="9" fill="#21262d" fontFamily="monospace">{Math.round(zoom*100)}% · {shapes.length}el</text>
-    </svg>
-    <div style={{fontSize:8,color:"#1c2631",marginTop:2,display:"flex",justifyContent:"space-between",fontFamily:"monospace"}}>
-      <span>Rueda=zoom · Espacio+arrastrar=mover · Shift=sin snap · ↑↓←→=nudge · Del=borrar sel.</span>
-      <span>{tool==="select"&&"↖ Click·Shift multi·Rect=área"}{tool==="vidrio"&&"▭ Arrastrá · Panel props"}{tool==="poligono"&&"◇ Click puntos · Dbl=cerrar"}{tool==="bisagra"&&"⊢ Click"}{tool==="perf"&&"⊙ Click"}{tool==="guarda"&&"⊞ Arrastrá"}{tool==="cota"&&"↔ Arrastrá"}{tool==="angulo"&&"⌐ Click"}{tool==="linea"&&"— Arrastrá"}{tool==="linea_punteada"&&"╌ Arrastrá"}{tool==="free"&&"✏ Arrastrá"}{tool==="text"&&"T Click · Dbl=editar"}{tool==="nota"&&"i Click · Dbl=editar"}{tool==="arco"&&"◯ Arrastrá"}</span>
-    </div>
-  </div>;
+  );
 };
+
+// getSVGForPDF — for backward compatibility with plano field (now returns empty)
 
 
 const MiniCanvas=({value,onChange})=><ItemCanvas value={value} onChange={onChange} label="Plano general" itemIdx={0}/>;
@@ -994,9 +481,8 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
   };
 
   const [newProc,setNewProc]=useState("");
-  const TABS_COT=[{id:"pedido",label:"📋 Pedido"},{id:"plano",label:"✏️ Plano general"}];
-  const hasItemPlanos2=(form.items||[]).some(it=>(it.plano||[]).length>0);
-  const TABS_ORD=[{id:"pedido",label:"📋 Pedido"},...(!hasItemPlanos2?[{id:"plano",label:"✏️ Plano general"}]:[]),{id:"produccion",label:"🏭 Producción"},{id:"instalacion",label:"🚚 Instalación"},{id:"actividad",label:"🕐 Actividad"}];
+  const TABS_COT=[{id:"pedido",label:"📋 Pedido"}];
+  const TABS_ORD=[{id:"pedido",label:"📋 Pedido"},{id:"produccion",label:"🏭 Producción"},{id:"instalacion",label:"🚚 Instalación"},{id:"actividad",label:"🕐 Actividad"}];
   const TABS=modo==="orden"?TABS_ORD:TABS_COT;
 
   const COLOCACION=[
@@ -1023,7 +509,10 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
     });
     const labelHTML=etiquetas.map((e)=>`
       <div class="label">
-        <div class="orden">${e.numero}${e.total>1?` · ${e.idx}/${e.total}`:""}</div>
+        <div class="header">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADwAAAA8CAIAAAC1nk4lAAABVmlDQ1BJQ0MgUHJvZmlsZQAAeJxjYGBSSSwoyGFhYGDIzSspCnJ3UoiIjFJgf8jADoS8DGIMConJxQWOAQE+QCUMMBoVfLvGwAiiL+uCzDolNbVJtV7A12Km8NWLr0SbMNWjAK6U1OJkIP0HiFOTC4pKGBgYU4Bs5fKSAhC7A8gWKQI6CsieA2KnQ9gbQOwkCPsIWE1IkDOQfQPIVkjOSASawfgDyNZJQhJPR2JD7QUBbpfM4oKcxEqFAGMCriUDlKRWlIBo5/yCyqLM9IwSBUdgKKUqeOYl6+koGBkYmjMwgMIcovpzIDgsGcXOIMSa7zMw2O7/////boSY134Gho1AnVw7EWIaFgwMgtwMDCd2FiQWJYKFmIGYKS2NgeHTcgYG3kgGBuELQD3RxWnGRmB5Rh4nBgbWe///f1ZjYGCfzMDwd8L//78X/f//dzFQ8x0GhgN5ABUhZe5sUv9jAAAPJUlEQVR42u1aebBcVZn/vu+cu3b369dv4eUtWSEPEowQk6BjIcEFBoggy2BZIlAujI4SFh13oSxUZByQpQQcUQSGGRWGfXUYRAYUIoskYlhCyPayvSXvvX7dffvec873zR83AQ0MJuFBjVOcutXVfatvn19/5/f9zrccFBH4axsEf4XjLdB/MpjF8RtFPP2GIBYhwvy9AOD/fUs75wjx3+59/ILrfg0ACDDpvj7JoK1jpdSPb3t02XMbypXSZy64UQQAcJJxy+QNY52IXHfXstO+d1ODRUQuv+2RMy68QXj7mKyJdhs0szj3KvPn966983efuOCGxPGgM+uyVER+dNejZ118a/6FycJNu7ksgAhEiDvfZ0K89u4nHnx6/eVfPrGKzgAE2hsw5rSj3tnW0/aFH9yZPzQpPNkNtokIImTGXHnr8j9sGEckFmZ2zgkKDI5Vp/WExx29//zpMxwAIiEAsDiRzdXxZb9ZtXr1pu+fdVw+HSK+GaAFAEQyY7988b13PD3mF6OcLCCCAGlmPd8+8i+n3vvMHxf376eVFhAAQBat6M7frz5p/t7X3P3YH54buOzsY0UQQF4Pbtr1zQIRH/zd2tse3tjWVoh9FfsqDnQUqEKgAGDO1EoB0VpWL0k0AAAigNa0vlk/7ahF+/f3nvH9m3ZYQN4kyXvk9+tRCQA4ZpaXJSFJTV9H7AEIs8j2hQEAwfzVeYo2WvPpJQfN22/66Rfe+BLf3ljQufUGttZIa0EQ4JfUBxGtdf19rQIgIgoREWn7BbjjWa3VBmNOO2rR2+fO/NyFN4rIHus37bILorV2aKzuBT5LzlhABEAQQNIys68tBQh8v25tw9jE2MSYhrETxpICARIRT3sbrP30kkXz95/5+Utvkz3lid5FL0SAzYPVTUM1v1QCAgRCBEABAREstfi93WUH0F6u/Pczz7WGoRNBFAHwtD6gtytSWgQZQRNtde6Dhx2warx21sW3X3LWMYiYG4VF8M/dM/83uIegRQBx7aaxscSWp2jwFfH230MEY12lLegsF4xIoOjIA+agAytMOWoEcZJZ1kSk2IIUlHpo3cZPHfvORx9+7rP/fMMVXzwRkZxjpQgAQHjHIuZwcU+jPAEAeH7NcObEjwOnSABQEECUgibLPlNKLWHAiJUg+MoFN6/JfD/2UQAQkBAREMnT7qJPLC5GAQNEmjaPjJ1y2PymM6dfdMtlnz9OK3p85fpHtqQNEUIiBE9T4GlEOHRWpb+zlO9ruwMaQUTWDoyTp4JCmDmHuN0ZtCJJ3azeSoBUbSTnffOmO347cOix72bxQAQREIgAWbDeSGpJVowjBhAArdUgyyePOOgKS+de9cvFc6dfct/zUw+al2YpKUWEigDQdsZ+RyHYyeK7qh6IuGZgNChGfux7vucHnh/4QeAHvq89NaO7AgATafrk8q1d5RYCaWmNi6Ww2BIVS1GhFJbLcaEQVpuGAB0AAzoAIlzTTJZ+cGEhCpd84WezFsyJI2gp+OUdVyHyj5jd2hb7LIK7RQ/rWCt6YNkLj6/cUpndqz3FAEREgACglIqN7uksVYVbKqX+/p5Hl2+0qS0UwjTNlMqlDxVhyv5Y6gSEAR2IE2AA1KoO8tvfrt73wP2mTG0bHq16kaeJFBED9UX6HV2hAOy0e+pdQfzLR/94/k8fnTB2envBDzUSEhEC5mxtaw1ay+FQvdEe+NOmVR5+bEMykcSFEBC1QiKFiERgCYbq6dDERGq5FIatpWLDuZLylj+76Z6H1yw9/xQDHEaB1oRKaSKH8K6euOBpFtgpQtN/EfEv7nvij1tH3nng1CdXDJXaSsr3iRwRISIRGittLcWpnWVmirWaPaPDOZtUG2HgCYoihYSIqAicBibdWmqpW25TBCCptV1KXf7jB6fuO2PveX2D2yYKxVAhkSZB7CroA9sjeIWZX4vTOeKf3/fU/c9sOPdjh69bPawDr1gpeJ4KQz8M/SD0wzDQvtfVFgeknbgMYJ+9O3yPatVEIxUKQRTpKPKiSIeRjgthBugAkNCJWJZQ69VDozff+/TRH303+V6hEEWFKCqEURTEpWh+RRc0yq7r9A4bP/nAyrXfPuO4QZOtWj1Ybi8Vy3EjNbSdqKQUMZkpnXGu2AlAb19bSzGsjdbY2GJb0RiniACRFCph1DrLd0EE47hT6UuvfTjsaFl0aP9I3UZxBCgCAkRa7MxA57L1SlPTqwZ0WtHPfvnEr59dd96ZxyWIg2P1LVtrbXuV4lIUhH4YBWEURJEfhl4Y656OogUQxKZwpavc0R7VJpJmPSmVC2HsR8UwLgZxISwWIwr8lEUQnQgSjjaz629cdszHDnaBZ5wY4Iw5dZwxT2wb/eqlNzdTg/kO9dqgmYUI739s1ePrhs45/dgR6wBg65bRkWq9q7cjjP0g8qLYjyI/jLww8oqFoFyKDIgAps4VgmD69HKzkU6MjLW2RFEUxJEfRUEY+VHks1KZExbOHHcrdcvty8YdLThs/taRxDA0jWsYzjIeqzYO3rdr4UFzvnn1vWlmXxmc7EQPQQJj7EU/f2zOgX0BYuqkrGHDwHhmYUpvux/6oXNaKSRUhAhYJJ8QxpvNPCZNGg2vxSfEkc0jfqR1UyNRnj0zSy3jmmVfEYM8tGbDpVc99N5jDuYoqg1WkRSDAIhxXNE8O9RD7eVfr9iapCbwdR6cvLqlRRAERaCV1FXXLvv2dQ+0BR4KPL9qkLTXO73NC1RcCKLYj+IgKoRBwe9oDUqFQGlP+4FSqlwsLpg30xk3tHFblhgrklpuGk6MSyzXUpdYVkRNcbf81/LBcTP/8AMHRxuZg8Rw03BqYbyRHjq77TfLX/z7b9z6uWMWtZYilp3THP3n2x4wi+/rr5/2ns3fvefa65cb6y74xAdeWDNUKkedPa3sa60o90JEZBDPFyeECAJgQTVRzdynu7UtGhoeHxmucRRmxr6U+CeZraUOSxJ73kP/+fx+79o37CoPjUwQKWaHCHVjD+iN16xcf8Y5t37lhIUnHzmPRfAV+rGzehAhi+zf33P5145aev49/37Disj3Nw6OdXaXSu1xNRFFJAAC4oRZeFsijwzU8qTAAYgIBy1fvObsp+57fN0Lm3sO2DvJHCAwMwA0Mh5NMk+i1c9tWrNq+JRTj95Wa2SOweWVDBfHwdCLA9+9+M5/PHbhF099DzMQvhLzq0keITrHc2d3X3nOUZ/51u033LDCVJt7L+hjTzcnEkRkzrMqYREWsQ4dswAIAAsIUyHyij17TQxXU5bEOETK84amhZGGKSJed83DHfvMbJ/VMzQ6AUgiwuI8rauDtV/88J6vnbDo7JPfyyJ5krGrmYtS5Bz3z5ryw3M/9LbuFmt4r6ldiYFmapPMNY1rGpdkOVk5c8YwG8fGOmOdcVytJaoQjw9PpJlrGpsam1qXWpdZrlocGJ24+76Vi45cOJpkqRFjnXHWWlbkrfjVE+eesPDsk9/rmLeHCbuVbilF1nL/zK4vn3awtVm5u63W5MRJ03JiJLHcNJIYSY00DaRGmkaa2z+6emKgEGapS+pZ5rBpOTWcWkkzx6iu/9cHsb21Z/9pE+OJMFgnbFlpb2Ttpk/Ob1/60cWOmfC1SgyvFXsgAYuwdcpTcXul2kibRrZX/1hYxAmL5JsYCyMjioAIOydhqDOh2njiAs1OgEWACdXIcPO2O1Yc+IGDUyFnOPcQAHRN9+GZ4UcWvYdFCAlR9jSxFSDE1eu2YRyVuiqZA1HakXJEltASMhIjOUSLZAmdkANwgA5FlPbKcX20LoLOsLXsLCBAdcLq1o7euTMaE00UYCfgOLP8vk71kUUzt6eJCK9d1NavHfkDwNqNY8WWYlZN6mnub+xYmJ0IEKEIMrxcTQARQREHac3Z1NRGJ8K9Ks4KIoAIOGHht31gAXvksizXBSPQFcLxs1v+tzR290ATIYCs3zKSjVZvPO96xyBsjQXf9z2PjLWjYw12gC/XZghyjiBWKrFJzbxjDgYGNhYJ8y8xQ7G3M0vtS+UUY/mQWaX2OHhl3LxHnAYAgC99avHHj697nkYAZrd5uPbDny8bGDGt3S0nnbTAWevcjgUVQBSX2Z4p5WVPbrj/nqebw1Vxjq0g7ahvCFjrEFFAENAIdYXq8Bkl2J0ux19Mt3D//t6dbr1jbs/S8+96ZiRzsf/ZExcP/3nabgE6AbZWm9ZKc7zOqWVhYswJBIjAwCIADgFTx4fMKnQWcjNPXoWJWRyzY3EszGIt7z296/JzPjS74l991SPnXXW/cbJlLNsyZraMmY0jzc1DyYDlnmmdvvZqI1WTpNsFxTGwiHXsGERAyDJ2+nLYzJY/qcxMEmgiVESKUBESodbkHM/sa7/860sWTi3dffPTP7nmgY5WP0+rEEFrskJdfZUgVlk1SWtNFBDrJN9Hd6TVhGBYDpla6C1HLEK7U/ndk0aRUuSYZ8/ouuyrH5w3pXDHjU/96OoHKi3agVhhRkozaOuqVDoKzXozGWsgEnMu4S+XrJxIq89HzG4BwN3t2u1hd0sROcdz9um+8pwlb+9uufs/VvzoJw+US15OAWM4KIadPWXTzLJqw/d9pZXWSntaaaW08n2dOXVIXzSttSC7w+bX25JTiqzjfWd1X/ylw/or3r03Lb/6p79qKUfMYJwjDVN62wgl3TbO9SakGSfW1Y2rG9cw40P1qTo7YW7HnlWoX1fHVityjg+YM/2Kbxz9ue/ccd8tvzcsH//4+0dGs4xhyrTWkW1jhWdWD69d32yaQClfa0QIAm9Wtz7zH94/pRQxM9FuG24S2pJ5wXP5swNLv3PrsyPp4Scs+Ogph04kbnTzyLbVA8tXbn78oReP/5u+Uz+0MAwDIipEXtdeJQDKO0970IaenF5qjvvp5zctveDuZ7fWFx8/76ST3xf68NzzW35w4Z1L+tu+e+YS3wt27p/vaa9o0hrAOe6VqzZ9+lt3vDDW+NsPL9x3bt8l37vrhLe1X/SFY8MoYueQKDfsm9SS28XGuFa07KkXP/udW+tBiyN15NzSP51xVBTHe8bdN6M3LiLWOhF5cNkzC//u4jPO/0WtXhMR53hyZ8FJP9eQl3vWrN+8V3u5UIhZmHCSzzrgG3Hw6iUyiMjrpO+bBzoXh9fvcG826Dd0vHVa7C3Q/99A/w8ti2q6dYcJkgAAAABJRU5ErkJggg==" style="width:28px;height:28px;object-fit:contain;display:block"/>
+          <div class="orden">${e.numero}${e.total>1?` · ${e.idx}/${e.total}`:""}</div>
+        </div>
         ${e.nombre?`<div class="nombre">${e.nombre}</div>`:""}
         <div class="medidas">${e.medidas||e.tipo}</div>
         ${e.medidas?`<div class="tipo">${e.tipo}</div>`:""}
@@ -1049,6 +538,7 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
   .tipo{font-size:10pt;color:#333;font-weight:600}
   .obs{font-size:9pt;color:#555;font-style:italic}
   .sep{border-top:0.4mm solid #ddd;margin:3mm 0}
+  .header{display:flex;align-items:center;gap:3mm;margin-bottom:1.5mm}
   .domicilio{font-size:10pt;color:#222;font-weight:700}
   .cliente{font-size:9pt;color:#555;margin-top:1mm}
   @media print{
@@ -1061,9 +551,17 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
     if(w){w.document.write(html);w.document.close();w.onload=()=>{w.focus();setTimeout(()=>w.print(),300);};}
   };
 
+
+  // Render uploaded plano files (PDF/images) for PDF output
+  const renderPlanoFiles=(files)=>{
+    if(!files||!files.length) return "";
+    const imgs=files.filter(f=>f.tipo&&f.tipo.startsWith("image/")).map(f=>`<img src="${f.data}" style="max-width:100%;max-height:180px;border-radius:4px;border:1px solid #1a4a6e;display:block;margin-bottom:6px"/>`).join("");
+    const pdfs=files.filter(f=>f.tipo==="application/pdf").map(f=>`<div style="padding:6px 10px;background:#eef4ff;border:1px solid #1a4a6e;border-radius:4px;font-size:11px;color:#1a4a6e;margin-bottom:6px">📄 ${f.nombre}</div>`).join("");
+    return imgs+pdfs;
+  };
   const pdfTaller=()=>{
     const rows=form.items.map((it,i)=>{
-      const itemSVG=buildSVGStr(it.plano||[]);
+      const itemSVG=renderPlanoFiles(it.plano||[]);
       return`
       <tr style="background:${i%2===0?"#f8fbff":"#fff"}">
         <td style="padding:10px 12px;text-align:center;font-size:18px;font-weight:900;width:50px">${it.cant||1}</td>
@@ -1076,7 +574,7 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
       ${itemSVG?`<tr><td colspan="6" style="padding:8px 12px;background:#f0f6ff">${itemSVG}</td></tr>`:""}`;
     }).join("");
     const hasItemPlanos=(form.items||[]).some(it=>(it.plano||[]).length>0);
-    const planoSVG=!hasItemPlanos?buildSVGStr(form.plano):"";
+    const planoSVG=!hasItemPlanos?renderPlanoFiles(form.plano||[]):"";
     const instBloque=form.inst_notas||form.inst_fecha||form.inst_direccion?`
       <div style="margin-top:16px;padding:12px 16px;background:#f8f9ff;border-left:3px solid #1565C0;border-radius:0 6px 6px 0;font-size:13px;line-height:1.8;color:#333">
         <strong style="color:#1565C0">Instalación:</strong><br/>
@@ -1091,7 +589,7 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
     const procesoHeaders = procesos.map(p=>`<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.3px;border:1px solid #c8d8f0;min-width:52px;max-width:70px;color:#fff">${p}</th>`).join("");
     const procesoRows = (form.items||[]).map((it,i)=>{
       const tieneP=(it.plano||[]).length>0;
-      const planoSVG=tieneP?buildSVGStr(it.plano):"";
+      const planoHTML=tieneP?renderPlanoFiles(it.plano):"";
       const planoIndicador=tieneP?`<span style="display:inline-block;background:#1a4a6e;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;margin-left:5px;vertical-align:middle">📐 EN PLANO</span>`:"";
       return `<tr style="background:${i%2===0?"#fff":"#f8fbff"}">
         <td style="padding:8px 10px;text-align:center;font-weight:900;font-size:16px;border:1px solid #dde8ff;width:40px">${it.cant||1}</td>
@@ -1099,7 +597,7 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
         <td style="padding:8px 10px;text-align:center;font-size:14px;font-weight:700;border:1px solid #dde8ff;white-space:nowrap;color:#0a2a5e">${it.ancho&&it.alto?`${it.ancho}×${it.alto} mm`:"—"}</td>
         <td style="padding:8px 10px;font-size:12px;border:1px solid #dde8ff;color:#555">${(it.obs||[]).join(", ")||""}</td>
         ${procesos.map(()=>`<td style="padding:8px;text-align:center;border:1px solid #dde8ff"><div style="width:20px;height:20px;border:2px solid #1565C0;border-radius:3px;margin:0 auto;background:#fff"></div></td>`).join("")}
-      </tr>${planoSVG?`<tr><td colspan="${4+procesos.length}" style="padding:8px 12px;background:#f0f6ff;border:1px solid #dde8ff"><div style="font-size:9px;font-weight:700;color:#1a4a6e;margin-bottom:4px">PLANO — ${it.nombre||it.tipo_vidrio||`Ítem ${i+1}`}</div>${planoSVG}</td></tr>`:""}`;
+      </tr>${planoHTML?`<tr><td colspan="${4+procesos.length}" style="padding:8px 12px;background:#f0f6ff;border:1px solid #dde8ff"><div style="font-size:9px;font-weight:700;color:#1a4a6e;margin-bottom:4px">📐 PLANO — ${it.nombre||it.tipo_vidrio||`Ítem ${i+1}`}</div>${planoHTML}</td></tr>`:""}`;
     }).join("");
 
     const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Taller ${form.numero||""}</title>
@@ -1169,7 +667,7 @@ table{width:100%;border-collapse:collapse}
         <td style="padding:8px 12px">${COLOCACION.find(c=>c.id===it.colocacion)?.label||"—"}</td>
         ${modo==="orden"?`<td style="padding:8px 12px;text-align:right;font-weight:700">${it.precio?`$${(+it.precio).toLocaleString("es-AR")}`:""}</td>`:""}
       </tr>`).join("");
-    const planoSVG=buildSVGStr(form.plano);
+    const planoSVG=renderPlanoFiles(form.plano||[]);
     const senia=+form.pago_senia||0;
     const total=+form.pago_total||totalCalc||0;
     const fotosHTML=(form.fotos_instalacion||[]).map(f=>`<img src="${f.data}" style="width:150px;height:115px;object-fit:cover;border-radius:7px;border:1px solid #e0ecff;"/>`).join("");
