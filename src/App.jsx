@@ -657,19 +657,25 @@ table{width:100%;border-collapse:collapse}
 
   // ── PDF COMPLETO ──────────────────────────────────────────────────────────
   const pdfCompleto=()=>{
-    const rows=(form.items||[]).map((it,i)=>`
-      <tr style="background:${i%2===0?"#f8fbff":"#fff"}">
+    const pdfRows=(form.items||[]).map((it,i)=>{
+      const nombreBanner=it.nombre?`<tr><td colspan="${modo==="orden"?7:6}" style="padding:5px 12px 2px;background:#dce8ff;border:1px solid #b0c8f0;border-bottom:none"><strong style="font-size:12px;font-weight:900;color:#0a2a5e;text-transform:uppercase;letter-spacing:1px">📍 ${it.nombre}</strong></td></tr>`:"";
+      return `${nombreBanner}<tr style="background:${i%2===0?"#f8fbff":"#fff"}">
         <td style="padding:8px 12px;text-align:center;font-weight:700">${it.cant||1}</td>
-        <td style="padding:8px 12px;font-weight:600">${it.tipo_vidrio||"—"}${it.nombre?`<br/><span style="font-size:11px;color:#1565C0;font-weight:400">${it.nombre}</span>`:""}</td>
+        <td style="padding:8px 12px;font-weight:600">${it.tipo_vidrio||"—"}</td>
         <td style="padding:8px 12px;text-align:center;font-weight:700;color:#0a2a5e">${it.ancho&&it.alto?`${it.ancho} × ${it.alto} mm`:"—"}</td>
         <td style="padding:8px 12px">${(it.obs||[]).join(", ")||"—"}</td>
         <td style="padding:8px 12px">${it.servicio||"—"}</td>
         <td style="padding:8px 12px">${COLOCACION.find(c=>c.id===it.colocacion)?.label||"—"}</td>
         ${modo==="orden"?`<td style="padding:8px 12px;text-align:right;font-weight:700">${it.precio?`$${(+it.precio).toLocaleString("es-AR")}`:""}</td>`:""}
-      </tr>`).join("");
+      </tr>`;
+    }).join("");
     const planoSVG=renderPlanoFiles(form.plano||[]);
-    const senia=+form.pago_senia||0;
-    const total=+form.pago_total||totalCalc||0;
+    const pdfTotal=+form.pago_total||totalCalc||0;
+    const pdfSenia=+form.pago_senia||0;
+    const pdfParciales=(form.pagos_parciales||[]).reduce((s,p)=>s+(+p.monto||0),0);
+    const pdfFinal=+form.pago_final_monto||0;
+    const pdfCobrado=pdfSenia+pdfParciales+pdfFinal;
+    const pdfSaldo=Math.max(0,pdfTotal-pdfCobrado);
     const fotosHTML=(form.fotos_instalacion||[]).map(f=>`<img src="${f.data}" style="width:150px;height:115px;object-fit:cover;border-radius:7px;border:1px solid #e0ecff;"/>`).join("");
     const fotosTrabHTML=(form.fotos_trabajo||[]).map(f=>`<img src="${f.data}" style="width:150px;height:115px;object-fit:cover;border-radius:7px;border:1px solid #a5d6a7;"/>`).join("");
     const instBloque=form.inst_notas||form.inst_fecha||form.inst_direccion?`
@@ -680,8 +686,7 @@ table{width:100%;border-collapse:collapse}
         ${form.inst_responsable?`<div class="f"><label>Responsable</label><p>${form.inst_responsable}</p></div>`:""}
         ${form.inst_firmante?`<div class="f"><label>Recibe</label><p>${form.inst_firmante}</p></div>`:""}
       </div>
-      ${form.inst_notas?`<div style="margin-top:8px;padding:10px 14px;background:#f8f9ff;border-left:3px solid #1565C0;border-radius:0 6px 6px 0;font-size:13px;line-height:1.7;color:#333">${form.inst_notas}</div>`:""}`:"";
-    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${modo==="orden"?"Orden":"Presupuesto"} ${form.numero||""}</title>
+      ${form.inst_notas?`<div style="margin-top:8px;padding:10px 14px;background:#f8f9ff;border-left:3px solid #1565C0;border-radius:0 6px 6px 0;font-size:13px;line-height:1.7;color:#333">${form.inst_notas}</div>`:""}`:"";    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${modo==="orden"?"Orden":"Presupuesto"} ${form.numero||""}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e;font-size:13px}
 .hdr{background:linear-gradient(135deg,#0a2a5e,#1565C0);padding:18px 28px;display:flex;justify-content:space-between;align-items:center;gap:16px}
 .hdr-left{display:flex;align-items:center;gap:12px}.logo{width:58px;height:58px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3))}
@@ -725,12 +730,14 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
     <th style="text-align:left">Servicio</th>
     <th style="text-align:left">Colocación</th>
     ${modo==="orden"?"<th style=\"text-align:right;width:90px\">Precio</th>":""}
-  </tr></thead><tbody>${rows||"<tr><td colspan='7' style='padding:12px;text-align:center;color:#888'>Sin ítems</td></tr>"}</tbody></table>
-  ${modo==="cotizacion"&&total?`<div class="tot-wrap"><div class="tot-inner"><div class="t-total"><span>TOTAL</span><span>$${total.toLocaleString("es-AR")}</span></div></div></div>`:""}
-  ${modo==="orden"&&total?`<div class="tot-wrap"><div class="tot-inner">
-    ${senia?`<div class="t-row"><span>Seña abonada</span><span>$${senia.toLocaleString("es-AR")}</span></div>`:""}
-    ${saldo?`<div class="t-row"><span>Saldo pendiente</span><span>$${saldo.toLocaleString("es-AR")}</span></div>`:""}
-    <div class="t-total"><span>TOTAL</span><span>$${total.toLocaleString("es-AR")}</span></div>
+  </tr></thead><tbody>${pdfRows||"<tr><td colspan='7' style='padding:12px;text-align:center;color:#888'>Sin ítems</td></tr>"}</tbody></table>
+  ${modo==="cotizacion"&&pdfTotal?`<div class="tot-wrap"><div class="tot-inner"><div class="t-total"><span>TOTAL</span><span>$${pdfTotal.toLocaleString("es-AR")}</span></div></div></div>`:""}
+  ${modo==="orden"&&pdfTotal?`<div class="tot-wrap"><div class="tot-inner">
+    ${pdfSenia?`<div class="t-row"><span>Seña abonada</span><span>$${pdfSenia.toLocaleString("es-AR")}</span></div>`:""}
+    ${pdfParciales?`<div class="t-row"><span>Pagos parciales</span><span>$${pdfParciales.toLocaleString("es-AR")}</span></div>`:""}
+    ${pdfFinal?`<div class="t-row"><span>Pago final</span><span>$${pdfFinal.toLocaleString("es-AR")}</span></div>`:""}
+    ${pdfSaldo>0?`<div class="t-row" style="color:#e65100;font-weight:700"><span>Saldo pendiente</span><span>$${pdfSaldo.toLocaleString("es-AR")}</span></div>`:`<div class="t-row" style="color:#2e7d32;font-weight:700"><span>✅ Pagado completo</span><span></span></div>`}
+    <div class="t-total"><span>TOTAL</span><span>$${pdfTotal.toLocaleString("es-AR")}</span></div>
   </div></div>`:""}
   ${form.condiciones?`<div style="margin-top:12px;padding:10px 14px;background:#f8f9ff;border-left:3px solid #1565C0;border-radius:0 6px 6px 0;font-size:12px;color:#555;line-height:1.6">${form.condiciones}</div>`:""}
   ${instBloque}
