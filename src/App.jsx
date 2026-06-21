@@ -298,6 +298,7 @@ const ESTADOS_DEFAULT = [
   { id: "listo_entregar",label: "Listo p/ Entregar",    color: "#C5E1A5", bg: "#162a0a" },
   { id: "entregado",     label: "Entregado",            color: "#90A4AE", bg: "#1a1f22" },
   { id: "cobrado",       label: "Cobrado ✓",            color: "#26A69A", bg: "#0a2a26" },
+  { id: "finalizada",    label: "Finalizada ✅",         color: "#4CAF50", bg: "#0a3010" },
   { id: "cancelada",     label: "Cancelada",            color: "#EF5350", bg: "#2a0a0a", ocultar:true },
 ];
 
@@ -1241,8 +1242,20 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
       </div>}
 
       {/* GUARDAR */}
-      <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:16,paddingTop:14,borderTop:"1px solid #1e3a5a"}}>
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:16,paddingTop:14,borderTop:"1px solid #1e3a5a",flexWrap:"wrap"}}>
         <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
+        {/* Trabajo Finalizado — solo en órdenes abonadas completas */}
+        {modo==="orden"&&form.abonado_completo&&form.estado!=="finalizada"&&(
+          <Btn onClick={()=>{
+            if(!window.confirm("¿Marcar este trabajo como FINALIZADO?\nSe archivará en Órdenes Finalizadas y no aparecerá en la lista activa."))return;
+            onSave({...form,estado:"finalizada",fecha_finalizacion:new Date().toISOString()});
+          }} style={{background:"linear-gradient(135deg,#2e7d32,#388e3c)",border:"none",color:"#fff",fontWeight:700}}>
+            ✅ Trabajo Finalizado
+          </Btn>
+        )}
+        {modo==="orden"&&form.abonado_completo===false&&form.estado!=="finalizada"&&(
+          <span style={{fontSize:11,color:"#5a8ab8",alignSelf:"center"}}>💡 Marcá el trabajo como abonado para poder finalizarlo</span>
+        )}
         <Btn onClick={()=>{
           if(!form.contacto_nombre?.trim()){alert("El nombre del cliente es obligatorio.");return;}
           onSave(form);
@@ -1252,6 +1265,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
   );
 };
 
+// ─── ORDENES FINALIZADAS ─────────────────────────────────────────────────────
 // ─── COTIZACIONES PAGE ───────────────────────────────────────────────────────
 
 // ─── PLANTILLA BUILDER ──────────────────────────────────────────────────────
@@ -1505,6 +1519,7 @@ function AppInner({ currentUser, onLogout }) {
   };
 
   const filtered=ordenes.filter(o=>{
+    if(o.estado==="finalizada") return false; // show in finalizadas page only
     const ms=!search||(o.numero||"").toLowerCase().includes(search.toLowerCase())||getNombre(o.cliente).toLowerCase().includes(search.toLowerCase())||(o.numero||"").toLowerCase().includes(search.toLowerCase());
     return ms&&(filterEstado==="all"||o.estado===filterEstado);
   });
@@ -1530,6 +1545,7 @@ function AppInner({ currentUser, onLogout }) {
     {id:"home",label:"Inicio",icon:"home"},
     {id:"cotizaciones",label:"Cotizaciones",icon:"pdf"},
     {id:"ordenes",label:"Órdenes",icon:"orders"},
+    {id:"finalizadas",label:"✅ Finalizadas",icon:"optimize"},
     {id:"tablero",label:"Tablero",icon:"board"},
     {id:"clientes",label:"Clientes",icon:"clients"},
     {id:"stock",label:"Stock",icon:"glass"},
@@ -1672,7 +1688,8 @@ function AppInner({ currentUser, onLogout }) {
     const hoy=new Date().toISOString().split("T")[0];
     const hoyInstalaciones=ordenes.filter(o=>o.inst_fecha===hoy&&!["entregado","cobrado","cancelada"].includes(o.estado));
     const incidenciasPendientes=ordenes.filter(o=>(o.incidencias||[]).some(i=>!i.resuelto));
-    const sinCobrar=ordenes.filter(o=>!o.abonado_completo&&(+o.pago_total||0)>0&&!["cobrado","cancelada"].includes(o.estado));
+    const sinCobrar=ordenes.filter(o=>!o.abonado_completo&&(+o.pago_total||0)>0&&!["cobrado","cancelada","finalizada"].includes(o.estado));
+    const finalizadasMes=ordenes.filter(o=>o.estado==="finalizada"&&o.fecha_finalizacion&&new Date(o.fecha_finalizacion).getMonth()===new Date().getMonth()&&new Date(o.fecha_finalizacion).getFullYear()===new Date().getFullYear());
     return(
       <div>
         <div style={{marginBottom:20}}>
@@ -3149,7 +3166,104 @@ ${bizFooter()}`;
     </div>
   );
 
-  const pages={home:<Home/>,ordenes:<OrdenesList/>,tablero:<Tablero/>,clientes:<Clientes/>,cotizaciones:<Cotizaciones/>,stock:<Stock/>,reportes:<Reportes/>,optimize:<Optimizer/>,ayuda:<Ayuda/>};
+
+  const OrdenesFinalizadas=()=>{
+  const finalizadas=ordenes.filter(o=>o.estado==="finalizada")
+    .sort((a,b)=>(b.fecha_finalizacion||b.fecha||"").localeCompare(a.fecha_finalizacion||a.fecha||""));
+
+  // Group by MM-YYYY
+  const grupos={};
+  finalizadas.forEach(o=>{
+    const d=new Date(o.fecha_finalizacion||o.fecha||Date.now());
+    const key=`${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()}`;
+    const label=d.toLocaleDateString("es-AR",{month:"long",year:"numeric"}).replace(/^\w/,c=>c.toUpperCase());
+    if(!grupos[key])grupos[key]={label,ordenes:[]};
+    grupos[key].ordenes.push(o);
+  });
+
+  const [abiertos,setAbiertos]=useState({});
+  const toggle=(key)=>setAbiertos(a=>({...a,[key]:!a[key]}));
+
+  const totalFacturado=finalizadas.reduce((s,o)=>s+(+o.pago_total||0),0);
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22}}>
+        <div>
+          <h1 style={{margin:"0 0 4px",fontFamily:"Georgia,serif",fontSize:24,color:"#e2f0ff"}}>✅ Órdenes Finalizadas</h1>
+          <p style={{margin:0,color:"#3a6a9a",fontSize:13}}>{finalizadas.length} trabajo{finalizadas.length!==1?"s":""} completado{finalizadas.length!==1?"s":""} · Total facturado: <strong style={{color:"#26A69A"}}>${totalFacturado.toLocaleString("es-AR")}</strong></p>
+        </div>
+      </div>
+
+      {finalizadas.length===0&&(
+        <div style={{textAlign:"center",padding:"60px 20px",color:"#2a4a6a"}}>
+          <div style={{fontSize:52,marginBottom:12}}>📂</div>
+          <div style={{fontSize:16,fontWeight:600,color:"#3a6a9a"}}>No hay trabajos finalizados aún</div>
+          <div style={{fontSize:13,color:"#2a4a6a",marginTop:6}}>Cuando completes y cobres un trabajo, aparecerá acá organizado por mes</div>
+        </div>
+      )}
+
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {Object.entries(grupos).map(([key,grupo])=>{
+          const open=abiertos[key]!==false; // open by default
+          const subtotal=grupo.ordenes.reduce((s,o)=>s+(+o.pago_total||0),0);
+          return(
+            <div key={key} style={{background:"#071220",borderRadius:12,overflow:"hidden",border:"1px solid #0f3020"}}>
+              {/* Folder header */}
+              <div onClick={()=>toggle(key)} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",cursor:"pointer",background:"linear-gradient(135deg,#071220,#0a2a1a)"}}>
+                <span style={{fontSize:20}}>{open?"📂":"📁"}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:15,fontWeight:700,color:"#26A69A"}}>{grupo.label}</div>
+                  <div style={{fontSize:12,color:"#3a6a9a",marginTop:2}}>{grupo.ordenes.length} trabajo{grupo.ordenes.length!==1?"s":""} · ${subtotal.toLocaleString("es-AR")}</div>
+                </div>
+                <span style={{color:"#26A69A",fontSize:14}}>{open?"▲":"▼"}</span>
+              </div>
+
+              {/* Orders inside folder */}
+              {open&&(
+                <div style={{padding:"0 12px 12px"}}>
+                  {grupo.ordenes.map(o=>{
+                    const total=+o.pago_total||0;
+                    const fechaFin=o.fecha_finalizacion?new Date(o.fecha_finalizacion).toLocaleDateString("es-AR"):"—";
+                    return(
+                      <div key={o.id} style={{background:"#0a1828",borderRadius:9,padding:"10px 14px",marginTop:8,border:"1px solid #0f3020",display:"flex",alignItems:"center",gap:12}}>
+                        {/* Número */}
+                        <div style={{background:"#0a2a1a",border:"1px solid #26A69A25",borderRadius:7,padding:"3px 8px",minWidth:90,textAlign:"center",flexShrink:0}}>
+                          <div style={{fontSize:10,fontWeight:800,color:"#26A69A",fontFamily:"monospace"}}>{o.numero||"—"}</div>
+                          <div style={{fontSize:9,color:"#3a6a9a"}}>fin: {fechaFin}</div>
+                        </div>
+                        {/* Info */}
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13,fontWeight:600,color:"#e2f0ff"}}>{o.contacto_nombre||getNombre(o.cliente)||"Sin cliente"}</div>
+                          <div style={{fontSize:11,color:"#3a6a9a",marginTop:1}}>
+                            {(o.items||[]).length} ítem{(o.items||[]).length!==1?"s":""}
+                            {o.inst_direccion&&<span> · 📍 {o.inst_direccion}</span>}
+                          </div>
+                        </div>
+                        {/* Total */}
+                        {total>0&&<div style={{textAlign:"right",flexShrink:0}}>
+                          <div style={{fontSize:9,color:"#3a6a9a",textTransform:"uppercase",fontWeight:700}}>Total</div>
+                          <div style={{fontSize:15,fontWeight:800,color:"#26A69A"}}>${total.toLocaleString("es-AR")}</div>
+                        </div>}
+                        {/* Reabrir */}
+                        <button onClick={()=>{
+                          if(!window.confirm("¿Reabrir esta orden? Volverá a la lista activa."))return;
+                          saveOrden({...o,estado:"cobrado",fecha_finalizacion:null});
+                        }} title="Reabrir orden" style={{background:"none",border:"1px solid #1e3a5a",color:"#3a6a9a",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:10,fontFamily:"inherit",flexShrink:0}}>↩ Reabrir</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+  const pages={home:<Home/>,ordenes:<OrdenesList/>,finalizadas:<OrdenesFinalizadas/>,tablero:<Tablero/>,clientes:<Clientes/>,cotizaciones:<Cotizaciones/>,stock:<Stock/>,reportes:<Reportes/>,optimize:<Optimizer/>,ayuda:<Ayuda/>};
 
   return(
     <div style={{minHeight:"100vh",background:"#060f1a",fontFamily:"'DM Sans','Segoe UI',sans-serif",color:"#c8e0f8",display:"flex"}}>
