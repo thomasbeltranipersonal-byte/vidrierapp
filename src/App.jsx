@@ -1785,7 +1785,7 @@ function AppInner({ currentUser, onLogout }) {
           {[
             {label:"Órdenes activas",val:activas.length,color:"#64B5F6",sub:"en proceso",click:()=>setNav("ordenes")},
             {label:"Cotizaciones activas",val:cotPendientes.length,color:"#FFB74D",sub:"pendientes/enviadas",click:()=>setNav("cotizaciones")},
-            {label:"Cobrado total",val:"$"+ingresos.toLocaleString("es-AR"),color:"#A5D6A7",sub:"acumulado",click:null},
+            ...(!isLocal?[{label:"Cobrado total",val:"$"+ingresos.toLocaleString("es-AR"),color:"#A5D6A7",sub:"acumulado",click:null}]:[]),
           ].map(s=>(
             <div key={s.label} onClick={s.click||undefined} style={{background:"#071220",borderRadius:12,padding:"16px 18px",border:"1px solid #0f2035",position:"relative",overflow:"hidden",cursor:s.click?"pointer":"default"}}>
               <div style={{position:"absolute",top:-10,right:-10,width:55,height:55,background:s.color+"08",borderRadius:"50%"}}/>
@@ -1797,9 +1797,9 @@ function AppInner({ currentUser, onLogout }) {
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:24}}>
           {[
-            {label:"Clientes",val:clientes.length,color:"#CE93D8",sub:"en base",click:()=>setNav("clientes")},
-            {label:"Productos en stock",val:stock.length,color:"#80CBC4",sub:`${stockBajo.length} con stock bajo`,click:()=>setNav("stock")},
-            {label:"Total órdenes",val:ordenes.length,color:"#5a8ab8",sub:"historial completo",click:null},
+            ...(!isLocal?[{label:"Clientes",val:clientes.length,color:"#CE93D8",sub:"en base",click:()=>setNav("clientes")}]:[]),
+            ...(!isLocal?[{label:"Productos en stock",val:stock.length,color:"#80CBC4",sub:`${stockBajo.length} con stock bajo`,click:()=>setNav("stock")}]:[]),
+            ...(!isLocal?[{label:"Total órdenes",val:ordenes.length,color:"#5a8ab8",sub:"historial completo",click:null}]:[]),
           ].map(s=>(
             <div key={s.label} onClick={s.click||undefined} style={{background:"#071220",borderRadius:12,padding:"16px 18px",border:`1px solid ${s.label==="Productos en stock"&&stockBajo.length>0?"#FFB74D20":"#0f2035"}`,position:"relative",overflow:"hidden",cursor:s.click?"pointer":"default"}}>
               <div style={{fontSize:26,fontWeight:800,color:s.color,fontFamily:"Georgia,serif"}}>{s.val}</div>
