@@ -431,12 +431,12 @@ const ItemCanvas=({value,onChange,label,itemIdx})=>{
 
 const MiniCanvas=({value,onChange})=><ItemCanvas value={value} onChange={onChange} label="Plano general" itemIdx={0}/>;
 
-const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,estados,onSave,onClose,onConvertir})=>{
+const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,estados,stock=[],onSave,onClose,onConvertir})=>{
   // modo = "cotizacion" | "orden"
   const nid=()=>Math.random().toString(36).slice(2,8);
   const hoy=new Date().toISOString().split("T")[0];
 
-  const emptyItem=()=>({id:nid(),cant:1,tipo_vidrio:"",ancho:"",alto:"",obs:[],servicio:"",colocacion:"con_colocacion",precio:"",plano:[]});
+  const emptyItem=()=>({id:nid(),cant:1,tipo_vidrio:"",ancho:"",alto:"",obs:[],servicio:"",colocacion:"con_colocacion",precio:"",plano:[],agregados:[]});
 
   const EMPTY={
     cliente:"",contacto_nombre:"",contacto_tel:"",contacto_dom:"",
@@ -592,9 +592,10 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
       const tieneP=(it.plano||[]).length>0;
       const planoHTML=tieneP?renderPlanoFiles(it.plano):"";
       const planoIndicador=tieneP?`<span style="display:inline-block;background:#1a4a6e;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;margin-left:5px;vertical-align:middle">📐 EN PLANO</span>`:"";
+      const agregadosHTML=(it.agregados||[]).length>0?`<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:3px">${(it.agregados||[]).map(ag=>`<span style="display:inline-flex;align-items:center;gap:3px;background:#f0f4ff;border:1px solid #c8d8f0;border-radius:4px;padding:2px 7px;font-size:10px;color:#0a2a5e"><strong>${ag.cant||1}×</strong> ${ag.detalle}</span>`).join("")}</div>`:"";
       return `<tr style="background:${i%2===0?"#fff":"#f8fbff"}">
         <td style="padding:8px 10px;text-align:center;font-weight:900;font-size:16px;border:1px solid #dde8ff;width:40px">${it.cant||1}</td>
-        <td style="padding:8px 10px;font-weight:700;font-size:13px;border:1px solid #dde8ff">${it.tipo_vidrio||"—"}${planoIndicador}${it.nombre?`<br/><span style="font-size:11px;color:#1565C0;font-weight:400">${it.nombre}</span>`:""}</td>
+        <td style="padding:8px 10px;font-weight:700;font-size:13px;border:1px solid #dde8ff">${it.tipo_vidrio||"—"}${planoIndicador}${it.nombre?`<br/><span style="font-size:11px;color:#1565C0;font-weight:400">${it.nombre}</span>`:""}${agregadosHTML}</td>
         <td style="padding:8px 10px;text-align:center;font-size:14px;font-weight:700;border:1px solid #dde8ff;white-space:nowrap;color:#0a2a5e">${it.ancho&&it.alto?`${it.ancho}×${it.alto} mm`:"—"}</td>
         <td style="padding:8px 10px;font-size:12px;border:1px solid #dde8ff;color:#555">${(it.obs||[]).join(", ")||""}</td>
         ${procesos.map(()=>`<td style="padding:8px;text-align:center;border:1px solid #dde8ff"><div style="width:20px;height:20px;border:2px solid #1565C0;border-radius:3px;margin:0 auto;background:#fff"></div></td>`).join("")}
@@ -660,6 +661,7 @@ table{width:100%;border-collapse:collapse}
   const pdfCompleto=()=>{
     const pdfRows=(form.items||[]).map((it,i)=>{
       const nombreBanner=it.nombre?`<tr><td colspan="${modo==="orden"?7:6}" style="padding:5px 12px 2px;background:#dce8ff;border:1px solid #b0c8f0;border-bottom:none"><strong style="font-size:12px;font-weight:900;color:#0a2a5e;text-transform:uppercase;letter-spacing:1px">📍 ${it.nombre}</strong></td></tr>`:"";
+      const agRow=(it.agregados||[]).length>0?`<tr><td colspan="${modo==="orden"?7:6}" style="padding:3px 12px 6px;background:${i%2===0?"#f8fbff":"#fff"};border:1px solid #e8f0ff;border-top:none"><div style="display:flex;flex-wrap:wrap;gap:3px">${(it.agregados||[]).map(ag=>`<span style="display:inline-flex;align-items:center;gap:3px;background:#f0f4ff;border:1px solid #c8d8f0;border-radius:4px;padding:1px 7px;font-size:10px;color:#0a2a5e"><strong>${ag.cant||1}×</strong> ${ag.detalle}</span>`).join("")}</div></td></tr>`:"";
       return `${nombreBanner}<tr style="background:${i%2===0?"#f8fbff":"#fff"}">
         <td style="padding:8px 12px;text-align:center;font-weight:700">${it.cant||1}</td>
         <td style="padding:8px 12px;font-weight:600">${it.tipo_vidrio||"—"}</td>
@@ -668,7 +670,7 @@ table{width:100%;border-collapse:collapse}
         <td style="padding:8px 12px">${it.servicio||"—"}</td>
         <td style="padding:8px 12px">${COLOCACION.find(c=>c.id===it.colocacion)?.label||"—"}</td>
         ${modo==="orden"?`<td style="padding:8px 12px;text-align:right;font-weight:700">${it.precio?`$${(+it.precio).toLocaleString("es-AR")}`:""}</td>`:""}
-      </tr>`;
+      </tr>${agRow}`;
     }).join("");
     const planoSVG=renderPlanoFiles(form.plano||[]);
     const pdfTotal=+form.pago_total||totalCalc||0;
@@ -897,6 +899,52 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
                 label={`${item.cant||1}× ${item.tipo_vidrio||"Vidrio"} ${item.ancho&&item.alto?`${item.ancho}×${item.alto}mm`:""}`}
                 itemIdx={i+1}
               />
+
+              {/* ── MATERIALES / AGREGADOS (conectado con stock) ── */}
+              <div style={{marginTop:8,background:"#050d18",borderRadius:7,padding:"8px 10px",border:"1px solid #1e3a5a"}}>
+                <div style={{fontSize:10,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:6,letterSpacing:1}}>📦 Materiales / Herrajes</div>
+                {(item.agregados||[]).map((ag,ai)=>{
+                  // Check stock availability
+                  const stockItem=stock.find(s=>s.id===ag.stockId);
+                  const stockOk=!stockItem||stockItem.stock>=(+ag.cant||1);
+                  return(
+                    <div key={ai} style={{display:"grid",gridTemplateColumns:"1fr 70px auto",gap:6,marginBottom:5,alignItems:"center"}}>
+                      <select value={ag.stockId||"__manual__"} onChange={e=>{
+                        const arr=[...(item.agregados||[])];
+                        if(e.target.value==="__manual__"){arr[ai]={...arr[ai],stockId:null,detalle:ag.detalle||""};}
+                        else{const si=stock.find(s=>s.id===e.target.value);arr[ai]={...arr[ai],stockId:e.target.value,detalle:si?si.nombre:ag.detalle};}
+                        setItem(i,"agregados",arr);
+                      }} style={{...iS,fontSize:11}}>
+                        <option value="__manual__">✏️ Escribir manualmente</option>
+                        <optgroup label="── Del stock ──">
+                          {stock.map(s=><option key={s.id} value={s.id}>{s.nombre} (stock: {s.stock} {s.unidad||"u."})</option>)}
+                        </optgroup>
+                      </select>
+                      {ag.stockId?
+                        <div style={{fontSize:11,color:stockItem?stockItem.nombre:"",padding:"2px 5px",background:"#0a1020",borderRadius:4,border:`1px solid ${stockOk?"#1e3a5a":"#7f2020"}`,color:stockOk?"#c8e0f8":"#f48fb1",textAlign:"center",fontFamily:"monospace"}}>
+                          {ag.stockId&&!stockItem?"⚠":stockOk?"✓":"⚠"}
+                        </div>
+                        :<input value={ag.detalle||""} onChange={e=>{const arr=[...(item.agregados||[])];arr[ai]={...arr[ai],detalle:e.target.value};setItem(i,"agregados",arr);}}
+                          placeholder="Descripción..." style={{...iS,fontSize:11}}/>
+                      }
+                      <input type="number" min="1" value={ag.cant||1} onChange={e=>{const arr=[...(item.agregados||[])];arr[ai]={...arr[ai],cant:+e.target.value};setItem(i,"agregados",arr);}}
+                        style={{...iS,fontSize:11,textAlign:"center",width:55}}/>
+                      <button onClick={()=>setItem(i,"agregados",(item.agregados||[]).filter((_,idx)=>idx!==ai))}
+                        style={{background:"none",border:"none",color:"#5a2a3a",cursor:"pointer",padding:"2px 4px",display:"flex"}}><Icon name="trash" size={13}/></button>
+                    </div>
+                  );
+                })}
+                {/* Stock alerts */}
+                {(item.agregados||[]).some(ag=>{const si=stock.find(s=>s.id===ag.stockId);return si&&si.stock<(+ag.cant||1);})&&(
+                  <div style={{padding:"5px 8px",background:"#2a0a00",borderRadius:5,border:"1px solid #FFB74D40",fontSize:11,color:"#FFB74D",marginBottom:5}}>
+                    ⚠ Stock insuficiente en: {(item.agregados||[]).filter(ag=>{const si=stock.find(s=>s.id===ag.stockId);return si&&si.stock<(+ag.cant||1);}).map(ag=>stock.find(s=>s.id===ag.stockId)?.nombre).join(", ")}
+                  </div>
+                )}
+                <button onClick={()=>setItem(i,"agregados",[...(item.agregados||[]),{detalle:"",cant:1,stockId:null}])}
+                  style={{width:"100%",padding:"4px 0",background:"transparent",border:"1px dashed #1e3a5a",borderRadius:5,color:"#3a6a9a",cursor:"pointer",fontSize:10,fontFamily:"inherit",marginTop:2}}>
+                  + Agregar material
+                </button>
+              </div>
             </div>
           ))}
 
@@ -1541,16 +1589,18 @@ function AppInner({ currentUser, onLogout }) {
     </div>
   );
 
+  const isLocal=currentUser.rol==="local";
+  const isTaller=currentUser.rol==="taller";
   const navItems=[
     {id:"home",label:"Inicio",icon:"home"},
     {id:"cotizaciones",label:"Cotizaciones",icon:"pdf"},
     {id:"ordenes",label:"Órdenes",icon:"orders"},
-    {id:"finalizadas",label:"✅ Finalizadas",icon:"optimize"},
+    ...(!isLocal?[{id:"finalizadas",label:"✅ Finalizadas",icon:"optimize"}]:[]),
     {id:"tablero",label:"Tablero",icon:"board"},
-    {id:"clientes",label:"Clientes",icon:"clients"},
-    {id:"stock",label:"Stock",icon:"glass"},
-    {id:"reportes",label:"Reportes",icon:"optimize"},
-    {id:"optimize",label:"Optimización",icon:"refresh"},
+    ...(!isLocal&&!isTaller?[{id:"clientes",label:"Clientes",icon:"clients"}]:[]),
+    ...(!isLocal&&!isTaller?[{id:"stock",label:"Stock",icon:"glass"}]:[]),
+    ...(!isLocal?[{id:"reportes",label:"Reportes",icon:"optimize"}]:[]),
+    ...(!isLocal?[{id:"optimize",label:"Optimización",icon:"refresh"}]:[]),
     {id:"ayuda",label:"❓ Ayuda",icon:"template"},
   ];
 
@@ -1685,6 +1735,14 @@ function AppInner({ currentUser, onLogout }) {
     const ingresos=ordenes.filter(o=>o.estado==="cobrado").reduce((s,o)=>s+(+o.pago_total||0),0);
     const cotPendientes=cotizaciones.filter(c=>!c.eliminada&&(c.estado==="pendiente"||c.estado==="enviada"));
     const stockBajo=stock.filter(i=>i.stock<=i.minimo);
+    // Materials needed across all active orders
+    const materialesNecesarios={};
+    ordenes.filter(o=>!["finalizada","cancelada"].includes(o.estado)).forEach(o=>{
+      (o.items||[]).forEach(it=>(it.agregados||[]).forEach(ag=>{
+        if(ag.stockId){materialesNecesarios[ag.stockId]=(materialesNecesarios[ag.stockId]||0)+(+ag.cant||1);}
+      }));
+    });
+    const materialesFaltantes=Object.entries(materialesNecesarios).filter(([id,cant])=>{const si=stock.find(s=>s.id===id);return si&&si.stock<cant;}).map(([id,cant])=>({...stock.find(s=>s.id===id),necesario:cant}));
     const hoy=new Date().toISOString().split("T")[0];
     const hoyInstalaciones=ordenes.filter(o=>o.inst_fecha===hoy&&!["entregado","cobrado","cancelada"].includes(o.estado));
     const incidenciasPendientes=ordenes.filter(o=>(o.incidencias||[]).some(i=>!i.resuelto));
@@ -1713,6 +1771,13 @@ function AppInner({ currentUser, onLogout }) {
                 <div style={{fontSize:11,color:"#3a6a9a",marginTop:2}}>{incidenciasPendientes.map(o=>o.numero).join(" · ")}</div>
               </div>
               <div style={{color:"#FFB74D",fontSize:16}}>→</div>
+            </div>}
+            {materialesFaltantes.length>0&&<div onClick={()=>setNav("stock")} style={{background:"#1a0a00",borderRadius:10,padding:"12px 16px",border:"1px solid #ef9a9a40",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:"#ef9a9a"}}>📦 {materialesFaltantes.length} material{materialesFaltantes.length>1?"es":""} sin stock suficiente</div>
+                <div style={{fontSize:11,color:"#3a6a9a",marginTop:2}}>{materialesFaltantes.map(m=>`${m.nombre} (necesario: ${m.necesario}, disponible: ${m.stock})`).join(" · ")}</div>
+              </div>
+              <div style={{color:"#ef9a9a",fontSize:16}}>→</div>
             </div>}
           </div>
         )}
@@ -3272,7 +3337,7 @@ ${bizFooter()}`;
       <main style={{flex:1,padding:26,overflowY:"auto",minHeight:"100vh"}}>{pages[nav]}</main>
 
       <Modal open={modal?.type==="nueva_orden"||modal?.type==="editar_orden"} onClose={()=>setModal(null)} title={modal?.type==="editar_orden"?"Editar Orden":"Nueva Orden de Trabajo"} wide xwide>
-        <DocForm doc={modal?.data} modo="orden" clientes={clientes} tiposVidrio={tiposVidrio} estados={estados} onSave={saveOrden} onClose={()=>setModal(null)}/>
+        <DocForm doc={modal?.data} modo="orden" clientes={clientes} tiposVidrio={tiposVidrio} estados={estados} stock={stock} onSave={saveOrden} onClose={()=>setModal(null)}/>
       </Modal>
       <Modal open={modal?.type==="nuevo_cliente"||modal?.type==="editar_cliente"} onClose={()=>setModal(null)} title={modal?.type==="editar_cliente"?"Editar Cliente":"Nuevo Cliente / Obra"}>
         <ClienteForm cliente={modal?.data} onSave={saveCliente} onClose={()=>setModal(null)}/>
@@ -3290,7 +3355,7 @@ ${bizFooter()}`;
         <ProcessManager estados={estados} onSave={async(list)=>{await fsCfgSet("estados",list);setModal(null);}} onClose={()=>setModal(null)}/>
       </Modal>
       <Modal open={modal?.type==="nueva_cotizacion"||modal?.type==="editar_cotizacion"} onClose={()=>setModal(null)} title={modal?.type==="editar_cotizacion"?"Editar Cotización":"Nueva Cotización"} wide>
-        <DocForm doc={modal?.data} modo="cotizacion" clientes={clientes} tiposVidrio={tiposVidrio} estados={estados}
+        <DocForm doc={modal?.data} modo="cotizacion" clientes={clientes} tiposVidrio={tiposVidrio} estados={estados} stock={stock}
           onSave={async(form)=>{
             const id=form.id||newId();
             const numero=form.numero||(await newCotNum());
