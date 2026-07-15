@@ -1506,7 +1506,6 @@ function AppInner({ currentUser, onLogout }) {
     const id = form.id || newId();
     const numero = form.numero || await getNextNum("ordenes", "OT");
     const anterior = ordenes.find(o=>o.id===id);
-    // Log de actividad
     const logEntry = {
       usuario: currentUser.nombre,
       rol: currentUser.rol,
@@ -1517,23 +1516,36 @@ function AppInner({ currentUser, onLogout }) {
     const data = { ...form, id, numero, createdAt: form.createdAt||new Date().toISOString(), actividad };
     await fsSet("ordenes", id, data);
 
-    // Descontar stock automáticamente si hay materiales usados nuevos
-    const matsNuevos = form.prod_materiales_usados||[];
-    const matsAnteriores = anterior?.prod_materiales_usados||[];
-    // Solo descontar los materiales que no estaban en la versión anterior
-    const matsADescontar = matsNuevos.filter(m=>{
-      const ant = matsAnteriores.find(x=>x.id===m.id);
-      return !ant || ant.cant !== m.cant;
-    });
-    for(const mat of matsADescontar){
-      const item = stock.find(s=>s.id===mat.id);
-      if(!item) continue;
-      const cantAnterior = matsAnteriores.find(x=>x.id===mat.id)?.cant||0;
-      const diferencia = mat.cant - cantAnterior;
+    // ── DESCUENTO AUTOMÁTICO DE STOCK ────────────────────────────────────────
+    // Collect all stockId materials from items[].agregados in new and old version
+    const collectMats=(items)=>{
+      const map={};
+      (items||[]).forEach(it=>(it.agregados||[]).forEach(ag=>{
+        if(ag.stockId){map[ag.stockId]=(map[ag.stockId]||0)+(+ag.cant||1);}
+      }));
+      return map;
+    };
+    const matsNuevos=collectMats(form.items);
+    const matsAnteriores=collectMats(anterior?.items);
+
+    // Calculate difference per stockId and update stock
+    const allIds=new Set([...Object.keys(matsNuevos),...Object.keys(matsAnteriores)]);
+    for(const stockId of allIds){
+      const cantNueva=matsNuevos[stockId]||0;
+      const cantAnterior=matsAnteriores[stockId]||0;
+      const diferencia=cantNueva-cantAnterior;
       if(diferencia===0) continue;
-      const newStk = Math.max(0, item.stock - diferencia);
-      const mov = {tipo:"salida",cant:diferencia,nota:`Usado en orden ${numero}`,fecha:new Date().toISOString()};
-      await fsSet("stock_items", mat.id, {...item, stock:newStk, movimientos:[mov,...(item.movimientos||[])].slice(0,50)});
+      const item=stock.find(s=>s.id===stockId);
+      if(!item) continue;
+      const newStk=Math.max(0,item.stock-diferencia);
+      const mov={
+        tipo:diferencia>0?"salida":"entrada",
+        cant:Math.abs(diferencia),
+        nota:`${diferencia>0?"Usado":"Devuelto"} en orden ${numero}`,
+        fecha:new Date().toISOString(),
+        auto:true,
+      };
+      await fsSet("stock_items",stockId,{...item,stock:newStk,movimientos:[mov,...(item.movimientos||[])].slice(0,50)});
     }
     setModal(null);
   };
