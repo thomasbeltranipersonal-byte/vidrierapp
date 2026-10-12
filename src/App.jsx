@@ -450,7 +450,8 @@ const DocForm=({doc,modo,clientes,tiposVidrio,obsOpciones,serviciosOpciones,esta
     comp_senia:[],comp_final:[],
     equipo_asignado:"",
     incidencias:[],
-    inst_notas:"",inst_fecha:"",inst_direccion:"",inst_responsable:"",inst_firmante:"",
+    inst_notas:"",inst_fecha:"",inst_hora:"",inst_direccion:"",inst_responsable:"",inst_firmante:"",
+    fecha_medicion:"",hora_medicion:"",
     fotos_instalacion:[],
   };
 
@@ -1219,7 +1220,10 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
         <div style={{background:"#071220",borderRadius:10,padding:14,border:"1px solid #1e3a5a",marginBottom:14}}>
           <div style={{fontSize:11,fontWeight:700,color:"#5a8ab8",textTransform:"uppercase",marginBottom:12}}>🚚 Datos de Instalación / Entrega</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-            <Field label="Fecha de instalación"><Input type="date" value={form.inst_fecha||""} onChange={e=>set("inst_fecha",e.target.value)}/></Field>
+            <Field label="📐 Fecha medición"><Input type="date" value={form.fecha_medicion||""} onChange={e=>set("fecha_medicion",e.target.value)}/></Field>
+            <Field label="Hora medición"><Input type="time" value={form.hora_medicion||""} onChange={e=>set("hora_medicion",e.target.value)}/></Field>
+            <Field label="🔧 Fecha instalación"><Input type="date" value={form.inst_fecha||""} onChange={e=>set("inst_fecha",e.target.value)}/></Field>
+            <Field label="Hora instalación"><Input type="time" value={form.inst_hora||""} onChange={e=>set("inst_hora",e.target.value)}/></Field>
             <Field label="Dirección"><Input value={form.inst_direccion||""} onChange={e=>set("inst_direccion",e.target.value)} placeholder="Calle y número..."/></Field>
             <Field label="Responsable"><Input value={form.inst_responsable||""} onChange={e=>set("inst_responsable",e.target.value)} placeholder="Instalador..."/></Field>
             <Field label="Recibe / Firma"><Input value={form.inst_firmante||""} onChange={e=>set("inst_firmante",e.target.value)} placeholder="Cliente o encargado..."/></Field>
@@ -3375,28 +3379,28 @@ ${bizFooter()}`;
     const hoy=new Date();
     const [mes,setMes]=useState(hoy.getMonth());
     const [anio,setAnio]=useState(hoy.getFullYear());
-    const [eventos,setEventos]=useState([]);
+    const [eventosLibres,setEventosLibres]=useState([]);
+    const [modalEv,setModalEv]=useState(null);
     const [diaSelec,setDiaSelec]=useState(null);
-    const [modalEv,setModalEv]=useState(null); // null | {modo:"nuevo"|"editar", ev?, fecha?}
-    const CAL_KEY=`cal_eventos_${currentUser.nombre||"all"}`;
-    const TIPOS_EV=[
-      {id:"medicion",label:"📐 Toma de medidas",color:"#64B5F6"},
+
+    const MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    const DIAS=["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+    const TIPOS=[
+      {id:"medicion",label:"📐 Medición",color:"#64B5F6"},
       {id:"colocacion",label:"🔧 Colocación",color:"#A5D6A7"},
-      {id:"entrega",label:"📦 Entrega de vidrio",color:"#FFB74D"},
-      {id:"presupuesto",label:"💬 Visita presupuesto",color:"#CE93D8"},
+      {id:"entrega",label:"📦 Entrega",color:"#FFB74D"},
+      {id:"presupuesto",label:"💬 Presupuesto",color:"#CE93D8"},
       {id:"otro",label:"📌 Otro",color:"#80CBC4"},
     ];
 
-    // Load/save from Firebase config
     useEffect(()=>{
-      const unsub=fsSub("calendario_eventos",docs=>{setEventos(docs);});
-      return unsub;
+      return fsSub("calendario_eventos",docs=>setEventosLibres(docs));
     },[]);
 
     const saveEv=async(ev)=>{
       const id=ev.id||newId();
       await fsSet("calendario_eventos",id,{...ev,id});
-      setModalEv(null);setDiaSelec(null);
+      setModalEv(null);
     };
     const delEv=async(id)=>{
       if(!window.confirm("¿Eliminar este evento?"))return;
@@ -3404,31 +3408,71 @@ ${bizFooter()}`;
       setModalEv(null);
     };
 
+    // Build unified event list from ordenes + free events
+    const todosEventos=React.useMemo(()=>{
+      const evs=[];
+      // From ordenes
+      ordenes.filter(o=>!["cancelada"].includes(o.estado)).forEach(o=>{
+        const nombre=o.contacto_nombre||getNombre(o.cliente)||"Sin cliente";
+        if(o.fecha_medicion){
+          evs.push({
+            id:`ord_med_${o.id}`,tipo:"medicion",fecha:o.fecha_medicion,hora:o.hora_medicion||"",
+            cliente:nombre,descripcion:`Medición — ${o.numero}`,
+            ordenId:o.id,numero:o.numero,_fromOrden:true,
+          });
+        }
+        if(o.inst_fecha){
+          evs.push({
+            id:`ord_inst_${o.id}`,tipo:"colocacion",fecha:o.inst_fecha,hora:o.inst_hora||"",
+            cliente:nombre,descripcion:`Instalación — ${o.numero}`,
+            ordenId:o.id,numero:o.numero,_fromOrden:true,
+          });
+        }
+      });
+      // Free events
+      eventosLibres.forEach(e=>evs.push({...e,_fromOrden:false}));
+      return evs;
+    },[ordenes,eventosLibres]);
+
+    // Events for a specific date string "YYYY-MM-DD"
+    const evsParaDia=(dateStr)=>todosEventos
+      .filter(e=>e.fecha===dateStr)
+      .sort((a,b)=>(a.hora||"").localeCompare(b.hora||""));
+
+    const dateStr=(d)=>`${anio}-${String(mes+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+
     // Calendar grid
-    const primerDia=new Date(anio,mes,1).getDay(); // 0=dom
+    const primerDia=new Date(anio,mes,1).getDay();
+    const offset=primerDia===0?6:primerDia-1;
     const diasEnMes=new Date(anio,mes+1,0).getDate();
-    const diasGrid=[];
-    // Offset: start on Monday (1)
-    const offset=(primerDia===0?6:primerDia-1);
-    for(let i=0;i<offset;i++)diasGrid.push(null);
-    for(let d=1;d<=diasEnMes;d++)diasGrid.push(d);
-    while(diasGrid.length%7!==0)diasGrid.push(null);
+    const grid=[];
+    for(let i=0;i<offset;i++)grid.push(null);
+    for(let d=1;d<=diasEnMes;d++)grid.push(d);
+    while(grid.length%7!==0)grid.push(null);
 
-    const evDia=(d)=>eventos.filter(e=>{
-      const ed=new Date(e.fecha);
-      return ed.getFullYear()===anio&&ed.getMonth()===mes&&ed.getDate()===d;
-    }).sort((a,b)=>a.hora?.localeCompare(b.hora||"")||0);
-
-    const DIAS=["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
-    const MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
     const esHoy=(d)=>d&&d===hoy.getDate()&&mes===hoy.getMonth()&&anio===hoy.getFullYear();
 
-    // Event form
+    // Event pill
+    const Pill=({ev})=>{
+      const tipo=TIPOS.find(t=>t.id===ev.tipo)||TIPOS[TIPOS.length-1];
+      return(
+        <div onClick={e=>{e.stopPropagation();
+          if(ev._fromOrden){setModal({type:"editar_orden",data:ordenes.find(o=>o.id===ev.ordenId)});}
+          else setModalEv({modo:"editar",ev});
+        }} style={{background:tipo.color+"20",borderLeft:`3px solid ${tipo.color}`,borderRadius:"0 4px 4px 0",
+          padding:"2px 5px",marginBottom:2,cursor:"pointer",border:`1px solid ${tipo.color}30`,borderLeftWidth:3}}>
+          {ev.hora&&<span style={{fontSize:8,color:tipo.color,fontWeight:700,marginRight:3}}>{ev.hora}</span>}
+          <span style={{fontSize:9,color:"#c8e0f8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",display:"block"}}>
+            {ev._fromOrden?<strong style={{color:tipo.color}}>{ev.numero}</strong>:null} {ev.cliente}
+          </span>
+        </div>
+      );
+    };
+
+    // Free event form
     const EventForm=({ev,fecha})=>{
-      const initFecha=fecha?`${anio}-${String(mes+1).padStart(2,"0")}-${String(fecha).padStart(2,"0")}`:ev?.fecha||"";
-      const [f,setF]=useState(ev||{fecha:initFecha,hora:"09:00",tipo:"medicion",cliente:"",descripcion:"",notas:""});
+      const [f,setF]=useState(ev||{fecha:fecha||"",hora:"09:00",tipo:"otro",cliente:"",descripcion:"",notas:""});
       const s=(k,v)=>setF(p=>({...p,[k]:v}));
-      const tipo=TIPOS_EV.find(t=>t.id===f.tipo)||TIPOS_EV[0];
       return(
         <div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
@@ -3436,17 +3480,19 @@ ${bizFooter()}`;
             <Field label="Hora"><Input type="time" value={f.hora||"09:00"} onChange={e=>s("hora",e.target.value)}/></Field>
             <Field label="Tipo">
               <Sel value={f.tipo} onChange={e=>s("tipo",e.target.value)}>
-                {TIPOS_EV.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
+                {TIPOS.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
               </Sel>
             </Field>
-            <Field label="Cliente / Contacto"><Input value={f.cliente||""} onChange={e=>s("cliente",e.target.value)} placeholder="Nombre del cliente..."/></Field>
+            <Field label="Cliente / Contacto">
+              <Input value={f.cliente||""} onChange={e=>s("cliente",e.target.value)} placeholder="Nombre..."/>
+            </Field>
             <div style={{gridColumn:"span 2"}}>
-              <Field label="Descripción rápida">
-                <Input value={f.descripcion||""} onChange={e=>s("descripcion",e.target.value)} placeholder="Ej: Rectificar medidas, colocar 3 vidrios baño..."/>
+              <Field label="Descripción">
+                <Input value={f.descripcion||""} onChange={e=>s("descripcion",e.target.value)} placeholder="Ej: Rectificar medidas, colocar 3 vidrios..."/>
               </Field>
             </div>
             <div style={{gridColumn:"span 2"}}>
-              <Field label="Notas adicionales (libre)">
+              <Field label="Notas adicionales">
                 <Textarea value={f.notas||""} onChange={e=>s("notas",e.target.value)} placeholder="Cualquier detalle extra..." style={{minHeight:60}}/>
               </Field>
             </div>
@@ -3460,92 +3506,117 @@ ${bizFooter()}`;
       );
     };
 
+    // Próximos eventos
+    const hoyStr=hoy.toISOString().split("T")[0];
+    const proximos=todosEventos
+      .filter(e=>e.fecha>=hoyStr)
+      .sort((a,b)=>a.fecha.localeCompare(b.fecha)||(a.hora||"").localeCompare(b.hora||""))
+      .slice(0,10);
+
+    const evsMes=todosEventos.filter(e=>e.fecha.startsWith(`${anio}-${String(mes+1).padStart(2,"0")}`));
+
     return(
       <div>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+        {/* Header */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
           <div>
             <h1 style={{margin:"0 0 4px",fontFamily:"Georgia,serif",fontSize:24,color:"#e2f0ff"}}>📅 Calendario</h1>
-            <p style={{margin:0,color:"#3a6a9a",fontSize:13}}>{eventos.filter(e=>{const d=new Date(e.fecha);return d.getMonth()===mes&&d.getFullYear()===anio;}).length} evento{eventos.length!==1?"s":""} en {MESES[mes]}</p>
+            <p style={{margin:0,color:"#3a6a9a",fontSize:13}}>{evsMes.length} evento{evsMes.length!==1?"s":""} en {MESES[mes]} · órdenes + eventos libres</p>
           </div>
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <button onClick={()=>{if(mes===0){setMes(11);setAnio(a=>a-1);}else setMes(m=>m-1);}} style={{background:"#0a1020",border:"1px solid #1e3a5a",color:"#64B5F6",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>◀</button>
-            <span style={{fontSize:15,fontWeight:700,color:"#e2f0ff",minWidth:140,textAlign:"center"}}>{MESES[mes]} {anio}</span>
-            <button onClick={()=>{if(mes===11){setMes(0);setAnio(a=>a+1);}else setMes(m=>m+1);}} style={{background:"#0a1020",border:"1px solid #1e3a5a",color:"#64B5F6",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>▶</button>
-            <button onClick={()=>{setMes(hoy.getMonth());setAnio(hoy.getFullYear());}} style={{background:"#0a1020",border:"1px solid #1e3a5a",color:"#3a6a9a",borderRadius:7,padding:"6px 10px",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Hoy</button>
-            <Btn small onClick={()=>setModalEv({modo:"nuevo"})}><Icon name="plus" size={13}/> Nuevo evento</Btn>
+          <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+            <button onClick={()=>{if(mes===0){setMes(11);setAnio(a=>a-1);}else setMes(m=>m-1);}} style={{background:"#0a1020",border:"1px solid #1e3a5a",color:"#64B5F6",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontFamily:"inherit"}}>◀</button>
+            <span style={{fontSize:15,fontWeight:700,color:"#e2f0ff",minWidth:150,textAlign:"center"}}>{MESES[mes]} {anio}</span>
+            <button onClick={()=>{if(mes===11){setMes(0);setAnio(a=>a+1);}else setMes(m=>m+1);}} style={{background:"#0a1020",border:"1px solid #1e3a5a",color:"#64B5F6",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontFamily:"inherit"}}>▶</button>
+            <button onClick={()=>{setMes(hoy.getMonth());setAnio(hoy.getFullYear());}} style={{background:"#0a1020",border:"1px solid #1e3a5a",color:"#3a6a9a",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Hoy</button>
+            <Btn small onClick={()=>setModalEv({modo:"nuevo",fecha:diaSelec?dateStr(diaSelec):""})}><Icon name="plus" size={13}/> Evento libre</Btn>
           </div>
         </div>
 
-        {/* Week header */}
+        {/* Legend */}
+        <div style={{display:"flex",gap:10,marginBottom:10,flexWrap:"wrap"}}>
+          {TIPOS.map(t=><span key={t.id} style={{fontSize:10,color:t.color,display:"flex",alignItems:"center",gap:3}}>
+            <span style={{width:8,height:8,borderRadius:2,background:t.color,display:"inline-block"}}/>
+            {t.label}
+          </span>)}
+          <span style={{fontSize:10,color:"#3a6a9a",marginLeft:"auto"}}>Click en orden abre la orden · Click en día agrega evento</span>
+        </div>
+
+        {/* Day headers */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:3}}>
-          {DIAS.map(d=><div key={d} style={{textAlign:"center",fontSize:11,fontWeight:700,color:"#3a6a9a",padding:"4px 0",textTransform:"uppercase",letterSpacing:0.5}}>{d}</div>)}
+          {DIAS.map((d,i)=><div key={d} style={{textAlign:"center",fontSize:10,fontWeight:700,color:i>=5?"#80CBC4":"#3a6a9a",padding:"3px 0",textTransform:"uppercase",letterSpacing:0.5}}>{d}</div>)}
         </div>
 
         {/* Grid */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
-          {diasGrid.map((d,idx)=>{
-            const evs=d?evDia(d):[];
-            const fin=idx%7>=5; // sab/dom
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:20}}>
+          {grid.map((d,idx)=>{
+            const ds=d?dateStr(d):"";
+            const evs=d?evsParaDia(ds):[];
+            const esFinDeSemana=idx%7>=5;
+            const selec=d===diaSelec;
             return(
-              <div key={idx} onClick={()=>{if(d){setDiaSelec(d===diaSelec?null:d);}}}
-                style={{minHeight:90,background:esHoy(d)?"#0a2a4a":d?"#071220":"#050d18",borderRadius:8,border:`1px solid ${esHoy(d)?"#1565C0":d===diaSelec?"#64B5F6":"#0f2035"}`,padding:"6px 7px",cursor:d?"pointer":"default",opacity:d?1:0.3,transition:"border-color 0.15s"}}>
-                {d&&<div style={{fontSize:12,fontWeight:esHoy(d)?800:500,color:esHoy(d)?"#64B5F6":fin?"#80CBC4":"#c8e0f8",marginBottom:4}}>{d}</div>}
-                {evs.slice(0,3).map(ev=>{
-                  const tipo=TIPOS_EV.find(t=>t.id===ev.tipo)||TIPOS_EV[TIPOS_EV.length-1];
-                  return(
-                    <div key={ev.id} onClick={e=>{e.stopPropagation();setModalEv({modo:"editar",ev});}}
-                      style={{background:tipo.color+"22",border:`1px solid ${tipo.color}40`,borderLeft:`3px solid ${tipo.color}`,borderRadius:4,padding:"2px 5px",marginBottom:2,cursor:"pointer"}}>
-                      <div style={{fontSize:9,fontWeight:700,color:tipo.color}}>{ev.hora||""} {ev.cliente||""}</div>
-                      <div style={{fontSize:9,color:"#c8e0f8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.descripcion||""}</div>
-                    </div>
-                  );
-                })}
-                {evs.length>3&&<div style={{fontSize:8,color:"#3a6a9a",paddingLeft:3}}>+{evs.length-3} más</div>}
-                {d===diaSelec&&d&&<button onClick={e=>{e.stopPropagation();setModalEv({modo:"nuevo",fecha:d});}}
-                  style={{width:"100%",marginTop:3,padding:"2px 0",background:"transparent",border:"1px dashed #1e3a5a",borderRadius:4,color:"#3a6a9a",cursor:"pointer",fontSize:9,fontFamily:"inherit"}}>+ evento</button>}
+              <div key={idx} onClick={()=>{if(d)setDiaSelec(selec?null:d);}}
+                style={{minHeight:88,background:esHoy(d)?"#0a2a4a":d?"#071220":"transparent",
+                  borderRadius:7,border:`1px solid ${esHoy(d)?"#1565C0":selec?"#64B5F6":d?"#0f2035":"transparent"}`,
+                  padding:"5px 6px",cursor:d?"pointer":"default",transition:"border-color 0.1s"}}>
+                {d&&<>
+                  <div style={{fontSize:11,fontWeight:esHoy(d)?800:500,
+                    color:esHoy(d)?"#64B5F6":esFinDeSemana?"#80CBC4":"#c8e0f8",marginBottom:3}}>
+                    {d}
+                    {evs.length>0&&<span style={{float:"right",fontSize:9,color:"#3a6a9a",fontWeight:400}}>{evs.length}</span>}
+                  </div>
+                  {evs.slice(0,3).map(ev=><Pill key={ev.id} ev={ev}/>)}
+                  {evs.length>3&&<div style={{fontSize:8,color:"#3a6a9a",paddingLeft:3}}>+{evs.length-3} más</div>}
+                  {selec&&<button onClick={e=>{e.stopPropagation();setModalEv({modo:"nuevo",fecha:ds});}}
+                    style={{width:"100%",marginTop:3,padding:"2px 0",background:"transparent",border:"1px dashed #1e3a5a",
+                      borderRadius:4,color:"#3a6a9a",cursor:"pointer",fontSize:8,fontFamily:"inherit"}}>+ evento libre</button>}
+                </>}
               </div>
             );
           })}
         </div>
 
-        {/* Upcoming events list */}
-        {(()=>{
-          const prox=eventos.filter(e=>new Date(e.fecha)>=new Date(new Date().toDateString())).sort((a,b)=>a.fecha.localeCompare(b.fecha)||(a.hora||"").localeCompare(b.hora||"")).slice(0,8);
-          if(!prox.length)return null;
-          return(
-            <div style={{marginTop:20}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#3a6a9a",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>📋 Próximos eventos</div>
-              <div style={{display:"grid",gap:6}}>
-                {prox.map(ev=>{
-                  const tipo=TIPOS_EV.find(t=>t.id===ev.tipo)||TIPOS_EV[TIPOS_EV.length-1];
-                  const fecha=new Date(ev.fecha+"T12:00:00");
-                  const label=`${fecha.getDate()} ${MESES[fecha.getMonth()].slice(0,3)}`;
-                  return(
-                    <div key={ev.id} onClick={()=>setModalEv({modo:"editar",ev})} style={{background:"#071220",borderRadius:9,padding:"10px 14px",border:`1px solid ${tipo.color}25`,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
-                      <div style={{background:tipo.color+"20",border:`1px solid ${tipo.color}40`,borderRadius:7,padding:"4px 10px",minWidth:60,textAlign:"center",flexShrink:0}}>
-                        <div style={{fontSize:13,fontWeight:800,color:tipo.color}}>{label}</div>
-                        <div style={{fontSize:10,color:"#3a6a9a"}}>{ev.hora||"—"}</div>
-                      </div>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:12,fontWeight:700,color:tipo.color}}>{tipo.label}</div>
-                        <div style={{fontSize:13,fontWeight:600,color:"#e2f0ff"}}>{ev.cliente||"Sin cliente"}</div>
-                        {ev.descripcion&&<div style={{fontSize:11,color:"#3a6a9a",marginTop:1}}>{ev.descripcion}</div>}
-                      </div>
+        {/* Próximos */}
+        {proximos.length>0&&<>
+          <div style={{fontSize:11,fontWeight:700,color:"#3a6a9a",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>📋 Próximos trabajos</div>
+          <div style={{display:"grid",gap:5}}>
+            {proximos.map(ev=>{
+              const tipo=TIPOS.find(t=>t.id===ev.tipo)||TIPOS[TIPOS.length-1];
+              const fecha=new Date(ev.fecha+"T12:00");
+              const labelFecha=`${fecha.getDate()} ${MESES[fecha.getMonth()].slice(0,3)}`;
+              return(
+                <div key={ev.id} onClick={()=>{
+                  if(ev._fromOrden){setModal({type:"editar_orden",data:ordenes.find(o=>o.id===ev.ordenId)});setNav("ordenes");}
+                  else setModalEv({modo:"editar",ev});
+                }} style={{background:"#071220",borderRadius:9,padding:"9px 14px",
+                  border:`1px solid ${tipo.color}25`,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+                  <div style={{background:tipo.color+"18",border:`1px solid ${tipo.color}40`,borderRadius:7,
+                    padding:"4px 10px",minWidth:58,textAlign:"center",flexShrink:0}}>
+                    <div style={{fontSize:13,fontWeight:800,color:tipo.color}}>{labelFecha}</div>
+                    <div style={{fontSize:9,color:"#3a6a9a"}}>{ev.hora||"—"}</div>
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:1}}>
+                      <span style={{fontSize:10,fontWeight:700,color:tipo.color}}>{tipo.label}</span>
+                      {ev.numero&&<span style={{fontSize:10,background:"#0a1828",border:"1px solid #1e3a5a",color:"#64B5F6",borderRadius:4,padding:"0 5px",fontFamily:"monospace"}}>{ev.numero}</span>}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })()}
+                    <div style={{fontSize:13,fontWeight:600,color:"#e2f0ff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.cliente}</div>
+                    {ev.descripcion&&<div style={{fontSize:11,color:"#3a6a9a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.descripcion}</div>}
+                  </div>
+                  {ev._fromOrden&&<div style={{fontSize:9,color:"#3a6a9a",flexShrink:0}}>Ver orden →</div>}
+                </div>
+              );
+            })}
+          </div>
+        </>}
 
-        {/* Event modal */}
         {modalEv&&<Modal title={modalEv.modo==="nuevo"?"Nuevo evento":"Editar evento"} onClose={()=>setModalEv(null)}>
           <EventForm ev={modalEv.ev} fecha={modalEv.fecha}/>
         </Modal>}
       </div>
     );
   };
+
+
 
   const pages={home:<Home/>,calendario:<Calendario/>,ordenes:<OrdenesList/>,finalizadas:<OrdenesFinalizadas/>,tablero:<Tablero/>,clientes:<Clientes/>,cotizaciones:<Cotizaciones/>,stock:<Stock/>,reportes:<Reportes/>,optimize:<Optimizer/>,ayuda:<Ayuda/>};
 
