@@ -809,6 +809,14 @@ table{width:100%;border-collapse:collapse;font-size:13px}thead tr{background:lin
             <Field label="Teléfono *"><Input value={form.contacto_tel} onChange={e=>set("contacto_tel",e.target.value)} placeholder="341 000-0000"/></Field>
             <Field label="Domicilio *"><Input value={form.contacto_dom} onChange={e=>set("contacto_dom",e.target.value)} placeholder="Calle y número..."/></Field>
           </div>
+          {/* Auto-save client checkbox */}
+          {!form.cliente&&form.contacto_nombre?.trim()&&(()=>{
+            const existe=clientes.some(c=>(c.nombre||"").trim().toLowerCase()===(form.contacto_nombre||"").trim().toLowerCase()||((form.contacto_tel||"").trim()&&(c.telefono||"").trim().replace(/\s/g,"")===(form.contacto_tel||"").trim().replace(/\s/g,"")));
+            return!existe?<label style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"#0a1828",borderRadius:7,border:"1px solid #1565C040",cursor:"pointer",marginTop:4}}>
+              <input type="checkbox" checked={!!form._guardarCliente} onChange={e=>set("_guardarCliente",e.target.checked)} style={{accentColor:"#64B5F6",width:15,height:15}}/>
+              <span style={{fontSize:11,color:"#64B5F6"}}>💾 Guardar <strong>{form.contacto_nombre}</strong> en la base de clientes</span>
+            </label>:<div style={{fontSize:11,color:"#26A69A",padding:"4px 10px"}}>✓ Cliente ya registrado en la base</div>;
+          })()}
         </div>
 
         {/* Ítems */}
@@ -1514,7 +1522,14 @@ function AppInner({ currentUser, onLogout }) {
     };
     const actividad = [...(anterior?.actividad||[]), logEntry].slice(-50);
     const data = { ...form, id, numero, createdAt: form.createdAt||new Date().toISOString(), actividad };
+    // Remove internal flag before saving
+    delete data._guardarCliente;
     await fsSet("ordenes", id, data);
+    // Auto-save client if checkbox was ticked
+    if(form._guardarCliente&&form.contacto_nombre?.trim()){
+      const cid=newId();
+      await fsSet("clientes",cid,{id:cid,nombre:form.contacto_nombre,telefono:form.contacto_tel||"",direccion:form.contacto_dom||"",tipo:"cliente",notas:"",createdAt:new Date().toISOString()});
+    }
 
     // ── DESCUENTO AUTOMÁTICO DE STOCK ────────────────────────────────────────
     // Collect all stockId materials from items[].agregados in new and old version
@@ -1570,6 +1585,20 @@ function AppInner({ currentUser, onLogout }) {
 
   const saveCliente = async (form) => {
     const id = form.id || newId();
+    // Prevent duplicates by name+phone (only for new clients)
+    if(!form.id){
+      const nombre=(form.nombre||"").trim().toLowerCase();
+      const tel=(form.telefono||"").trim().replace(/\s/g,"");
+      const dup=clientes.find(c=>{
+        const cn=(c.nombre||"").trim().toLowerCase();
+        const ct=(c.telefono||"").trim().replace(/\s/g,"");
+        return cn===nombre||(tel&&ct&&ct===tel);
+      });
+      if(dup){
+        alert(`⚠ Ya existe un cliente con ese nombre o teléfono:\n"${dup.nombre}" — ${dup.telefono||"sin tel."}\n\nNo se guardó para evitar duplicados.`);
+        return;
+      }
+    }
     await fsSet("clientes", id, { ...form, id, createdAt: form.createdAt||new Date().toISOString() });
     setModal(null);
   };
@@ -1605,6 +1634,7 @@ function AppInner({ currentUser, onLogout }) {
   const isTaller=currentUser.rol==="taller";
   const navItems=[
     {id:"home",label:"Inicio",icon:"home"},
+    {id:"calendario",label:"📅 Calendario",icon:"board"},
     {id:"cotizaciones",label:"Cotizaciones",icon:"pdf"},
     {id:"ordenes",label:"Órdenes",icon:"orders"},
     {id:"finalizadas",label:"✅ Finalizadas",icon:"optimize"},
@@ -3340,7 +3370,184 @@ ${bizFooter()}`;
   );
 };
 
-  const pages={home:<Home/>,ordenes:<OrdenesList/>,finalizadas:<OrdenesFinalizadas/>,tablero:<Tablero/>,clientes:<Clientes/>,cotizaciones:<Cotizaciones/>,stock:<Stock/>,reportes:<Reportes/>,optimize:<Optimizer/>,ayuda:<Ayuda/>};
+  // ─── CALENDARIO ─────────────────────────────────────────────────────────────
+  const Calendario=()=>{
+    const hoy=new Date();
+    const [mes,setMes]=useState(hoy.getMonth());
+    const [anio,setAnio]=useState(hoy.getFullYear());
+    const [eventos,setEventos]=useState([]);
+    const [diaSelec,setDiaSelec]=useState(null);
+    const [modalEv,setModalEv]=useState(null); // null | {modo:"nuevo"|"editar", ev?, fecha?}
+    const CAL_KEY=`cal_eventos_${currentUser.nombre||"all"}`;
+    const TIPOS_EV=[
+      {id:"medicion",label:"📐 Toma de medidas",color:"#64B5F6"},
+      {id:"colocacion",label:"🔧 Colocación",color:"#A5D6A7"},
+      {id:"entrega",label:"📦 Entrega de vidrio",color:"#FFB74D"},
+      {id:"presupuesto",label:"💬 Visita presupuesto",color:"#CE93D8"},
+      {id:"otro",label:"📌 Otro",color:"#80CBC4"},
+    ];
+
+    // Load/save from Firebase config
+    useEffect(()=>{
+      const unsub=fsSub("calendario_eventos",docs=>{setEventos(docs);});
+      return unsub;
+    },[]);
+
+    const saveEv=async(ev)=>{
+      const id=ev.id||newId();
+      await fsSet("calendario_eventos",id,{...ev,id});
+      setModalEv(null);setDiaSelec(null);
+    };
+    const delEv=async(id)=>{
+      if(!window.confirm("¿Eliminar este evento?"))return;
+      fsDel("calendario_eventos",id);
+      setModalEv(null);
+    };
+
+    // Calendar grid
+    const primerDia=new Date(anio,mes,1).getDay(); // 0=dom
+    const diasEnMes=new Date(anio,mes+1,0).getDate();
+    const diasGrid=[];
+    // Offset: start on Monday (1)
+    const offset=(primerDia===0?6:primerDia-1);
+    for(let i=0;i<offset;i++)diasGrid.push(null);
+    for(let d=1;d<=diasEnMes;d++)diasGrid.push(d);
+    while(diasGrid.length%7!==0)diasGrid.push(null);
+
+    const evDia=(d)=>eventos.filter(e=>{
+      const ed=new Date(e.fecha);
+      return ed.getFullYear()===anio&&ed.getMonth()===mes&&ed.getDate()===d;
+    }).sort((a,b)=>a.hora?.localeCompare(b.hora||"")||0);
+
+    const DIAS=["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+    const MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    const esHoy=(d)=>d&&d===hoy.getDate()&&mes===hoy.getMonth()&&anio===hoy.getFullYear();
+
+    // Event form
+    const EventForm=({ev,fecha})=>{
+      const initFecha=fecha?`${anio}-${String(mes+1).padStart(2,"0")}-${String(fecha).padStart(2,"0")}`:ev?.fecha||"";
+      const [f,setF]=useState(ev||{fecha:initFecha,hora:"09:00",tipo:"medicion",cliente:"",descripcion:"",notas:""});
+      const s=(k,v)=>setF(p=>({...p,[k]:v}));
+      const tipo=TIPOS_EV.find(t=>t.id===f.tipo)||TIPOS_EV[0];
+      return(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <Field label="Fecha"><Input type="date" value={f.fecha} onChange={e=>s("fecha",e.target.value)}/></Field>
+            <Field label="Hora"><Input type="time" value={f.hora||"09:00"} onChange={e=>s("hora",e.target.value)}/></Field>
+            <Field label="Tipo">
+              <Sel value={f.tipo} onChange={e=>s("tipo",e.target.value)}>
+                {TIPOS_EV.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
+              </Sel>
+            </Field>
+            <Field label="Cliente / Contacto"><Input value={f.cliente||""} onChange={e=>s("cliente",e.target.value)} placeholder="Nombre del cliente..."/></Field>
+            <div style={{gridColumn:"span 2"}}>
+              <Field label="Descripción rápida">
+                <Input value={f.descripcion||""} onChange={e=>s("descripcion",e.target.value)} placeholder="Ej: Rectificar medidas, colocar 3 vidrios baño..."/>
+              </Field>
+            </div>
+            <div style={{gridColumn:"span 2"}}>
+              <Field label="Notas adicionales (libre)">
+                <Textarea value={f.notas||""} onChange={e=>s("notas",e.target.value)} placeholder="Cualquier detalle extra..." style={{minHeight:60}}/>
+              </Field>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",borderTop:"1px solid #1e3a5a",paddingTop:10}}>
+            {ev?.id&&<Btn variant="secondary" onClick={()=>delEv(ev.id)} style={{color:"#f48fb1",borderColor:"#7f2020",marginRight:"auto"}}>🗑 Eliminar</Btn>}
+            <Btn variant="secondary" onClick={()=>setModalEv(null)}>Cancelar</Btn>
+            <Btn onClick={()=>saveEv(f)}>💾 Guardar</Btn>
+          </div>
+        </div>
+      );
+    };
+
+    return(
+      <div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <div>
+            <h1 style={{margin:"0 0 4px",fontFamily:"Georgia,serif",fontSize:24,color:"#e2f0ff"}}>📅 Calendario</h1>
+            <p style={{margin:0,color:"#3a6a9a",fontSize:13}}>{eventos.filter(e=>{const d=new Date(e.fecha);return d.getMonth()===mes&&d.getFullYear()===anio;}).length} evento{eventos.length!==1?"s":""} en {MESES[mes]}</p>
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <button onClick={()=>{if(mes===0){setMes(11);setAnio(a=>a-1);}else setMes(m=>m-1);}} style={{background:"#0a1020",border:"1px solid #1e3a5a",color:"#64B5F6",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>◀</button>
+            <span style={{fontSize:15,fontWeight:700,color:"#e2f0ff",minWidth:140,textAlign:"center"}}>{MESES[mes]} {anio}</span>
+            <button onClick={()=>{if(mes===11){setMes(0);setAnio(a=>a+1);}else setMes(m=>m+1);}} style={{background:"#0a1020",border:"1px solid #1e3a5a",color:"#64B5F6",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>▶</button>
+            <button onClick={()=>{setMes(hoy.getMonth());setAnio(hoy.getFullYear());}} style={{background:"#0a1020",border:"1px solid #1e3a5a",color:"#3a6a9a",borderRadius:7,padding:"6px 10px",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Hoy</button>
+            <Btn small onClick={()=>setModalEv({modo:"nuevo"})}><Icon name="plus" size={13}/> Nuevo evento</Btn>
+          </div>
+        </div>
+
+        {/* Week header */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:3}}>
+          {DIAS.map(d=><div key={d} style={{textAlign:"center",fontSize:11,fontWeight:700,color:"#3a6a9a",padding:"4px 0",textTransform:"uppercase",letterSpacing:0.5}}>{d}</div>)}
+        </div>
+
+        {/* Grid */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+          {diasGrid.map((d,idx)=>{
+            const evs=d?evDia(d):[];
+            const fin=idx%7>=5; // sab/dom
+            return(
+              <div key={idx} onClick={()=>{if(d){setDiaSelec(d===diaSelec?null:d);}}}
+                style={{minHeight:90,background:esHoy(d)?"#0a2a4a":d?"#071220":"#050d18",borderRadius:8,border:`1px solid ${esHoy(d)?"#1565C0":d===diaSelec?"#64B5F6":"#0f2035"}`,padding:"6px 7px",cursor:d?"pointer":"default",opacity:d?1:0.3,transition:"border-color 0.15s"}}>
+                {d&&<div style={{fontSize:12,fontWeight:esHoy(d)?800:500,color:esHoy(d)?"#64B5F6":fin?"#80CBC4":"#c8e0f8",marginBottom:4}}>{d}</div>}
+                {evs.slice(0,3).map(ev=>{
+                  const tipo=TIPOS_EV.find(t=>t.id===ev.tipo)||TIPOS_EV[TIPOS_EV.length-1];
+                  return(
+                    <div key={ev.id} onClick={e=>{e.stopPropagation();setModalEv({modo:"editar",ev});}}
+                      style={{background:tipo.color+"22",border:`1px solid ${tipo.color}40`,borderLeft:`3px solid ${tipo.color}`,borderRadius:4,padding:"2px 5px",marginBottom:2,cursor:"pointer"}}>
+                      <div style={{fontSize:9,fontWeight:700,color:tipo.color}}>{ev.hora||""} {ev.cliente||""}</div>
+                      <div style={{fontSize:9,color:"#c8e0f8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.descripcion||""}</div>
+                    </div>
+                  );
+                })}
+                {evs.length>3&&<div style={{fontSize:8,color:"#3a6a9a",paddingLeft:3}}>+{evs.length-3} más</div>}
+                {d===diaSelec&&d&&<button onClick={e=>{e.stopPropagation();setModalEv({modo:"nuevo",fecha:d});}}
+                  style={{width:"100%",marginTop:3,padding:"2px 0",background:"transparent",border:"1px dashed #1e3a5a",borderRadius:4,color:"#3a6a9a",cursor:"pointer",fontSize:9,fontFamily:"inherit"}}>+ evento</button>}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Upcoming events list */}
+        {(()=>{
+          const prox=eventos.filter(e=>new Date(e.fecha)>=new Date(new Date().toDateString())).sort((a,b)=>a.fecha.localeCompare(b.fecha)||(a.hora||"").localeCompare(b.hora||"")).slice(0,8);
+          if(!prox.length)return null;
+          return(
+            <div style={{marginTop:20}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#3a6a9a",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>📋 Próximos eventos</div>
+              <div style={{display:"grid",gap:6}}>
+                {prox.map(ev=>{
+                  const tipo=TIPOS_EV.find(t=>t.id===ev.tipo)||TIPOS_EV[TIPOS_EV.length-1];
+                  const fecha=new Date(ev.fecha+"T12:00:00");
+                  const label=`${fecha.getDate()} ${MESES[fecha.getMonth()].slice(0,3)}`;
+                  return(
+                    <div key={ev.id} onClick={()=>setModalEv({modo:"editar",ev})} style={{background:"#071220",borderRadius:9,padding:"10px 14px",border:`1px solid ${tipo.color}25`,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+                      <div style={{background:tipo.color+"20",border:`1px solid ${tipo.color}40`,borderRadius:7,padding:"4px 10px",minWidth:60,textAlign:"center",flexShrink:0}}>
+                        <div style={{fontSize:13,fontWeight:800,color:tipo.color}}>{label}</div>
+                        <div style={{fontSize:10,color:"#3a6a9a"}}>{ev.hora||"—"}</div>
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:12,fontWeight:700,color:tipo.color}}>{tipo.label}</div>
+                        <div style={{fontSize:13,fontWeight:600,color:"#e2f0ff"}}>{ev.cliente||"Sin cliente"}</div>
+                        {ev.descripcion&&<div style={{fontSize:11,color:"#3a6a9a",marginTop:1}}>{ev.descripcion}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Event modal */}
+        {modalEv&&<Modal title={modalEv.modo==="nuevo"?"Nuevo evento":"Editar evento"} onClose={()=>setModalEv(null)}>
+          <EventForm ev={modalEv.ev} fecha={modalEv.fecha}/>
+        </Modal>}
+      </div>
+    );
+  };
+
+  const pages={home:<Home/>,calendario:<Calendario/>,ordenes:<OrdenesList/>,finalizadas:<OrdenesFinalizadas/>,tablero:<Tablero/>,clientes:<Clientes/>,cotizaciones:<Cotizaciones/>,stock:<Stock/>,reportes:<Reportes/>,optimize:<Optimizer/>,ayuda:<Ayuda/>};
 
   return(
     <div style={{minHeight:"100vh",background:"#060f1a",fontFamily:"'DM Sans','Segoe UI',sans-serif",color:"#c8e0f8",display:"flex"}}>
@@ -3373,7 +3580,13 @@ ${bizFooter()}`;
             const numero=form.numero||(await newCotNum());
             const logEntry={usuario:currentUser.nombre,rol:currentUser.rol,fecha:new Date().toISOString(),accion:form.id?"Editó la cotización":"Creó la cotización"};
             const actividad=[...(form.actividad||[]),logEntry].slice(-50);
-            await fsSet("cotizaciones",id,{...form,id,numero,actividad,createdAt:form.createdAt||new Date().toISOString()});
+            const dataToSave={...form,id,numero,actividad,createdAt:form.createdAt||new Date().toISOString()};
+            delete dataToSave._guardarCliente;
+            await fsSet("cotizaciones",id,dataToSave);
+            if(form._guardarCliente&&form.contacto_nombre?.trim()){
+              const cid=newId();
+              await fsSet("clientes",cid,{id:cid,nombre:form.contacto_nombre,telefono:form.contacto_tel||"",direccion:form.contacto_dom||"",tipo:"cliente",notas:"",createdAt:new Date().toISOString()});
+            }
             setModal(null);
           }}
           onClose={()=>setModal(null)}
